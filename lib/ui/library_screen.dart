@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../core/app_exception.dart';
 import '../data/bookmark_store.dart';
@@ -108,10 +109,35 @@ class _LibraryScreenState extends State<LibraryScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: FilledButton.icon(
-              onPressed: _busy ? null : _openFile,
-              icon: const Icon(Icons.folder_open),
-              label: Text(_busy ? _busyLabel : 'Abrir documento'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FilledButton.icon(
+                  onPressed: _busy ? null : _openFile,
+                  icon: const Icon(Icons.folder_open),
+                  label: Text(_busy ? _busyLabel : 'Abrir documento'),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : () => _pickPhoto(ImageSource.camera),
+                        icon: const Icon(Icons.photo_camera),
+                        label: const Text('Cámara'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : () => _pickPhoto(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text('Fotos'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
           if (_continueEntry != null)
@@ -185,9 +211,43 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   IconData _iconFor(String kind) => switch (kind) {
         'image' => Icons.image,
+        'epub' => Icons.menu_book,
         'txt' => Icons.article,
         _ => Icons.picture_as_pdf,
       };
+
+  Future<void> _pickPhoto(ImageSource source) async {
+    setState(() {
+      _busy = true;
+      _busyLabel = 'Abriendo…';
+    });
+    try {
+      final shot = await ImagePicker().pickImage(source: source, imageQuality: 92);
+      if (shot == null) {
+        return;
+      }
+      final bytes = await shot.readAsBytes();
+      if (bytes.isEmpty) {
+        throw AppException('No se pudo leer la imagen.');
+      }
+      final stamp = DateTime.now().toIso8601String().substring(0, 16).replaceAll(':', '-');
+      final entry = await widget.libraryStore.importFile(
+        originalName: source == ImageSource.camera ? 'Foto $stamp.jpg' : shot.name,
+        bytes: bytes,
+      );
+      await widget.settingsStore.saveLastDocumentId(entry.id);
+      await _openEntry(entry);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      showSafeMessage(context, error);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
 
   Future<void> _openFile() async {
     setState(() {
@@ -198,7 +258,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: const [
-          'pdf', 'txt', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'tif', 'tiff', 'bmp',
+          'pdf', 'epub', 'txt', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'tif', 'tiff', 'bmp',
         ],
         withData: true,
       );
@@ -282,7 +342,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         noTextMessage: noSelectableTextMessage,
         notice: notice,
       );
-      widget.handler.chapters = detectChapters(doc.pages);
+      widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));
       unawaited(_applyLanguage(chunks));
       if (!mounted) {
         return;
@@ -324,7 +384,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         if (job != _ocrJob) return; // se abrió otro documento
         doc.pages[r.page] = r.text;
         await widget.handler.replaceChunks(_chunksFor(entry, doc, _normalizer));
-        widget.handler.chapters = detectChapters(doc.pages);
+        widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));
         if (!first.isCompleted) first.complete();
       }
     } on OcrUnavailable {

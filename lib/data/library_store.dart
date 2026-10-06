@@ -51,6 +51,7 @@ class LibraryStore {
     final dot = fileName.lastIndexOf('.');
     final ext = dot < 0 ? '' : fileName.substring(dot + 1).toLowerCase();
     if (ext == 'txt') return 'txt';
+    if (ext == 'epub') return 'epub';
     if (_imageExt.contains(ext)) return 'image';
     return 'pdf';
   }

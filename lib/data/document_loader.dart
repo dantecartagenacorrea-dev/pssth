@@ -1,15 +1,20 @@
 import 'dart:io';
 
+import '../domain/chapter_detector.dart';
 import '../domain/chunk_builder.dart';
 import '../domain/library_entry.dart';
 import '../domain/text_paginator.dart';
 import '../ocr/ocr_engine.dart';
+import 'epub_reader.dart';
 import 'ocr_cache.dart';
 import 'pdf_page_renderer.dart';
 import 'pdf_text_extractor.dart';
 
 class LoadedDocument {
-  LoadedDocument({required this.pages, required this.pendingOcr});
+  LoadedDocument({required this.pages, required this.pendingOcr, this.chapters});
+
+  /// Capítulos explícitos (EPUB). Si es null, se detectan desde el texto.
+  final List<Chapter>? chapters;
 
   /// Texto por página (las páginas pendientes de OCR están vacías).
   final List<String> pages;
@@ -36,7 +41,12 @@ class DocumentLoader {
   /// Carga rápida: texto directo + OCR ya cacheado. No ejecuta OCR nuevo.
   Future<LoadedDocument> load(LibraryEntry entry) async {
     final List<String> pages;
+    List<Chapter>? chapters;
     switch (entry.kind) {
+      case 'epub':
+        final book = readEpub(await File(entry.storedPath).readAsBytes());
+        pages = book.pages;
+        chapters = book.chapters;
       case 'txt':
         pages = paginateText(decodeText(await File(entry.storedPath).readAsBytes()));
       case 'image':
@@ -52,11 +62,11 @@ class DocumentLoader {
       if (!pageNeedsOcr(pages[i])) continue;
       if (cache.has(i)) {
         pages[i] = cache.get(i)!;
-      } else if (entry.kind != 'txt') {
+      } else if (entry.kind != 'txt' && entry.kind != 'epub') {
         pending.add(i);
       }
     }
-    return LoadedDocument(pages: pages, pendingOcr: pending);
+    return LoadedDocument(pages: pages, pendingOcr: pending, chapters: chapters);
   }
 
   /// OCR progresivo: emite cada página al terminarla y la guarda en caché.

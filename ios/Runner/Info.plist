@@ -66,4 +66,4 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-<key>UIBackgroundModes</key><array><string>audio</string></array></dict></plist>
+<key>UIBackgroundModes</key><array><string>audio</string></array><key>NSCameraUsageDescription</key><string>Lector usa la cámara para fotografiar páginas y leerlas en voz alta. Las fotos se procesan solo en tu dispositivo.</string><key>NSPhotoLibraryUsageDescription</key><string>Lector necesita acceder a tus fotos para leer en voz alta el texto de una imagen. Se procesa solo en tu dispositivo.</string></dict></plist>
