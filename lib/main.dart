@@ -29,7 +29,7 @@ Future<void> main() async {
     config: AudioServiceConfig(
       androidNotificationChannelId: 'com.lectorpdf.lector_pdf.tts',
       androidNotificationChannelName: 'Lectura PDF',
-      androidNotificationOngoing: true,
+      androidNotificationOngoing: false,
       androidStopForegroundOnPause: false,
     ),
   );

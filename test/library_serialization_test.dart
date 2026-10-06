@@ -26,7 +26,7 @@ void main() {
     expect(entry.pageIndex, 3);
     expect(entry.chunkIndex, 1);
     expect(entry.pageCount, 10);
-    expect(entry.progress, closeTo(0.4, 0.001));
+    expect(entry.progress, closeTo(0.3, 0.001)); // inicio de la página 4 de 10
   });
 
   test('JSON inválido produce biblioteca vacía', () {

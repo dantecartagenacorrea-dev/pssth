@@ -103,6 +103,8 @@ class TtsAudioHandler extends BaseAudioHandler {
   bool _keepIndexAfterStop = false;
   List<VoiceOption> _voices = [];
   String? _voiceName;
+  /// Voz realmente en uso (puede diferir de la guardada si el documento está en otro idioma).
+  VoiceOption? _activeVoice;
   String? _voiceLocale;
   double _speed = 1;
 
@@ -207,16 +209,23 @@ class TtsAudioHandler extends BaseAudioHandler {
     if (lang == null) return;
     final saved = _voiceLocale;
     if (_voiceName != null && saved != null && saved.toLowerCase().startsWith(lang)) {
-      return; // la voz elegida ya sirve para este idioma
+      // La voz elegida sirve para este idioma: restaurarla por si el documento
+      // anterior usó una voz temporal de otro idioma.
+      await _applyVoice();
+      _refresh();
+      return;
     }
     final match = _voices.where((v) => v.locale.toLowerCase().startsWith(lang));
     try {
       if (match.isNotEmpty) {
         await _tts.setVoice({'name': match.first.name, 'locale': match.first.locale});
+        _activeVoice = match.first;
       } else {
         await _tts.setLanguage(lang);
+        _activeVoice = null;
       }
     } catch (_) {}
+    _refresh();
   }
 
   Future<void> _loadVoices() async {
@@ -260,9 +269,11 @@ class TtsAudioHandler extends BaseAudioHandler {
     }
     try {
       await _tts.setVoice({'name': _voiceName!, 'locale': _voiceLocale ?? ''});
+      _activeVoice = VoiceOption(name: _voiceName!, locale: _voiceLocale ?? '');
     } catch (_) {
       _voiceName = null;
       _voiceLocale = null;
+      _activeVoice = null;
     }
   }
 
@@ -392,6 +403,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   Future<void> setVoice(VoiceOption? voice) async {
     _voiceName = voice?.name;
     _voiceLocale = voice?.locale;
+    _activeVoice = null;
     await settingsStore.saveVoice(name: _voiceName, locale: _voiceLocale);
     await _applyVoice();
     _refresh();
@@ -526,7 +538,7 @@ class TtsAudioHandler extends BaseAudioHandler {
         playing: false,
         speed: _speed,
         voices: _voices,
-        selectedVoiceId: _voiceName == null ? null : '$_voiceName|$_voiceLocale',
+        selectedVoiceId: _activeVoice?.id,
         hasText: hasText ?? false,
         message: message,
       );
@@ -544,7 +556,7 @@ class TtsAudioHandler extends BaseAudioHandler {
       playing: playing ?? _speaking,
       speed: _speed,
       voices: _voices,
-      selectedVoiceId: _voiceName == null ? null : '$_voiceName|$_voiceLocale',
+      selectedVoiceId: _activeVoice?.id,
       hasText: true,
       message: message,
     );

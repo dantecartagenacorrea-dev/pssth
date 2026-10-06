@@ -1,0 +1,16 @@
+--------- beginning of main
+10-06 14:26:15.246 D/MediaSessionService(  568): onSessionPlaybackStateChanged: record=com.lectorpdf.lector_pdf/media-session/12 (userId=0) playbackState=PlaybackState {state=PLAYING(3), position=0, buffered position=0, speed=1.0, updated=2917096, actions=3669759, custom actions=[], active item id=-1, error=null}
+10-06 14:26:15.251 D/MediaSessionService(  568): onSessionActiveStateChanged: record=com.lectorpdf.lector_pdf/media-session/12 (userId=0) playbackState=PlaybackState {state=PLAYING(3), position=0, buffered position=0, speed=1.0, updated=2917096, actions=3669759, custom actions=[], active item id=-1, error=null}
+10-06 14:26:15.309 I/GoogleTTSServiceImpl( 2145): Synthesis request for locale eng-AUS and name en-AU-language
+10-06 14:26:15.311 I/GoogleTTSServiceImpl( 2145): TTS dispatch: en-au-x-aua-lstm-embedded
+10-06 14:26:15.861 D/TTS     ( 9968): Utterance ID has started: 9033903c-94a7-4d20-b84d-8f950b6df23f
+10-06 14:26:33.562 D/TTS     ( 9968): Utterance ID has completed: 9033903c-94a7-4d20-b84d-8f950b6df23f
+10-06 14:26:33.580 D/MediaSessionService(  568): onSessionPlaybackStateChanged: record=com.lectorpdf.lector_pdf/media-session/12 (userId=0) playbackState=PlaybackState {state=PLAYING(3), position=1000, buffered position=0, speed=1.0, updated=2935524, actions=3669759, custom actions=[], active item id=-1, error=null}
+10-06 14:26:33.583 I/GoogleTTSServiceImpl( 2145): Synthesis request for locale eng-AUS and name en-AU-language
+10-06 14:26:33.585 I/GoogleTTSServiceImpl( 2145): TTS dispatch: en-au-x-aua-lstm-embedded
+10-06 14:26:33.746 D/TTS     ( 9968): Utterance ID has started: 54a5fe5a-b7f3-47d2-a5ba-5549ec71701a
+10-06 14:27:03.209 D/TTS     ( 9968): Utterance ID has completed: 54a5fe5a-b7f3-47d2-a5ba-5549ec71701a
+10-06 14:27:03.218 D/MediaSessionService(  568): onSessionPlaybackStateChanged: record=com.lectorpdf.lector_pdf/media-session/12 (userId=0) playbackState=PlaybackState {state=PLAYING(3), position=2000, buffered position=0, speed=1.0, updated=2965163, actions=3669759, custom actions=[], active item id=-1, error=null}
+10-06 14:27:03.219 I/GoogleTTSServiceImpl( 2145): Synthesis request for locale eng-AUS and name en-AU-language
+10-06 14:27:03.220 I/GoogleTTSServiceImpl( 2145): TTS dispatch: en-au-x-aua-lstm-embedded
+10-06 14:27:03.340 D/TTS     ( 9968): Utterance ID has started: 3fcf0a1c-c925-49fe-bb4c-4304fe9e0136

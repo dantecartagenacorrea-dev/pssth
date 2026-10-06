@@ -22,32 +22,12 @@ class PlayerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Reproductor'),
+        title: const Text('Lector'),
         actions: [
-          IconButton(
-            tooltip: 'Buscar',
-            icon: const Icon(Icons.search),
-            onPressed: () => showSearchSheet(context, handler),
-          ),
-          IconButton(
-            tooltip: 'Capítulos',
-            icon: const Icon(Icons.list),
-            onPressed: () => showChaptersSheet(context, handler),
-          ),
           IconButton(
             tooltip: 'Agregar marcador',
             icon: const Icon(Icons.bookmark_add_outlined),
             onPressed: () => addBookmark(context, handler, bookmarkStore, entry),
-          ),
-          IconButton(
-            tooltip: 'Ver marcadores',
-            icon: const Icon(Icons.bookmarks_outlined),
-            onPressed: () => showBookmarksSheet(context, handler, bookmarkStore, entry),
-          ),
-          IconButton(
-            tooltip: 'Exportar texto',
-            icon: const Icon(Icons.ios_share),
-            onPressed: () => exportText(context, handler, entry),
           ),
           ValueListenableBuilder<DateTime?>(
             valueListenable: handler.sleepEndsAt,
@@ -65,6 +45,27 @@ class PlayerScreen extends StatelessWidget {
                 PopupMenuItem(value: 60, child: Text('60 minutos')),
               ],
             ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Más opciones',
+            onSelected: (v) {
+              switch (v) {
+                case 'buscar':
+                  showSearchSheet(context, handler);
+                case 'capitulos':
+                  showChaptersSheet(context, handler);
+                case 'marcadores':
+                  showBookmarksSheet(context, handler, bookmarkStore, entry);
+                case 'exportar':
+                  exportText(context, handler, entry);
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'buscar', child: Text('Buscar en el texto')),
+              PopupMenuItem(value: 'capitulos', child: Text('Capítulos')),
+              PopupMenuItem(value: 'marcadores', child: Text('Marcadores')),
+              PopupMenuItem(value: 'exportar', child: Text('Exportar texto')),
+            ],
           ),
         ],
       ),

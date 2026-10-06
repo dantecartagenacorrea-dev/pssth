@@ -22,4 +22,12 @@ if exist publicar.flag (
   >> %LOG% echo --- publicando ---
   call publicar_auto.bat >> %LOG% 2>&1
 )
+if exist diag.flag (
+  del /f /q diag.flag
+  call diag.bat
+)
+if exist emu.flag (
+  del /f /q emu.flag
+  call emu.bat
+)
 >> %LOG% echo === FIN ===

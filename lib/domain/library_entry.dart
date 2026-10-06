@@ -31,7 +31,11 @@ class LibraryEntry {
     if (pageCount <= 0) {
       return 0;
     }
-    return ((pageIndex + 1) / pageCount).clamp(0, 1);
+    if (finished) {
+      return 1;
+    }
+    // Progreso al inicio de la página actual: la página 1 de 2 es 0 %, no 50 %.
+    return (pageIndex / pageCount).clamp(0, 1);
   }
 
   Map<String, dynamic> toJson() => {

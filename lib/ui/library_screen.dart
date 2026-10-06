@@ -91,7 +91,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('LECTOR PDF'),
+        title: const Text('Lector'),
         actions: [
           IconButton(
             tooltip: 'Pronunciación',
@@ -236,7 +236,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         bytes: bytes,
       );
       await widget.settingsStore.saveLastDocumentId(entry.id);
-      await _openEntry(entry);
+      await _openEntry(entry, recienImportado: true);
     } catch (error) {
       if (!mounted) {
         return;
@@ -275,7 +275,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         bytes: bytes,
       );
       await widget.settingsStore.saveLastDocumentId(entry.id);
-      await _openEntry(entry);
+      await _openEntry(entry, recienImportado: true);
     } catch (error) {
       if (!mounted) {
         return;
@@ -291,7 +291,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   List<TextChunk> _chunksFor(LibraryEntry entry, LoadedDocument doc, TextNormalizer n) =>
       buildChunks(documentId: entry.id, pages: doc.pages, normalizer: n);
 
-  Future<void> _openEntry(LibraryEntry entry) async {
+  Future<void> _openEntry(LibraryEntry entry, {bool recienImportado = false}) async {
     setState(() {
       _busy = true;
       _busyLabel = 'Abriendo…';
@@ -361,6 +361,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         setState(() {});
       }
     } catch (error) {
+      if (recienImportado) {
+        // No conservar en la biblioteca un archivo que no se pudo abrir.
+        await widget.libraryStore.remove(entry.id);
+      }
       if (!mounted) {
         return;
       }

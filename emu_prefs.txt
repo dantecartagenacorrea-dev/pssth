@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8' standalone='yes' ?>
+<map>
+    <string name="flutter.lastDocumentId">1791295908459</string>
+    <string name="flutter.voiceName">es-es-x-eed-local</string>
+    <string name="flutter.voiceLocale">es-ES</string>
+    <string name="flutter.speed">VGhpcyBpcyB0aGUgcHJlZml4IGZvciBEb3VibGUu1.5</string>
+</map>
