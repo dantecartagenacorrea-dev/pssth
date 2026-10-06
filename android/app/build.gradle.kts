@@ -43,3 +43,10 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // OCR y detección de idioma en el dispositivo (Google ML Kit, gratuito, sin red).
+    // Modelo latino incluido en la app: funciona offline desde la instalación.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.mlkit:language-id:17.0.6")
+}
