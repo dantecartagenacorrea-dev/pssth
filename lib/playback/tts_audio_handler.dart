@@ -11,13 +11,19 @@ import '../domain/chapter_detector.dart';
 import '../domain/library_entry.dart';
 import '../domain/reading_position.dart';
 import '../domain/text_chunk.dart';
+import '../domain/voice_ranking.dart';
 
 class VoiceOption {
-  const VoiceOption({required this.name, required this.locale});
+  const VoiceOption({required this.name, required this.locale, this.quality});
   final String name;
   final String locale;
+  /// Calidad informada por el sistema (iOS: default/enhanced/premium).
+  final String? quality;
   String get id => '$name|$locale';
-  String get label => '$name ($locale)';
+  String get label {
+    final q = quality == null || quality!.isEmpty || quality == 'default' ? '' : ' · ${quality!}';
+    return '$name ($locale)$q';
+  }
 }
 
 class PlayerSnapshot {
@@ -217,7 +223,13 @@ class TtsAudioHandler extends BaseAudioHandler {
       _refresh();
       return;
     }
-    final match = _voices.where((v) => v.locale.toLowerCase().startsWith(lang));
+    // Mejor voz disponible para el idioma (premium > mejorada > local > genérica).
+    final match = rankVoices<VoiceOption>(
+      _voices.where((v) => v.locale.toLowerCase().startsWith(lang)),
+      name: (v) => v.name,
+      locale: (v) => v.locale,
+      quality: (v) => v.quality,
+    );
     try {
       if (match.isNotEmpty) {
         await _tts.setVoice({'name': match.first.name, 'locale': match.first.locale});
@@ -240,6 +252,7 @@ class TtsAudioHandler extends BaseAudioHandler {
               (m) => VoiceOption(
                 name: '${m['name'] ?? ''}',
                 locale: '${m['locale'] ?? ''}',
+                quality: m['quality'] == null ? null : '${m['quality']}',
               ),
             )
             .where((v) => v.name.isNotEmpty)

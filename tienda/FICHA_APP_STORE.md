@@ -20,6 +20,8 @@ Lector convierte cualquier documento en una experiencia de audiolibro: abre un P
 
 Privacidad total: todo se procesa en tu dispositivo. Sin cuentas, sin Internet, sin anuncios.
 
+Nota: el reconocimiento de texto y la voz pueden contener errores; consulta el documento original para cualquier uso formal.
+
 ## Palabras clave (100 caracteres máx.)
 lector,pdf,audiolibro,voz,escuchar,texto a voz,ocr,leer,documentos,epub
 

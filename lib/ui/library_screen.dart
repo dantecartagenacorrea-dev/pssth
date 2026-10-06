@@ -24,6 +24,9 @@ import '../playback/tts_audio_handler.dart';
 import 'player_screen.dart';
 import 'pronunciation_screen.dart';
 
+/// Versión mostrada en "Acerca de" (mantener igual que pubspec.yaml).
+const String kAppVersion = '1.0.0';
+
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({
     super.key,
@@ -156,6 +159,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 builder: (_) => PronunciationScreen(store: widget.pronunciationStore),
               ),
             ),
+          ),
+          PopupMenuButton<String>(
+            tooltip: 'Más',
+            onSelected: (v) {
+              if (v == 'acerca') {
+                showAboutDialog(
+                  context: context,
+                  applicationName: 'Lector',
+                  applicationVersion: kAppVersion,
+                  applicationLegalese:
+                      'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo; '
+                      'no se envían datos a ningún servidor.\n\n'
+                      'El reconocimiento de texto (OCR) y la voz pueden contener errores; '
+                      'consulta siempre el documento original para cualquier uso formal.',
+                );
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'acerca', child: Text('Acerca de Lector y licencias')),
+            ],
           ),
         ],
       ),

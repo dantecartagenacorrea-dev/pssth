@@ -33,6 +33,8 @@ class MainActivity : AudioServiceActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
+        // Relanzar desde el icono/recientes reutiliza el intent original: no reabrir.
+        if (intent != null && (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0) return
         val uri: Uri? = when (intent?.action) {
             Intent.ACTION_VIEW -> intent.data
             Intent.ACTION_SEND -> intent.getParcelableExtra(Intent.EXTRA_STREAM)

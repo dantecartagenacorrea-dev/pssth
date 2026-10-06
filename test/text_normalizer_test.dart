@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lector_pdf/domain/text_normalizer.dart';
 
 void main() {
+  _lecturaTests();
   _puntuacionTests();
   final n = TextNormalizer();
 
@@ -45,5 +46,25 @@ void _puntuacionTests() {
     final n = TextNormalizer();
     expect(n.normalize('¡ Qué noche ! cruje al soplo que lo abate ; y muda ,'),
         '¡Qué noche! cruje al soplo que lo abate; y muda,');
+  });
+}
+
+void _lecturaTests() {
+  final n = TextNormalizer();
+  test('romanos tras Artículo/Capítulo', () {
+    expect(n.normalize('Artículo IV y Capítulo XII'), 'Artículo 4 y Capítulo 12');
+    expect(n.normalize('Art. IX'), 'Artículo 9');
+  });
+  test('fechas numéricas', () {
+    expect(n.normalize('el 12/05/2024 y el 2024-10-06'), 'el 12 de mayo de 2024 y el 6 de octubre de 2024');
+  });
+  test('ordinales y rangos', () {
+    expect(n.normalize('1º piso, 2ª planta, gestión 2019-2020'), 'primero piso, segunda planta, gestión 2019 a 2020');
+  });
+  test('siglas societarias', () {
+    expect(n.normalize('ACME S.R.L. y BETA S.A.'), 'ACME Sociedad de Responsabilidad Limitada y BETA Sociedad Anónima');
+  });
+  test('no toca importes ni porcentajes', () {
+    expect(n.normalize('Bs 1.234,50 al 13%'), '1.234,50 bolivianos al 13 por ciento');
   });
 }
