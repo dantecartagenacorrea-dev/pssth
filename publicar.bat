@@ -1,15 +1,17 @@
 @echo off
 cd /d "%~dp0"
-where git >nul 2>nul || (echo Falta Git. Instala "Git for Windows" desde git-scm.com y vuelve a ejecutar. & pause & exit /b 1)
 set URL=https://github.com/cartagenacorrealimitada-cell/lector.git
-if not exist .git (git init -b main)
-git add -A
-git commit -m "Lector: version inicial"
-git remote remove origin 2>nul
-git remote add origin %URL%
-echo.
+> publicar.log echo === publicar ===
+git --version >> publicar.log 2>&1
+git init >> publicar.log 2>&1
+git branch -M main >> publicar.log 2>&1
+git add -A >> publicar.log 2>&1
+git -c user.name="Lector" -c user.email="lector@users.noreply.github.com" commit -m "Lector: version inicial" >> publicar.log 2>&1
+git remote remove origin >> publicar.log 2>&1
+git remote add origin %URL% >> publicar.log 2>&1
 echo Si se abre una ventana, inicia sesion en GitHub (hazlo tu).
-git push -u origin main
+git push -u origin main >> publicar.log 2>&1
+type publicar.log
 echo.
-echo Terminado. Puedes cerrar esta ventana.
+echo Terminado. Avisame.
 pause
