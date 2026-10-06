@@ -14,7 +14,12 @@ class LibraryStore {
 
   Future<void> init() async {
     final docs = await getApplicationDocumentsDirectory();
-    _root = Directory('${docs.path}/library');
+    await initAt(Directory('${docs.path}/library'));
+  }
+
+  /// Inicializa en un directorio concreto (pruebas).
+  Future<void> initAt(Directory dir) async {
+    _root = dir;
     if (!await _root.exists()) {
       await _root.create(recursive: true);
     }
@@ -61,6 +66,23 @@ class LibraryStore {
     required String originalName,
     required List<int> bytes,
   }) async {
+    // Mismo nombre y mismo contenido: reutilizar la entrada y su progreso.
+    for (final e in _data.entries) {
+      if (e.name != originalName) continue;
+      try {
+        final f = File(e.storedPath);
+        if (await f.exists() && await f.length() == bytes.length) {
+          final existing = await f.readAsBytes();
+          if (_sameBytes(existing, bytes)) {
+            e.lastOpenedIso = DateTime.now().toIso8601String();
+            _data.entries.remove(e);
+            _data.entries.insert(0, e);
+            await _save();
+            return e;
+          }
+        }
+      } catch (_) {}
+    }
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final kind = kindFor(originalName);
     final dot = originalName.lastIndexOf('.');
@@ -80,6 +102,14 @@ class LibraryStore {
     _data.entries.insert(0, entry);
     await _save();
     return entry;
+  }
+
+  static bool _sameBytes(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   Future<void> upsert(LibraryEntry entry) async {

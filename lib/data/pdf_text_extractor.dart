@@ -1,15 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../core/app_exception.dart';
 import '../domain/chunk_builder.dart';
+import '../domain/column_order.dart';
 import '../domain/page_cleaner.dart';
 import '../domain/text_chunk.dart';
 import '../domain/text_normalizer.dart';
 
-const int kExtractionVersion = 1;
+const int kExtractionVersion = 2; // 2: orden en columnas
 
 class ExtractedPdf {
   ExtractedPdf({
@@ -88,8 +90,8 @@ class PdfTextExtractor {
       final raw = <String>[];
       for (var i = 0; i < document.pages.length; i++) {
         final page = await document.pages[i].ensureLoaded();
-        final text = await page.loadText();
-        raw.add(text?.fullText ?? '');
+        final text = await page.loadStructuredText();
+        raw.add(_pageTextInReadingOrder(page, text));
       }
       return PageCleaner.clean(raw);
     } on PdfPasswordException {
@@ -107,6 +109,24 @@ class PdfTextExtractor {
       throw AppException('No se pudo extraer el texto del PDF.');
     } finally {
       await document?.dispose();
+    }
+  }
+
+  /// Texto de la página; si hay dos columnas claras, en orden de lectura.
+  static String _pageTextInReadingOrder(PdfPage page, PdfPageText text) {
+    try {
+      final rects = [
+        for (final c in text.charRects) CharRect(c.left, c.top, c.right, c.bottom),
+      ];
+      final boxes = boxesFromChars(text.fullText, rects);
+      final ordered = reorderColumns(boxes, page.width);
+      if (kDebugMode) {
+        final sample = boxes.take(6).map((b) => '"${b.text.length > 12 ? b.text.substring(0, 12) : b.text}"@${b.left.toStringAsFixed(0)},${b.top.toStringAsFixed(0)}-${b.right.toStringAsFixed(0)},${b.bottom.toStringAsFixed(0)}').join(' ');
+        debugPrint('[lector] pag ${page.pageNumber} w=${page.width.toStringAsFixed(0)} chars=${text.fullText.length} rects=${rects.length} boxes=${boxes.length} columnas=${ordered != null} $sample');
+      }
+      return ordered ?? text.fullText;
+    } catch (_) {
+      return text.fullText;
     }
   }
 

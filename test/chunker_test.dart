@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lector_pdf/domain/chunker.dart';
 
 void main() {
+  _capituloTests();
+  _poemaTests();
   _abrevTests();
   test('página vacía no genera chunks', () {
     expect(splitPageText('   \n\n  '), isEmpty);
@@ -37,5 +39,21 @@ void _abrevTests() {
       'Inc. a) El contribuyente debe.',
       'Fin.',
     ]);
+  });
+}
+
+void _poemaTests() {
+  test('un título en mayúsculas se lee como bloque aparte', () {
+    final c = splitPageText('EN EL CAMPO\n¡ Qué noche ! El techo que escuda\nmi solitario aposento.');
+    expect(c.first, 'EN EL CAMPO');
+    expect(c[1], startsWith('¡ Qué noche !'));
+  });
+}
+
+void _capituloTests() {
+  test('un encabezado "CAPITULO n. ..." se lee como bloque aparte', () {
+    final c = splitPageText('CAPITULO 1. Sobre la sociedad\nEste es el párrafo 1 de la página 1. Sigue el texto.');
+    expect(c.first, 'CAPITULO 1. Sobre la sociedad');
+    expect(c[1], startsWith('Este es el párrafo'));
   });
 }

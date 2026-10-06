@@ -19,6 +19,7 @@ import '../domain/text_chunk.dart';
 import '../domain/text_normalizer.dart';
 import '../ocr/ocr_engine.dart';
 import '../platform/native_text.dart';
+import '../platform/open_file_bridge.dart';
 import '../playback/tts_audio_handler.dart';
 import 'player_screen.dart';
 import 'pronunciation_screen.dart';
@@ -56,9 +57,63 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// Identifica el trabajo de OCR vigente; un documento nuevo cancela el anterior.
   int _ocrJob = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    final bridge = OpenFileBridge.instance;
+    bridge.onOpened = _importExternal;
+    bridge.start();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final pending = await bridge.takePending();
+      if (pending != null) await _importExternal(pending);
+    });
+  }
+
+  @override
+  void dispose() {
+    OpenFileBridge.instance.onOpened = null;
+    super.dispose();
+  }
+
+  /// Archivo llegado desde otra app: importar y abrir directamente.
+  bool _importingExternal = false;
+  Future<void> _importExternal(OpenedFile file) async {
+    if (!mounted || _importingExternal) return;
+    _importingExternal = true;
+    try {
+      // Si había un reproductor abierto, volver a la biblioteca; eso libera
+      // la apertura anterior (que espera a que se cierre el reproductor).
+      final nav = Navigator.of(context);
+      if (nav.canPop()) {
+        nav.popUntil((r) => r.isFirst);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+      if (!mounted) return;
+      setState(() {
+        _busy = true;
+        _busyLabel = 'Abriendo…';
+      });
+      final f = File(file.path);
+      final bytes = await f.readAsBytes();
+      if (bytes.isEmpty) throw AppException('No se pudo leer el archivo recibido.');
+      final entry = await widget.libraryStore.importFile(originalName: file.name, bytes: bytes);
+      await widget.settingsStore.saveLastDocumentId(entry.id);
+      try {
+        await f.delete(); // copia temporal; el original queda en su app
+      } catch (_) {}
+      _importingExternal = false;
+      await _openEntry(entry, recienImportado: true);
+    } catch (error) {
+      if (!mounted) return;
+      showSafeMessage(context, error);
+    } finally {
+      _importingExternal = false;
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   List<LibraryEntry> get _entries => widget.libraryStore.data.entries;
 
-  /// Último documento abierto que no está terminado.
   LibraryEntry? get _continueEntry {
     for (final e in _entries) {
       if (!e.finished && e.pageCount > 0) return e;
@@ -343,6 +398,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         notice: notice,
       );
       widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));
+      widget.handler.pages = List.of(doc.pages);
       unawaited(_applyLanguage(chunks));
       if (!mounted) {
         return;
@@ -389,6 +445,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         doc.pages[r.page] = r.text;
         await widget.handler.replaceChunks(_chunksFor(entry, doc, _normalizer));
         widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));
+        widget.handler.pages = List.of(doc.pages);
         if (!first.isCompleted) first.complete();
       }
     } on OcrUnavailable {

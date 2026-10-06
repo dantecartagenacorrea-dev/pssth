@@ -1,4 +1,23 @@
+import 'chapter_detector.dart';
+
 const int kMaxChunkLength = 400;
+
+/// Una línea corta en mayúsculas sin puntuación final (un título como
+/// "EN EL CAMPO") se aísla como párrafo propio para que la voz haga pausa.
+String _separateHeadings(String text) {
+  final out = <String>[];
+  for (final line in text.split('\n')) {
+    final l = line.trim();
+    final isCaps = l.isNotEmpty &&
+        l.length <= 60 &&
+        RegExp(r'\p{Lu}', unicode: true).hasMatch(l) &&
+        !RegExp(r'\p{Ll}', unicode: true).hasMatch(l) &&
+        !RegExp(r'[.;:,]$').hasMatch(l);
+    final isHeading = isCaps || (l.length <= 80 && chapterHeadingPattern.hasMatch(l));
+    out.add(isHeading ? '\n$l\n' : line);
+  }
+  return out.join('\n');
+}
 
 /// Abreviaturas tras las cuales un punto no termina la frase.
 const Set<String> _abreviaturas = {
@@ -45,7 +64,7 @@ List<String> splitPageText(String pageText, {int maxLength = kMaxChunkLength}) {
     return const [];
   }
 
-  final paragraphs = cleaned
+  final paragraphs = _separateHeadings(cleaned)
       .split(RegExp(r'\n\s*\n'))
       .map((p) => p.replaceAll(RegExp(r'\s+'), ' ').trim())
       .where((p) => p.isNotEmpty)

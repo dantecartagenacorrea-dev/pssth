@@ -4,7 +4,8 @@ class Chapter {
   final int pageIndex;
 }
 
-final _heading = RegExp(
+/// Encabezado explícito de capítulo/sección (también lo usa el chunker).
+final chapterHeadingPattern = RegExp(
   r'^(?:cap[íi]tulo|chapter|parte|part|secci[óo]n|libro|anexo|t[ií]tulo)\s+(?:\d{1,3}|[ivxlcdm]{1,8})\b.{0,60}$',
   caseSensitive: false,
 );
@@ -23,7 +24,7 @@ List<Chapter> detectChapters(List<String> pages) {
     for (final line in lines) {
       if (line.length > 80) continue;
       if (_tocLine.hasMatch(line)) continue; // línea de tabla de contenido
-      if (_heading.hasMatch(line)) {
+      if (chapterHeadingPattern.hasMatch(line)) {
         found.add(Chapter(title: line, pageIndex: i));
         break;
       }

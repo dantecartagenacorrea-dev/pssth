@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lector_pdf/domain/text_normalizer.dart';
 
 void main() {
+  _puntuacionTests();
   final n = TextNormalizer();
 
   test('Art. y Arts.', () {
@@ -36,5 +37,13 @@ void main() {
   test('limpia puntos guía y viñetas', () {
     expect(n.normalize('Capítulo 1 ........ 5'), 'Capítulo 1 5');
     expect(n.normalize('• uno'), 'uno');
+  });
+}
+
+void _puntuacionTests() {
+  test('quita espacios antes de la puntuación y tras signos de apertura', () {
+    final n = TextNormalizer();
+    expect(n.normalize('¡ Qué noche ! cruje al soplo que lo abate ; y muda ,'),
+        '¡Qué noche! cruje al soplo que lo abate; y muda,');
   });
 }

@@ -36,6 +36,9 @@ class TextNormalizer {
   );
   static final _percent = RegExp(r'(\d)\s*%');
   static final _multiSpace = RegExp(r'\s{2,}');
+  // "abate ;" -> "abate;"   "¡ Qué noche !" -> "¡Qué noche!"  (PDFs antiguos/OCR)
+  static final _spaceBeforePunct = RegExp(r'\s+([;:,.!?…])');
+  static final _spaceAfterOpen = RegExp(r'([¡¿(«])\s+');
 
   String normalize(String input) {
     var t = input.replaceAll('­', '');
@@ -61,6 +64,8 @@ class TextNormalizer {
     }
     t = t.replaceAllMapped(_percent, (m) => '${m[1]} por ciento');
 
+    t = t.replaceAllMapped(_spaceBeforePunct, (m) => m[1]!);
+    t = t.replaceAllMapped(_spaceAfterOpen, (m) => m[1]!);
     t = t.replaceAll(_spaces, ' ').replaceAll(_multiSpace, ' ').trim();
     return t;
   }

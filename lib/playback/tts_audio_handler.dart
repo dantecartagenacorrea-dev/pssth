@@ -162,10 +162,12 @@ class TtsAudioHandler extends BaseAudioHandler {
     final keys = chunks
         .map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex))
         .toList();
-    _index = ReadingPosition(
-      pageIndex: entry.pageIndex,
-      chunkIndex: entry.chunkIndex,
-    ).resolveChunkListIndex(keys);
+    _index = entry.finished
+        ? 0 // un documento terminado se vuelve a escuchar desde el principio
+        : ReadingPosition(
+            pageIndex: entry.pageIndex,
+            chunkIndex: entry.chunkIndex,
+          ).resolveChunkListIndex(keys);
     mediaItem.add(
       MediaItem(
         id: entry.id,
@@ -291,9 +293,13 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> play() async {
+    if (kDebugMode) debugPrint('[lector] play() idx=$_index speaking=$_speaking chunks=${_chunks.length}');
     if (_chunks.isEmpty) {
       _refresh(playing: false);
       return;
+    }
+    if (_speaking) {
+      return; // ya hay un bucle de lectura en marcha
     }
     _speaking = true;
     _broadcastState(playing: true);
@@ -301,6 +307,7 @@ class TtsAudioHandler extends BaseAudioHandler {
     while (_speaking && _index < _chunks.length) {
       try {
         final speech = _chunks[_index].speech;
+        if (kDebugMode) debugPrint('[lector] speak idx=$_index len=${speech.length} "${speech.length > 70 ? speech.substring(0, 70) : speech}"');
         if (speech.trim().isNotEmpty) {
           await _tts.stop();
           await _tts.speak(speech);
@@ -337,6 +344,7 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> pause() async {
+    if (kDebugMode) debugPrint('[lector] pause() idx=$_index speaking=$_speaking');
     _speaking = false;
     try {
       await _tts.pause();
@@ -394,6 +402,7 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> setSpeed(double speed) async {
+    if (kDebugMode) debugPrint('[lector] setSpeed($speed)');
     _speed = _nearestSpeed(speed);
     await _applySpeed();
     await settingsStore.saveSpeed(_speed);
@@ -408,6 +417,9 @@ class TtsAudioHandler extends BaseAudioHandler {
     await _applyVoice();
     _refresh();
   }
+
+  /// Texto original por página (para exportar y buscar), sin normalizar.
+  List<String> pages = const [];
 
   final ValueNotifier<DateTime?> sleepEndsAt = ValueNotifier(null);
   Timer? _sleepTimer;

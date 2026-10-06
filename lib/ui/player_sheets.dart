@@ -186,14 +186,25 @@ Future<void> exportText(
     return;
   }
   final b = StringBuffer();
-  var page = -1;
-  for (final c in chunks) {
-    if (c.pageIndex != page) {
-      page = c.pageIndex;
+  final pages = handler.pages;
+  if (pages.isNotEmpty) {
+    // Texto original extraído, con sus saltos de línea.
+    for (var i = 0; i < pages.length; i++) {
+      final texto = pages[i].trim();
+      if (texto.isEmpty) continue;
       if (b.isNotEmpty) b.write('\n\n');
-      b.write('--- Página ${page + 1} ---\n\n');
+      b.write('--- Página ${i + 1} ---\n\n$texto\n');
     }
-    b.write('${c.text}\n\n');
+  } else {
+    var page = -1;
+    for (final c in chunks) {
+      if (c.pageIndex != page) {
+        page = c.pageIndex;
+        if (b.isNotEmpty) b.write('\n\n');
+        b.write('--- Página ${page + 1} ---\n\n');
+      }
+      b.write('${c.text}\n\n');
+    }
   }
   final dot = entry.name.lastIndexOf('.');
   final base = dot > 0 ? entry.name.substring(0, dot) : entry.name;
