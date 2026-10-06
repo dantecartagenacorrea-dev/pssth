@@ -67,7 +67,7 @@ if not exist build\app\outputs\flutter-apk\app-debug.apk goto fin
 "%ADB%" -e shell mkdir -p /sdcard/Download/pruebas >> %LOG% 2>&1
 "%ADB%" -e push pruebas /sdcard/Download/ >> %LOG% 2>&1
 "%ADB%" -e logcat -c
-"%ADB%" -e shell monkey -p com.lectorpdf.lector_pdf -c android.intent.category.LAUNCHER 1 >> %LOG% 2>&1
+"%ADB%" -e shell monkey -p com.lectorpdf.lectorPdf -c android.intent.category.LAUNCHER 1 >> %LOG% 2>&1
 timeout /t 15 /nobreak >nul
 "%ADB%" -e exec-out screencap -p > emu_pantalla.png
 "%ADB%" -e logcat -d -v brief *:E flutter:V > emu_logcat.txt

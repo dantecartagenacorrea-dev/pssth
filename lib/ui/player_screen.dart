@@ -6,6 +6,9 @@ import '../domain/library_entry.dart';
 import '../playback/tts_audio_handler.dart';
 import 'player_sheets.dart';
 
+/// Ancho máximo del contenido (iPad/macOS); en iPhone no interviene.
+const double kMaxContentWidth = 720;
+
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({
     super.key,
@@ -72,7 +75,10 @@ class PlayerScreen extends StatelessWidget {
       body: ValueListenableBuilder<PlayerSnapshot>(
         valueListenable: handler.snapshot,
         builder: (context, state, _) {
-          return Padding(
+          return Center(
+            child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
+            child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -204,7 +210,7 @@ class PlayerScreen extends StatelessWidget {
                 ),
               ],
             ),
-          );
+          )));
         },
       ),
     );

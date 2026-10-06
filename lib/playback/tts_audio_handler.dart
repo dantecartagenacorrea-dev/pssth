@@ -357,6 +357,12 @@ class TtsAudioHandler extends BaseAudioHandler {
   }
 
   @override
+  Future<void> click([MediaButton button = MediaButton.media]) async {
+    if (kDebugMode) debugPrint('[lector] click($button) desde el sistema');
+    return super.click(button);
+  }
+
+  @override
   Future<void> stop() async {
     _speaking = false;
     await _tts.stop();
@@ -367,6 +373,7 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> skipToNext() async {
+    if (kDebugMode) debugPrint('[lector] skipToNext idx=$_index');
     if (_chunks.isEmpty) {
       return;
     }
@@ -385,6 +392,7 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> skipToPrevious() async {
+    if (kDebugMode) debugPrint('[lector] skipToPrevious idx=$_index');
     if (_chunks.isEmpty) {
       return;
     }
@@ -443,18 +451,21 @@ class TtsAudioHandler extends BaseAudioHandler {
   TextChunk? get currentChunk => _chunks.isEmpty ? null : _chunks[_index];
 
   Future<void> jumpToIndex(int index) async {
+    if (kDebugMode) debugPrint('[lector] jumpToIndex($index)');
     if (_chunks.isEmpty) return;
     await _moveTo(index.clamp(0, _chunks.length - 1).toInt());
   }
 
   /// Salta al inicio de una página (o a la siguiente con texto).
   Future<void> jumpToPage(int pageIndex) async {
+    if (kDebugMode) debugPrint('[lector] jumpToPage($pageIndex)');
     final i = _chunks.indexWhere((c) => c.pageIndex >= pageIndex);
     if (i >= 0) await _moveTo(i);
   }
 
   /// Salta a una posición guardada (página + bloque).
   Future<void> jumpToPosition(int pageIndex, int chunkIndex) async {
+    if (kDebugMode) debugPrint('[lector] jumpToPosition($pageIndex,$chunkIndex)');
     if (_chunks.isEmpty) return;
     final keys = _chunks
         .map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex))
@@ -509,6 +520,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   }
 
   Future<void> _moveTo(int target) async {
+    if (kDebugMode) debugPrint('[lector] _moveTo($target) speaking=$_speaking');
     final wasPlaying = _speaking;
     _index = target;
     await _persistPosition();

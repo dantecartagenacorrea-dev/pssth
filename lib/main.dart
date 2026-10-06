@@ -27,7 +27,7 @@ Future<void> main() async {
       settingsStore: settingsStore,
     ),
     config: AudioServiceConfig(
-      androidNotificationChannelId: 'com.lectorpdf.lector_pdf.tts',
+      androidNotificationChannelId: 'com.lectorpdf.lectorPdf.tts',
       androidNotificationChannelName: 'Lectura PDF',
       androidNotificationOngoing: false,
       androidStopForegroundOnPause: false,

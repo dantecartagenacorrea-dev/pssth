@@ -6,7 +6,9 @@ echo Esperando orden de verificacion... (cerrar la ventana para detener)
 if exist adb_cmds.bat (
   move /y adb_cmds.bat adb_actual.bat >nul
   echo [%time%] Ejecutando adb_actual.bat
+  setlocal
   call adb_actual.bat > adb_out.txt 2>&1
+  endlocal
   echo [%time%] Listo.
 )
 if exist run.flag (

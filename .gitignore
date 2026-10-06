@@ -55,3 +55,9 @@ run.flag
 lector_para_mac.zip
 compilar_mac.log
 .icono_listo
+emu_*
+adb_out.txt
+adb_actual.bat
+adb_cmds.bat
+diag.log
+*.flag

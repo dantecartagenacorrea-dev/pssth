@@ -159,7 +159,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: Center(
+        child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
@@ -260,7 +263,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ),
           ),
         ],
-      ),
+      ))),
     );
   }
 
