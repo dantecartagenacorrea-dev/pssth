@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 
 import '../core/app_exception.dart';
@@ -206,12 +208,45 @@ class PlayerScreen extends StatelessWidget {
                         },
                       ),
                     ),
+                    IconButton(
+                      tooltip: 'Mejorar la voz',
+                      icon: const Icon(Icons.help_outline),
+                      onPressed: () => _showVoiceHelp(context, state),
+                    ),
                   ],
                 ),
               ],
             ),
           )));
         },
+      ),
+    );
+  }
+
+  /// Cómo conseguir gratis voces de mayor calidad (son del sistema, no de Lector).
+  void _showVoiceHelp(BuildContext context, PlayerSnapshot state) {
+    final active = state.voices.where((v) => v.id == state.selectedVoiceId);
+    final q = active.isEmpty ? null : active.first.quality?.toLowerCase();
+    final buena = q != null && (q.contains('premium') || q.contains('enhanced') || q.contains('high'));
+    final pasos = Platform.isIOS
+        ? 'Ajustes → Accesibilidad → Contenido hablado → Voces → Español → '
+            'descarga una voz "Mejorada" o "Premium" (gratis, unos 100–300 MB). '
+            'Después elígela aquí en "Voz".'
+        : 'Ajustes → Sistema (o Accesibilidad) → Salida de texto a voz → '
+            'Motor de Google → Instalar datos de voz → Español → descarga una voz de alta calidad (gratis). '
+            'Después elígela aquí en "Voz".';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mejorar la voz'),
+        content: Text(
+          '${buena ? 'Ya estás usando una voz de alta calidad del sistema.' : 'La voz actual es la básica del sistema. Puedes instalar gratis una voz más natural:'}'
+          '\n\n$pasos'
+          '\n\nLector elige automáticamente la mejor voz instalada para el idioma del documento.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendido')),
+        ],
       ),
     );
   }
