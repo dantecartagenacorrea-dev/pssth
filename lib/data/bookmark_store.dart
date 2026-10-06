@@ -1,0 +1,82 @@
+import 'dart:convert';
+import 'dart:io';
+
+import '../domain/bookmark.dart';
+
+class BookmarkStore {
+  BookmarkStore(this._file);
+  final File _file;
+  final List<Bookmark> _all = [];
+  bool _loaded = false;
+
+  Future<void> _load() async {
+    if (_loaded) return;
+    _loaded = true;
+    try {
+      if (await _file.exists()) {
+        final json = jsonDecode(await _file.readAsString());
+        if (json is List) {
+          _all.addAll(
+            json
+                .whereType<Map>()
+                .map((e) => Bookmark.fromJson(Map<String, dynamic>.from(e)))
+                .where((b) => b.id.isNotEmpty && b.documentId.isNotEmpty),
+          );
+        }
+      }
+    } catch (_) {
+      _all.clear();
+    }
+  }
+
+  Future<void> _save() => _file.writeAsString(
+        jsonEncode(_all.map((b) => b.toJson()).toList()),
+        flush: true,
+      );
+
+  Future<List<Bookmark>> forDocument(String documentId) async {
+    await _load();
+    final list = _all.where((b) => b.documentId == documentId).toList()
+      ..sort((a, b) {
+        final p = a.pageIndex.compareTo(b.pageIndex);
+        return p != 0 ? p : a.chunkIndex.compareTo(b.chunkIndex);
+      });
+    return list;
+  }
+
+  Future<Bookmark> add({
+    required String documentId,
+    required int pageIndex,
+    required int chunkIndex,
+    required String label,
+  }) async {
+    await _load();
+    final existing = _all.where(
+      (b) => b.documentId == documentId && b.pageIndex == pageIndex && b.chunkIndex == chunkIndex,
+    );
+    if (existing.isNotEmpty) return existing.first;
+    final b = Bookmark(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      documentId: documentId,
+      pageIndex: pageIndex,
+      chunkIndex: chunkIndex,
+      label: label.length > 80 ? '${label.substring(0, 80)}…' : label,
+      createdIso: DateTime.now().toIso8601String(),
+    );
+    _all.add(b);
+    await _save();
+    return b;
+  }
+
+  Future<void> remove(String id) async {
+    await _load();
+    _all.removeWhere((b) => b.id == id);
+    await _save();
+  }
+
+  Future<void> removeAllFor(String documentId) async {
+    await _load();
+    _all.removeWhere((b) => b.documentId == documentId);
+    await _save();
+  }
+}

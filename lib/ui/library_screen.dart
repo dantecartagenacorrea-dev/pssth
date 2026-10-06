@@ -1,0 +1,345 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+
+import '../core/app_exception.dart';
+import '../data/bookmark_store.dart';
+import '../data/document_loader.dart';
+import '../data/library_store.dart';
+import '../data/pronunciation_store.dart';
+import '../data/settings_store.dart';
+import '../domain/chapter_detector.dart';
+import '../domain/chunk_builder.dart';
+import '../domain/language_detector.dart';
+import '../domain/library_entry.dart';
+import '../domain/text_chunk.dart';
+import '../domain/text_normalizer.dart';
+import '../ocr/ocr_engine.dart';
+import '../platform/native_text.dart';
+import '../playback/tts_audio_handler.dart';
+import 'player_screen.dart';
+import 'pronunciation_screen.dart';
+
+class LibraryScreen extends StatefulWidget {
+  const LibraryScreen({
+    super.key,
+    required this.handler,
+    required this.libraryStore,
+    required this.settingsStore,
+    required this.bookmarkStore,
+    required this.pronunciationStore,
+  });
+
+  final TtsAudioHandler handler;
+  final LibraryStore libraryStore;
+  final SettingsStore settingsStore;
+  final BookmarkStore bookmarkStore;
+  final PronunciationStore pronunciationStore;
+
+  @override
+  State<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends State<LibraryScreen> {
+  bool _busy = false;
+  String _busyLabel = 'Abriendo…';
+  final _native = NativeText();
+  TextNormalizer _normalizer = TextNormalizer();
+  late final DocumentLoader _loader = DocumentLoader(
+    cacheDir: widget.libraryStore.root,
+    ocr: _native,
+  );
+
+  /// Identifica el trabajo de OCR vigente; un documento nuevo cancela el anterior.
+  int _ocrJob = 0;
+
+  List<LibraryEntry> get _entries => widget.libraryStore.data.entries;
+
+  /// Último documento abierto que no está terminado.
+  LibraryEntry? get _continueEntry {
+    for (final e in _entries) {
+      if (!e.finished && e.pageCount > 0) return e;
+    }
+    return null;
+  }
+
+  Future<void> _confirmDelete(LibraryEntry entry) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Eliminar de la biblioteca'),
+        content: const Text(
+          'Se eliminarán la copia local, el texto reconocido, el progreso y los marcadores de este documento. '
+          'El archivo original no se modifica.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Eliminar')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await widget.bookmarkStore.removeAllFor(entry.id);
+    await widget.libraryStore.remove(entry.id);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('LECTOR PDF'),
+        actions: [
+          IconButton(
+            tooltip: 'Pronunciación',
+            icon: const Icon(Icons.record_voice_over_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PronunciationScreen(store: widget.pronunciationStore),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: FilledButton.icon(
+              onPressed: _busy ? null : _openFile,
+              icon: const Icon(Icons.folder_open),
+              label: Text(_busy ? _busyLabel : 'Abrir documento'),
+            ),
+          ),
+          if (_continueEntry != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Card(
+                child: ListTile(
+                  leading: const Icon(Icons.play_circle, size: 40),
+                  title: const Text('Continuar escuchando'),
+                  subtitle: Text(
+                    '${_continueEntry!.name} · página ${_continueEntry!.pageIndex + 1}',
+                  ),
+                  onTap: _busy ? null : () => _openEntry(_continueEntry!),
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Documentos recientes',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Expanded(
+            child: _entries.isEmpty
+                ? const Center(child: Text('Todavía no hay documentos.'))
+                : ListView.separated(
+                    itemCount: _entries.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final entry = _entries[index];
+                      final percent = (entry.progress * 100).round();
+                      return ListTile(
+                        leading: Icon(_iconFor(entry.kind)),
+                        title: Text(entry.name),
+                        subtitle: Text(
+                          entry.finished
+                              ? 'Terminado'
+                              : entry.pageCount <= 0
+                                  ? 'Sin páginas leídas aún'
+                                  : 'Última página ${entry.pageIndex + 1} · $percent%',
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: entry.favorite ? 'Quitar de favoritos' : 'Favorito',
+                              icon: Icon(entry.favorite ? Icons.star : Icons.star_border),
+                              onPressed: () async {
+                                await widget.libraryStore.toggleFavorite(entry.id);
+                                if (mounted) setState(() {});
+                              },
+                            ),
+                            IconButton(
+                              tooltip: 'Eliminar de la biblioteca',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: _busy ? null : () => _confirmDelete(entry),
+                            ),
+                          ],
+                        ),
+                        onTap: _busy ? null : () => _openEntry(entry),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _iconFor(String kind) => switch (kind) {
+        'image' => Icons.image,
+        'txt' => Icons.article,
+        _ => Icons.picture_as_pdf,
+      };
+
+  Future<void> _openFile() async {
+    setState(() {
+      _busy = true;
+      _busyLabel = 'Abriendo…';
+    });
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const [
+          'pdf', 'txt', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'tif', 'tiff', 'bmp',
+        ],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+      final file = result.files.single;
+      final bytes = file.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        throw AppException('No se pudo leer el archivo seleccionado.');
+      }
+      final entry = await widget.libraryStore.importFile(
+        originalName: file.name,
+        bytes: bytes,
+      );
+      await widget.settingsStore.saveLastDocumentId(entry.id);
+      await _openEntry(entry);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      showSafeMessage(context, error);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  List<TextChunk> _chunksFor(LibraryEntry entry, LoadedDocument doc, TextNormalizer n) =>
+      buildChunks(documentId: entry.id, pages: doc.pages, normalizer: n);
+
+  Future<void> _openEntry(LibraryEntry entry) async {
+    setState(() {
+      _busy = true;
+      _busyLabel = 'Abriendo…';
+    });
+    final job = ++_ocrJob;
+    try {
+      _normalizer = TextNormalizer(
+        dictionary: await widget.pronunciationStore.load(),
+      );
+      final stored = File(entry.storedPath);
+      if (!await stored.exists()) {
+        throw AppException('El archivo local ya no existe. Vuelve a abrirlo desde el teléfono.');
+      }
+      final doc = await _loader.load(entry);
+      await widget.libraryStore.updateExtraction(
+        id: entry.id,
+        pageCount: doc.pageCount,
+        totalChunks: 0,
+      );
+      final updated = widget.libraryStore.byId(entry.id) ?? entry;
+      await widget.settingsStore.saveLastDocumentId(updated.id);
+
+      var chunks = _chunksFor(updated, doc, _normalizer);
+      String? notice;
+      final firstOcr = Completer<void>();
+
+      if (doc.pendingOcr.isNotEmpty) {
+        final available = await _native.isAvailable();
+        if (!available) {
+          notice = chunks.isEmpty
+              ? noSelectableTextMessage
+              : '${doc.pendingOcr.length} página(s) sin texto se omitirán: el OCR no está disponible en este dispositivo.';
+        } else {
+          if (chunks.isEmpty && mounted) {
+            setState(() => _busyLabel = 'Reconociendo texto…');
+          }
+          unawaited(_runOcr(updated, doc, job, firstOcr));
+          if (chunks.isEmpty) {
+            await firstOcr.future;
+            chunks = _chunksFor(updated, doc, _normalizer);
+          }
+        }
+      }
+
+      await widget.handler.loadDocument(
+        entry: updated,
+        chunks: chunks,
+        noTextMessage: noSelectableTextMessage,
+        notice: notice,
+      );
+      widget.handler.chapters = detectChapters(doc.pages);
+      unawaited(_applyLanguage(chunks));
+      if (!mounted) {
+        return;
+      }
+      setState(() {});
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PlayerScreen(
+            handler: widget.handler,
+            entry: updated,
+            bookmarkStore: widget.bookmarkStore,
+          ),
+        ),
+      );
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      showSafeMessage(context, error);
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  /// OCR en segundo plano: cada página lista se añade a la reproducción.
+  Future<void> _runOcr(
+    LibraryEntry entry,
+    LoadedDocument doc,
+    int job,
+    Completer<void> first,
+  ) async {
+    try {
+      await for (final r in _loader.runOcr(entry, doc)) {
+        if (job != _ocrJob) return; // se abrió otro documento
+        doc.pages[r.page] = r.text;
+        await widget.handler.replaceChunks(_chunksFor(entry, doc, _normalizer));
+        widget.handler.chapters = detectChapters(doc.pages);
+        if (!first.isCompleted) first.complete();
+      }
+    } on OcrUnavailable {
+      // sin OCR: se reproduce solo el texto directo
+    } catch (_) {
+      // un fallo de OCR no debe detener la reproducción
+    } finally {
+      if (!first.isCompleted) first.complete();
+    }
+  }
+
+  Future<void> _applyLanguage(List<TextChunk> chunks) async {
+    if (chunks.isEmpty) return;
+    final sample = chunks.take(12).map((c) => c.text).join(' ');
+    final lang = await _native.detectLanguage(sample) ?? detectLanguageHeuristic(sample);
+    await widget.handler.applyDocumentLanguage(lang);
+  }
+}

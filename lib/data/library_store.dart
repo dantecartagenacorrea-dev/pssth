@@ -1,0 +1,153 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
+
+import '../domain/library_entry.dart';
+
+class LibraryStore {
+  LibraryData _data = LibraryData();
+  late Directory _root;
+
+  LibraryData get data => _data;
+  Directory get root => _root;
+
+  Future<void> init() async {
+    final docs = await getApplicationDocumentsDirectory();
+    _root = Directory('${docs.path}/library');
+    if (!await _root.exists()) {
+      await _root.create(recursive: true);
+    }
+    await _load();
+  }
+
+  File get _indexFile => File('${_root.path}/library.json');
+
+  Future<void> _load() async {
+    try {
+      if (!await _indexFile.exists()) {
+        _data = LibraryData();
+        return;
+      }
+      final raw = jsonDecode(await _indexFile.readAsString());
+      if (raw is Map<String, dynamic>) {
+        _data = LibraryData.fromJson(raw);
+      } else {
+        _data = LibraryData();
+      }
+    } catch (_) {
+      _data = LibraryData();
+    }
+  }
+
+  Future<void> _save() async {
+    await _indexFile.writeAsString(const JsonEncoder.withIndent('  ').convert(_data.toJson()));
+  }
+
+  static const _imageExt = {'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'bmp', 'tif', 'tiff'};
+
+  /// Tipo de documento según la extensión.
+  static String kindFor(String fileName) {
+    final dot = fileName.lastIndexOf('.');
+    final ext = dot < 0 ? '' : fileName.substring(dot + 1).toLowerCase();
+    if (ext == 'txt') return 'txt';
+    if (_imageExt.contains(ext)) return 'image';
+    return 'pdf';
+  }
+
+  /// Copia el archivo a la biblioteca local. El original nunca se modifica.
+  Future<LibraryEntry> importFile({
+    required String originalName,
+    required List<int> bytes,
+  }) async {
+    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    final kind = kindFor(originalName);
+    final dot = originalName.lastIndexOf('.');
+    final ext = dot < 0 ? (kind == 'pdf' ? 'pdf' : kind) : originalName.substring(dot + 1).toLowerCase();
+    final stored = File('${_root.path}/$id.$ext');
+    await stored.writeAsBytes(bytes, flush: true);
+    final entry = LibraryEntry(
+      id: id,
+      name: originalName,
+      storedPath: stored.path,
+      pageCount: 0,
+      totalChunks: 0,
+      lastOpenedIso: DateTime.now().toIso8601String(),
+      kind: kind,
+    );
+    _data.entries.removeWhere((e) => e.id == id);
+    _data.entries.insert(0, entry);
+    await _save();
+    return entry;
+  }
+
+  Future<void> upsert(LibraryEntry entry) async {
+    _data.entries.removeWhere((e) => e.id == entry.id);
+    _data.entries.insert(0, entry);
+    await _save();
+  }
+
+  Future<void> updatePosition({
+    required String id,
+    required int pageIndex,
+    required int chunkIndex,
+    bool? finished,
+  }) async {
+    final match = _data.entries.where((e) => e.id == id);
+    if (match.isEmpty) {
+      return;
+    }
+    final entry = match.first;
+    entry.pageIndex = pageIndex;
+    entry.chunkIndex = chunkIndex;
+    if (finished != null) {
+      entry.finished = finished;
+    }
+    entry.lastOpenedIso = DateTime.now().toIso8601String();
+    _data.entries.removeWhere((e) => e.id == id);
+    _data.entries.insert(0, entry);
+    await _save();
+  }
+
+  Future<void> updateExtraction({
+    required String id,
+    required int pageCount,
+    required int totalChunks,
+  }) async {
+    final match = _data.entries.where((e) => e.id == id);
+    if (match.isEmpty) {
+      return;
+    }
+    final entry = match.first;
+    entry.pageCount = pageCount;
+    entry.totalChunks = totalChunks;
+    await _save();
+  }
+
+  Future<void> toggleFavorite(String id) async {
+    final e = byId(id);
+    if (e == null) return;
+    e.favorite = !e.favorite;
+    await _save();
+  }
+
+  /// Elimina de la biblioteca la copia local y todos sus datos asociados
+  /// (texto, caché de OCR). El archivo original del usuario no se toca.
+  Future<void> remove(String id) async {
+    _data.entries.removeWhere((e) => e.id == id);
+    await _save();
+    try {
+      await for (final f in _root.list()) {
+        final name = f.uri.pathSegments.last;
+        if (f is File && name.startsWith('$id.')) {
+          await f.delete();
+        }
+      }
+    } catch (_) {}
+  }
+
+  LibraryEntry? byId(String id) {
+    final match = _data.entries.where((e) => e.id == id);
+    return match.isEmpty ? null : match.first;
+  }
+}
