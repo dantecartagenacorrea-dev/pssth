@@ -3,27 +3,34 @@ import 'package:lector_pdf/playback/engines/fallback_tts_engine.dart';
 import 'package:lector_pdf/playback/tts_engine.dart';
 
 class FakeEngine extends TtsEngine {
-  FakeEngine(this.id, {this.failInit = false, this.failSpeak = false});
+  FakeEngine(this.id, {this.failInit = false, this.failSpeak = false, this.locales = const ['es-ES']});
   @override
   final String id;
   final bool failInit;
   bool failSpeak;
+  final List<String> locales;
   final spoken = <String>[];
+  final prefetched = <List<String>>[];
+  final calls = <String>[];
   double rate = -1;
   double volume = -1;
+  bool initOk = false;
 
   @override
   Future<void> init() async {
-    if (failInit) throw StateError('init');
+    if (failInit && !initOk) throw StateError('init');
+    initOk = true;
   }
 
   @override
   Future<List<VoiceOption>> voices() async =>
-      [VoiceOption(name: id, locale: 'es-ES')];
+      [for (final l in locales) VoiceOption(name: '$id-$l', locale: l)];
   @override
-  Future<void> setVoice(VoiceOption voice) async {}
+  Future<void> setVoice(VoiceOption voice) async => calls.add('voice:${voice.name}');
   @override
-  Future<void> setLanguage(String locale) async {}
+  Future<void> setLanguage(String locale) async => calls.add('lang:$locale');
+  @override
+  void prefetch(List<String> upcoming) => prefetched.add(upcoming);
   @override
   Future<void> setRate(double r) async => rate = r;
   @override
@@ -93,7 +100,7 @@ void main() {
     final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
     await e.init();
     final voces = await e.voices();
-    expect(voces.map((v) => v.name), ['neural', 'apple']);
+    expect(voces.map((v) => v.name), ['neural-es-ES', 'apple-es-ES']);
     await e.speak('a'); // sin voz elegida: motor del sistema
     expect(f.spoken, ['a']);
     await e.setVoice(voces.first); // voz natural
@@ -108,7 +115,42 @@ void main() {
     final p = FakeEngine('neural', failInit: true), f = FakeEngine('apple');
     final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
     await e.init();
-    expect((await e.voices()).map((v) => v.name), ['apple']);
+    expect((await e.voices()).map((v) => v.name), ['apple-es-ES']);
     expect(e.primaryAvailable, isFalse);
+  });
+
+  test('retryPrimary: tras instalar el modelo, aparecen sus voces', () async {
+    final p = FakeEngine('neural', failInit: true), f = FakeEngine('apple');
+    final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
+    await e.init();
+    expect(await e.retryPrimary(), isFalse);
+    p.initOk = true; // "modelo instalado"
+    expect(await e.retryPrimary(), isTrue);
+    expect((await e.voices()).map((v) => v.name), ['neural-es-ES', 'apple-es-ES']);
+  });
+
+  test('un fragmento en otro idioma sale por el sistema y luego vuelve la voz natural', () async {
+    final p = FakeEngine('neural'), f = FakeEngine('apple', locales: ['es-ES', 'en-US']);
+    final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
+    await e.init();
+    await e.setVoice((await e.voices()).first); // Kokoro
+    await e.setLanguage('es');
+    await e.speak('hola');
+    await e.setLanguage('en');
+    await e.speak('hello');
+    await e.setLanguage('es');
+    await e.speak('adiós');
+    expect(p.spoken, ['hola', 'adiós']);
+    expect(f.spoken, ['hello']);
+  });
+
+  test('prefetch solo llega al motor activo', () async {
+    final p = FakeEngine('neural'), f = FakeEngine('apple');
+    final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
+    await e.init();
+    e.prefetch(['a']);
+    await e.setVoice((await e.voices()).first);
+    e.prefetch(['b']);
+    expect(p.prefetched, [['b']]);
   });
 }

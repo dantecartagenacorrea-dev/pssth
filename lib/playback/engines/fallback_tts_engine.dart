@@ -30,6 +30,8 @@ class FallbackTtsEngine extends TtsEngine {
   double _volume = 1.0;
   String? _language;
   final Set<String> _primaryVoiceIds = {};
+  final Map<String, String> _primaryVoiceLocale = {};
+  VoiceOption? _primaryVoice;
 
   /// Motivos de los fallos (para diagnóstico); el último al final.
   final List<String> errors = [];
@@ -78,9 +80,7 @@ class FallbackTtsEngine extends TtsEngine {
     _wire(primary);
     try {
       await primary.init();
-      _primaryVoiceIds
-        ..clear()
-        ..addAll((await primary.voices()).map((v) => v.id));
+      await _indexPrimaryVoices();
     } catch (e) {
       _primaryOk = false;
       errors.add('${primary.id}: $e');
@@ -89,6 +89,42 @@ class FallbackTtsEngine extends TtsEngine {
     }
     await _initFallback();
     if (_primaryOk && !startWithPrimary) _active = fallback;
+  }
+
+  Future<void> _indexPrimaryVoices() async {
+    final vs = await primary.voices();
+    _primaryVoiceIds
+      ..clear()
+      ..addAll(vs.map((v) => v.id));
+    _primaryVoiceLocale
+      ..clear()
+      ..addEntries(vs.map((v) => MapEntry(v.id, v.locale.toLowerCase())));
+  }
+
+  /// Vuelve a intentar el motor primario (p. ej. tras instalar el modelo).
+  Future<bool> retryPrimary() async {
+    if (_primaryOk) return true;
+    try {
+      _wire(primary);
+      await primary.init();
+      await _indexPrimaryVoices();
+      await primary.setVolume(_volume);
+      await primary.setRate(_rate);
+      _primaryOk = true;
+      _primaryVoice = null;
+      return true;
+    } catch (e) {
+      errors.add('${primary.id}: $e');
+      return false;
+    }
+  }
+
+  bool _primarySpeaks(String locale) {
+    final v = _primaryVoice;
+    if (v == null) return false;
+    final l = locale.toLowerCase();
+    final pl = _primaryVoiceLocale[v.id] ?? '';
+    return pl.startsWith(l) || l.startsWith(pl.split('-').first);
   }
 
   @override
@@ -108,6 +144,7 @@ class FallbackTtsEngine extends TtsEngine {
   @override
   Future<void> setVoice(VoiceOption voice) async {
     if (_primaryOk && _primaryVoiceIds.contains(voice.id)) {
+      _primaryVoice = voice;
       _active = primary;
       try {
         await primary.setVoice(voice);
@@ -119,10 +156,14 @@ class FallbackTtsEngine extends TtsEngine {
         return;
       }
     }
+    _primaryVoice = null;
     _active = fallback;
     await fallback.setVoice(voice);
   }
 
+  /// Idioma del fragmento que viene. Si la voz natural elegida no habla ese
+  /// idioma, ese fragmento sale por el motor del sistema; al volver al idioma
+  /// de la voz natural, se retoma.
   @override
   Future<void> setLanguage(String locale) async {
     _language = locale;
@@ -132,6 +173,9 @@ class FallbackTtsEngine extends TtsEngine {
       } catch (_) {
         if (usingFallback) rethrow;
       }
+    }
+    if (_primaryOk && _primaryVoice != null) {
+      _active = _primarySpeaks(locale) ? primary : fallback;
     }
   }
 

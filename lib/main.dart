@@ -7,6 +7,7 @@ import 'package:pdfrx/pdfrx.dart';
 
 import 'data/bookmark_store.dart';
 import 'data/library_store.dart';
+import 'data/model_store.dart';
 import 'data/pronunciation_store.dart';
 import 'data/settings_store.dart';
 import 'data/audio_cache.dart';
@@ -29,9 +30,10 @@ Future<void> main() async {
   // Voz natural (opcional): modelo en <documentos>/models/kokoro; sin él solo hay voces del sistema.
   final docs = await getApplicationDocumentsDirectory();
   final cacheDir = await getTemporaryDirectory();
+  final modelStore = ModelStore(Directory('${docs.path}/models'));
   final engine = FallbackTtsEngine(
     primary: KokoroEngine(
-      modelDir: '${docs.path}/models/kokoro',
+      modelDir: modelStore.dirFor(kokoroEsModel).path,
       cache: AudioCache(Directory('${cacheDir.path}/tts_audio')),
     ),
     fallback: AppleTtsEngine(),
@@ -61,6 +63,11 @@ Future<void> main() async {
       settingsStore: settingsStore,
       bookmarkStore: bookmarkStore,
       pronunciationStore: pronunciationStore,
+      modelStore: modelStore,
+      onModelsChanged: () async {
+        await engine.retryPrimary();
+        await handler.reloadVoices();
+      },
     ),
   );
 }
@@ -73,6 +80,8 @@ class LectorPdfApp extends StatelessWidget {
     required this.settingsStore,
     required this.bookmarkStore,
     required this.pronunciationStore,
+    required this.modelStore,
+    required this.onModelsChanged,
   });
 
   final TtsAudioHandler handler;
@@ -80,6 +89,8 @@ class LectorPdfApp extends StatelessWidget {
   final SettingsStore settingsStore;
   final BookmarkStore bookmarkStore;
   final PronunciationStore pronunciationStore;
+  final ModelStore modelStore;
+  final Future<void> Function() onModelsChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -95,6 +106,8 @@ class LectorPdfApp extends StatelessWidget {
         settingsStore: settingsStore,
         bookmarkStore: bookmarkStore,
         pronunciationStore: pronunciationStore,
+        modelStore: modelStore,
+        onModelsChanged: onModelsChanged,
       ),
     );
   }

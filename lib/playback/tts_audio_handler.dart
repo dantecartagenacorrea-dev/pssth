@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../data/library_store.dart';
 import '../data/settings_store.dart';
 import '../domain/chapter_detector.dart';
+import '../domain/language_segmenter.dart';
 import '../domain/library_entry.dart';
 import '../domain/reading_position.dart';
 import '../domain/text_chunk.dart';
@@ -145,6 +146,9 @@ class TtsAudioHandler extends BaseAudioHandler {
     await stop();
     _entry = entry;
     _chunks = chunks;
+    _docLang = null;
+    _appliedLang = null;
+    _chunkLangs = const [];
     final keys = chunks
         .map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex))
         .toList();
@@ -188,16 +192,40 @@ class TtsAudioHandler extends BaseAudioHandler {
             chunkIndex: _entry?.chunkIndex ?? 0,
           );
     _index = pos.resolveChunkListIndex(keys);
+    _segmentLanguages();
     _refresh(hasText: chunks.isNotEmpty);
   }
 
-  /// Ajusta el idioma de la voz al del documento si la voz elegida por el
-  /// usuario no es de ese idioma. No modifica las preferencias guardadas.
+  /// Idioma del documento ('es', 'en'...) e idioma por fragmento.
+  String? _docLang;
+  String? _appliedLang;
+  List<String> _chunkLangs = const [];
+
+  void _segmentLanguages() {
+    final doc = _docLang;
+    if (doc == null || _chunks.isEmpty) {
+      _chunkLangs = const [];
+      return;
+    }
+    _chunkLangs = segmentLanguages(_chunks.map((c) => c.text).toList(), documentLanguage: doc);
+  }
+
+  /// Ajusta la voz al idioma del documento y prepara el idioma por fragmento
+  /// (una frase corta en otro idioma no cambia la voz; un bloque largo sí).
+  /// No modifica las preferencias guardadas.
   Future<void> applyDocumentLanguage(String? lang) async {
     if (lang == null) return;
+    _docLang = lang;
+    _appliedLang = null;
+    _segmentLanguages();
+    await _applyLanguage(lang);
+  }
+
+  Future<void> _applyLanguage(String lang) async {
+    _appliedLang = lang;
     final saved = _voiceLocale;
     if (_voiceName != null && saved != null && saved.toLowerCase().startsWith(lang)) {
-      // La voz elegida sirve para este idioma: restaurarla por si el documento
+      // La voz elegida sirve para este idioma: restaurarla por si el fragmento
       // anterior usó una voz temporal de otro idioma.
       await _applyVoice();
       _refresh();
@@ -219,6 +247,21 @@ class TtsAudioHandler extends BaseAudioHandler {
         _activeVoice = null;
       }
     } catch (_) {}
+    _refresh();
+  }
+
+  /// Antes de leer un fragmento: si su idioma difiere del aplicado, cambia la voz.
+  Future<void> _applyChunkLanguage(int index) async {
+    if (index < 0 || index >= _chunkLangs.length) return;
+    final lang = _chunkLangs[index];
+    if (lang == _appliedLang) return;
+    await _applyLanguage(lang);
+  }
+
+  /// Vuelve a leer las voces del motor (p. ej. tras instalar la voz natural).
+  Future<void> reloadVoices() async {
+    await _loadVoices();
+    await _applyVoice();
     _refresh();
   }
 
@@ -284,6 +327,7 @@ class TtsAudioHandler extends BaseAudioHandler {
         if (kDebugMode) debugPrint('[lector] speak idx=$_index len=${speech.length} "${speech.length > 70 ? speech.substring(0, 70) : speech}"');
         if (speech.trim().isNotEmpty) {
           await _tts.stop();
+          await _applyChunkLanguage(_index);
           _tts.prefetch([
             for (var k = _index + 1; k <= _index + 2 && k < _chunks.length; k++) _chunks[k].speech,
           ]);

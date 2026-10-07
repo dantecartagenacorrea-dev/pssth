@@ -46,4 +46,16 @@ class NativeText implements OcrEngine {
       return null;
     }
   }
+
+  /// Pide permiso para usar la voz personal del usuario (iOS 17+, creada por él
+  /// en Ajustes → Accesibilidad → Voz personal). Devuelve si quedó autorizada.
+  Future<bool> requestPersonalVoice() async {
+    try {
+      return (await _channel.invokeMethod<bool>('requestPersonalVoice')) ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
 }

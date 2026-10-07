@@ -45,3 +45,35 @@ class NativeSpeechTranscriber implements SpeechTranscriber {
     }
   }
 }
+
+/// Prueba cada transcriptor en orden (sistema → modelo instalado). Falla solo
+/// si ninguno está disponible, con el mensaje del primero.
+class CompositeTranscriber implements SpeechTranscriber {
+  CompositeTranscriber(this.engines);
+  final List<SpeechTranscriber> engines;
+
+  @override
+  Future<bool> isAvailable({String locale = 'es-ES'}) async {
+    for (final e in engines) {
+      if (await e.isAvailable(locale: locale)) return true;
+    }
+    return false;
+  }
+
+  @override
+  Future<String> transcribe(String audioPath, {String locale = 'es-ES'}) async {
+    TranscriptionUnavailable? first;
+    for (final e in engines) {
+      if (!await e.isAvailable(locale: locale)) continue;
+      try {
+        return await e.transcribe(audioPath, locale: locale);
+      } on TranscriptionUnavailable catch (err) {
+        first ??= err;
+      }
+    }
+    throw first ??
+        TranscriptionUnavailable(
+          'No hay transcripción sin conexión en este dispositivo. Puedes instalarla en Voces y modelos.',
+        );
+  }
+}

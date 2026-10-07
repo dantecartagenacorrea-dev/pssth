@@ -3,6 +3,7 @@ import UIKit
 import Vision
 import NaturalLanguage
 import Speech
+import AVFoundation
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -100,6 +101,14 @@ final class NativeTextTools: NSObject, FlutterPlugin {
     switch call.method {
     case "available":
       result(true)
+    case "requestPersonalVoice":
+      if #available(iOS 17.0, *) {
+        AVSpeechSynthesizer.requestPersonalVoiceAuthorization { status in
+          DispatchQueue.main.async { result(status == .authorized) }
+        }
+      } else {
+        result(false)
+      }
     case "detectLanguage":
       let args = call.arguments as? [String: Any]
       let text = args?["text"] as? String ?? ""

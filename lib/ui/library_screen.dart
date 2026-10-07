@@ -10,6 +10,7 @@ import '../core/app_exception.dart';
 import '../data/bookmark_store.dart';
 import '../data/document_loader.dart';
 import '../data/library_store.dart';
+import '../data/model_store.dart';
 import '../data/pronunciation_store.dart';
 import '../data/settings_store.dart';
 import '../domain/chapter_detector.dart';
@@ -22,9 +23,11 @@ import '../ocr/ocr_engine.dart';
 import '../platform/native_text.dart';
 import '../platform/open_file_bridge.dart';
 import '../platform/speech_transcriber.dart';
+import '../platform/whisper_transcriber.dart';
 import '../playback/tts_audio_handler.dart';
 import 'player_screen.dart';
 import 'recorder_screen.dart';
+import 'voices_screen.dart';
 import 'pronunciation_screen.dart';
 
 /// Versión mostrada en "Acerca de" (mantener igual que pubspec.yaml).
@@ -38,9 +41,15 @@ class LibraryScreen extends StatefulWidget {
     required this.settingsStore,
     required this.bookmarkStore,
     required this.pronunciationStore,
+    required this.modelStore,
+    required this.onModelsChanged,
   });
 
   final TtsAudioHandler handler;
+  final ModelStore modelStore;
+
+  /// Tras instalar/eliminar un modelo (recarga el motor de voz).
+  final Future<void> Function() onModelsChanged;
   final LibraryStore libraryStore;
   final SettingsStore settingsStore;
   final BookmarkStore bookmarkStore;
@@ -118,7 +127,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  final SpeechTranscriber _speech = NativeSpeechTranscriber();
+  late final SpeechTranscriber _speech = CompositeTranscriber([
+    NativeSpeechTranscriber(),
+    WhisperTranscriber(
+      modelDir: widget.modelStore.dirFor(whisperBaseModel).path,
+      onProgress: (done, total) {
+        if (mounted) setState(() => _busyLabel = 'Transcribiendo… $done/$total');
+      },
+    ),
+  ]);
 
   /// Graba una clase o conversación, la transcribe en el dispositivo y la abre
   /// como un documento más (se puede escuchar, buscar y resumir).
@@ -153,7 +170,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
       try {
         // Se llama como la entrada: "Eliminar" borra también el audio.
-        await File(rec.path).copy('${widget.libraryStore.root.path}/${entry.id}.m4a');
+        await File(rec.path).copy('${widget.libraryStore.root.path}/${entry.id}.wav');
         await File(rec.path).delete();
       } catch (_) {}
       await widget.settingsStore.saveLastDocumentId(entry.id);
@@ -216,6 +233,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
           PopupMenuButton<String>(
             tooltip: 'Más',
             onSelected: (v) {
+              if (v == 'voces') {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => VoicesScreen(
+                      modelStore: widget.modelStore,
+                      onModelsChanged: widget.onModelsChanged,
+                      native: _native,
+                    ),
+                  ),
+                );
+              }
               if (v == 'acerca') {
                 showAboutDialog(
                   context: context,
@@ -230,6 +258,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               }
             },
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'voces', child: Text('Voces y modelos')),
               PopupMenuItem(value: 'acerca', child: Text('Acerca de Lector y licencias')),
             ],
           ),
