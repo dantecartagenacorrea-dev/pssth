@@ -84,6 +84,7 @@ class FallbackTtsEngine extends TtsEngine {
     } catch (e) {
       _primaryOk = false;
       errors.add('${primary.id}: $e');
+      if (kDebugMode) debugPrint('[lector] motor ${primary.id} no disponible: $e');
       _active = fallback;
     }
     await _initFallback();

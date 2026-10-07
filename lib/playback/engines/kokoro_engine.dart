@@ -35,6 +35,15 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   double _speed = 1.0;
   AudioPrefetcher? _prefetcher;
 
+  // Cada speak/stop/pause invalida los anteriores: un audio que llega tarde
+  // no debe sonar encima del siguiente (varias voces a la vez).
+  int _gen = 0;
+
+  // Si sintetizar tarda mucho más que la duración del audio, este dispositivo
+  // no puede leer en tiempo real: se desactiva la voz natural.
+  int _slow = 0;
+  bool _tooSlow = false;
+
   @override
   String get id => 'kokoro';
 
@@ -83,6 +92,11 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     if (w == null) throw StateError('Kokoro no iniciado.');
     final sw = Stopwatch()..start();
     final wav = await w.synthesize(text, speaker: _speaker, speed: _speed);
+    final audioMs = (wav.length - 44) / 2 / 24000 * 1000;
+    if (audioMs > 500) {
+      _slow = sw.elapsedMilliseconds > audioMs * 2 ? _slow + 1 : 0;
+      if (_slow >= 2) _tooSlow = true;
+    }
     if (kDebugMode) {
       debugPrint('[lector] kokoro sintetizó ${text.length} car. en ${sw.elapsedMilliseconds} ms (${wav.length ~/ 1024} KB)');
     }
@@ -91,14 +105,24 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
 
   @override
   Future<void> speak(String text) async {
+    if (_tooSlow) {
+      throw StateError('Este dispositivo es demasiado lento para la voz natural.');
+    }
+    final my = ++_gen;
     final file = await _pf.fileFor(text);
-    await _player.setFilePath(file.path);
-    await _player.play(); // completa al terminar o al pausar/detener
+    if (my != _gen) return; // se pidió detener/otro fragmento mientras se sintetizaba
+    try {
+      await _player.setFilePath(file.path);
+      if (my != _gen) return;
+      await _player.play(); // completa al terminar o al pausar/detener
+    } on PlayerInterruptedException {
+      // detenido a propósito: no es un fallo
+    }
   }
 
   @override
   void prefetch(List<String> upcoming) {
-    if (_worker == null) return;
+    if (_worker == null || _tooSlow) return;
     for (final t in upcoming.take(2)) {
       if (t.trim().isEmpty) continue;
       _pf.fileFor(t).then((_) {}, onError: (_) {});
@@ -106,10 +130,16 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   }
 
   @override
-  Future<void> pause() => _player.pause();
+  Future<void> pause() {
+    _gen++;
+    return _player.pause();
+  }
 
   @override
-  Future<void> stop() => _player.stop();
+  Future<void> stop() {
+    _gen++;
+    return _player.stop();
+  }
 
   @override
   Future<void> dispose() async {
