@@ -64,3 +64,5 @@ diag.log
 adb_run_*.bat
 adb_out_*.txt
 adb_launch.log
+
+modelos/

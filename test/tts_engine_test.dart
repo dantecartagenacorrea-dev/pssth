@@ -87,4 +87,28 @@ void main() {
     await e.init();
     expect(() => e.speak('x'), throwsA(isA<StateError>()));
   });
+
+  test('lista voces de ambos motores y la voz elegida decide el motor', () async {
+    final p = FakeEngine('neural'), f = FakeEngine('apple');
+    final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
+    await e.init();
+    final voces = await e.voices();
+    expect(voces.map((v) => v.name), ['neural', 'apple']);
+    await e.speak('a'); // sin voz elegida: motor del sistema
+    expect(f.spoken, ['a']);
+    await e.setVoice(voces.first); // voz natural
+    await e.speak('b');
+    expect(p.spoken, ['b']);
+    await e.setVoice(voces.last); // vuelve al sistema
+    await e.speak('c');
+    expect(f.spoken, ['a', 'c']);
+  });
+
+  test('modelo no instalado: solo voces del sistema y sin errores para el usuario', () async {
+    final p = FakeEngine('neural', failInit: true), f = FakeEngine('apple');
+    final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
+    await e.init();
+    expect((await e.voices()).map((v) => v.name), ['apple']);
+    expect(e.primaryAvailable, isFalse);
+  });
 }

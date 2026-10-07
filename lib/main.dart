@@ -2,12 +2,17 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import 'data/bookmark_store.dart';
 import 'data/library_store.dart';
 import 'data/pronunciation_store.dart';
 import 'data/settings_store.dart';
+import 'data/audio_cache.dart';
+import 'playback/engines/apple_tts_engine.dart';
+import 'playback/engines/fallback_tts_engine.dart';
+import 'playback/engines/kokoro_engine.dart';
 import 'playback/tts_audio_handler.dart';
 import 'ui/library_screen.dart';
 
@@ -21,10 +26,23 @@ Future<void> main() async {
   final pronunciationStore = PronunciationStore(File('${libraryStore.root.path}/pronunciation.json'));
   final bookmarkStore = BookmarkStore(File('${libraryStore.root.path}/bookmarks.json'));
 
+  // Voz natural (opcional): modelo en <documentos>/models/kokoro; sin él solo hay voces del sistema.
+  final docs = await getApplicationDocumentsDirectory();
+  final cacheDir = await getTemporaryDirectory();
+  final engine = FallbackTtsEngine(
+    primary: KokoroEngine(
+      modelDir: '${docs.path}/models/kokoro',
+      cache: AudioCache(Directory('${cacheDir.path}/tts_audio')),
+    ),
+    fallback: AppleTtsEngine(),
+    startWithPrimary: false,
+  );
+
   final handler = await AudioService.init(
     builder: () => TtsAudioHandler(
       libraryStore: libraryStore,
       settingsStore: settingsStore,
+      engine: engine,
     ),
     config: AudioServiceConfig(
       androidNotificationChannelId: 'com.lectorpdf.lectorPdf.tts',

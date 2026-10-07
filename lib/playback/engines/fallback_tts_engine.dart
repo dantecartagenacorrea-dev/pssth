@@ -2,28 +2,43 @@ import 'package:flutter/foundation.dart';
 
 import '../tts_engine.dart';
 
-/// Cadena de seguridad: usa [primary] y, ante cualquier fallo, pasa
-/// automáticamente a [fallback] (motor estable) sin cortar la escucha.
+/// Combina un motor opcional ([primary], p. ej. voz natural) con el motor
+/// estable ([fallback], el del sistema).
+///
+/// - Las voces de ambos aparecen en una sola lista; la voz elegida decide el motor.
+/// - Si [primary] no está instalado o falla (al iniciar, al sintetizar...), se
+///   pasa automáticamente a [fallback] sin cortar la escucha.
 class FallbackTtsEngine extends TtsEngine {
-  FallbackTtsEngine({required this.primary, required this.fallback}) {
-    _active = primary;
+  FallbackTtsEngine({
+    required this.primary,
+    required this.fallback,
+    this.startWithPrimary = true,
+  }) {
+    _active = startWithPrimary ? primary : fallback;
   }
 
   final TtsEngine primary;
   final TtsEngine fallback;
+
+  /// Motor usado hasta que se elija una voz concreta.
+  final bool startWithPrimary;
+
   late TtsEngine _active;
+  bool _primaryOk = true;
   bool _fallbackReady = false;
   double _rate = 0.5;
   double _volume = 1.0;
   String? _language;
+  final Set<String> _primaryVoiceIds = {};
 
   /// Motivos de los fallos (para diagnóstico); el último al final.
   final List<String> errors = [];
 
-  /// Avisa cuando se activa el fallback (la interfaz puede informarlo).
+  /// Avisa cuando se desactiva el motor primario.
   void Function(String reason)? onFallback;
 
   bool get usingFallback => identical(_active, fallback);
+  bool get primaryAvailable => _primaryOk;
 
   @override
   String get id => _active.id;
@@ -38,22 +53,23 @@ class FallbackTtsEngine extends TtsEngine {
     _wire(fallback);
     await fallback.init();
     _fallbackReady = true;
-  }
-
-  Future<void> _switchToFallback(Object reason) async {
-    if (usingFallback) throw reason;
-    errors.add('${primary.id}: $reason');
-    if (kDebugMode) debugPrint('[lector] motor ${primary.id} falló: $reason → ${fallback.id}');
-    try {
-      await primary.stop();
-    } catch (_) {}
-    _active = fallback;
-    await _initFallback();
     try {
       await fallback.setVolume(_volume);
       await fallback.setRate(_rate);
       if (_language != null) await fallback.setLanguage(_language!);
     } catch (_) {}
+  }
+
+  Future<void> _disablePrimary(Object reason) async {
+    if (!_primaryOk) return;
+    _primaryOk = false;
+    errors.add('${primary.id}: $reason');
+    if (kDebugMode) debugPrint('[lector] motor ${primary.id} desactivado: $reason → ${fallback.id}');
+    try {
+      await primary.stop();
+    } catch (_) {}
+    _active = fallback;
+    await _initFallback();
     onFallback?.call('$reason');
   }
 
@@ -62,63 +78,93 @@ class FallbackTtsEngine extends TtsEngine {
     _wire(primary);
     try {
       await primary.init();
+      _primaryVoiceIds
+        ..clear()
+        ..addAll((await primary.voices()).map((v) => v.id));
     } catch (e) {
-      await _switchToFallback(e);
+      _primaryOk = false;
+      errors.add('${primary.id}: $e');
+      _active = fallback;
     }
-    if (!usingFallback) await _initFallback();
+    await _initFallback();
+    if (_primaryOk && !startWithPrimary) _active = fallback;
   }
 
   @override
   Future<List<VoiceOption>> voices() async {
+    final out = <VoiceOption>[];
     try {
-      final v = await _active.voices();
-      if (v.isNotEmpty || usingFallback) return v;
-    } catch (e) {
-      await _switchToFallback(e);
+      out.addAll(await fallback.voices());
+    } catch (_) {}
+    if (_primaryOk) {
+      try {
+        out.insertAll(0, await primary.voices());
+      } catch (_) {}
     }
-    return _active.voices();
+    return out;
   }
 
   @override
   Future<void> setVoice(VoiceOption voice) async {
-    try {
-      await _active.setVoice(voice);
-    } catch (e) {
-      if (usingFallback) rethrow;
-      await _switchToFallback(e);
+    if (_primaryOk && _primaryVoiceIds.contains(voice.id)) {
+      _active = primary;
+      try {
+        await primary.setVoice(voice);
+        await primary.setVolume(_volume);
+        await primary.setRate(_rate);
+        return;
+      } catch (e) {
+        await _disablePrimary(e);
+        return;
+      }
     }
+    _active = fallback;
+    await fallback.setVoice(voice);
   }
 
   @override
   Future<void> setLanguage(String locale) async {
     _language = locale;
-    try {
-      await _active.setLanguage(locale);
-    } catch (e) {
-      if (usingFallback) rethrow;
-      await _switchToFallback(e);
+    if (_fallbackReady) {
+      try {
+        await fallback.setLanguage(locale);
+      } catch (_) {
+        if (usingFallback) rethrow;
+      }
     }
   }
 
   @override
   Future<void> setRate(double rate) async {
     _rate = rate;
-    try {
-      await _active.setRate(rate);
-    } catch (e) {
-      if (usingFallback) rethrow;
-      await _switchToFallback(e);
+    if (_fallbackReady) {
+      try {
+        await fallback.setRate(rate);
+      } catch (_) {}
+    }
+    if (_primaryOk) {
+      try {
+        await primary.setRate(rate);
+      } catch (e) {
+        await _disablePrimary(e);
+      }
     }
   }
 
   @override
   Future<void> setVolume(double volume) async {
     _volume = volume;
-    try {
-      await _active.setVolume(volume);
-    } catch (e) {
-      if (usingFallback) rethrow;
-      await _switchToFallback(e);
+    if (_fallbackReady) {
+      try {
+        await fallback.setVolume(volume);
+      } catch (_) {}
+    }
+    if (_primaryOk) {
+      try {
+        await primary.setVolume(volume);
+      } catch (e) {
+        await _disablePrimary(e);
+      }
     }
   }
 
@@ -128,9 +174,14 @@ class FallbackTtsEngine extends TtsEngine {
       await _active.speak(text);
     } catch (e) {
       if (usingFallback) rethrow;
-      await _switchToFallback(e);
+      await _disablePrimary(e);
       await _active.speak(text);
     }
+  }
+
+  @override
+  void prefetch(List<String> upcoming) {
+    if (!usingFallback) primary.prefetch(upcoming);
   }
 
   @override

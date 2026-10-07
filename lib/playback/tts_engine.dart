@@ -38,6 +38,11 @@ abstract class TtsEngine {
   Future<void> setRate(double rate);
   Future<void> setVolume(double volume);
   Future<void> speak(String text);
+
+  /// Pista de los fragmentos que vienen después (motores que sintetizan audio
+  /// los preparan; el resto lo ignora).
+  void prefetch(List<String> upcoming) {}
+
   Future<void> pause();
   Future<void> stop();
   Future<void> dispose();

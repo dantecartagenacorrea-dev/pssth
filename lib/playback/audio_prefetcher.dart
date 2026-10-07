@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import '../data/audio_cache.dart';
@@ -25,7 +26,7 @@ class AudioPrefetcher {
   final double speed;
   final int ahead;
 
-  final Map<String, Future<Uint8List>> _pending = {};
+  final Map<String, Future<File>> _pending = {};
 
   String _key(String text) => AudioCache.keyFor(
         text: text,
@@ -34,27 +35,27 @@ class AudioPrefetcher {
         speed: speed,
       );
 
-  /// Audio del fragmento: caché → síntesis en curso → sintetizar y guardar.
-  Future<Uint8List> audioFor(String text) {
+  /// Archivo con el audio del fragmento: caché → síntesis en curso → sintetizar y guardar.
+  Future<File> fileFor(String text) {
     final key = _key(text);
     return _pending[key] ??= _load(key, text).whenComplete(() {
-          _pending.remove(key); // sin devolver el Future: se esperaría a sí mismo
-        });
+      _pending.remove(key); // sin devolver el Future: se esperaría a sí mismo
+    });
   }
 
-  Future<Uint8List> _load(String key, String text) async {
-    final hit = await cache.get(key);
-    if (hit != null) return hit;
-    final data = await engine.synthesize(text);
-    await cache.put(key, data);
-    return data;
+  Future<File> _load(String key, String text) async {
+    if (!await cache.has(key)) {
+      final data = await engine.synthesize(text);
+      await cache.put(key, data);
+    }
+    return cache.fileFor(key);
   }
 
   /// Lanza (sin esperar) los [ahead] fragmentos siguientes a [index].
   void prefetch(List<String> chunks, int index) {
     for (var i = index + 1; i <= index + ahead && i < chunks.length; i++) {
       if (chunks[i].trim().isEmpty) continue;
-      audioFor(chunks[i]).then((_) {}, onError: (_) {});
+      fileFor(chunks[i]).then((_) {}, onError: (_) {});
     }
   }
 }

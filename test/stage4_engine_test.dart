@@ -55,10 +55,10 @@ void main() {
     p.prefetch(chunks, 0); // prepara 'dos' y 'tres'
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(s.calls, 2);
-    await p.audioFor('dos');
-    await p.audioFor('tres');
+    await p.fileFor('dos');
+    await p.fileFor('tres');
     expect(s.calls, 2);
-    await p.audioFor('cuatro');
+    await p.fileFor('cuatro');
     expect(s.calls, 3);
   });
 

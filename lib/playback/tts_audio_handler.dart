@@ -284,6 +284,9 @@ class TtsAudioHandler extends BaseAudioHandler {
         if (kDebugMode) debugPrint('[lector] speak idx=$_index len=${speech.length} "${speech.length > 70 ? speech.substring(0, 70) : speech}"');
         if (speech.trim().isNotEmpty) {
           await _tts.stop();
+          _tts.prefetch([
+            for (var k = _index + 1; k <= _index + 2 && k < _chunks.length; k++) _chunks[k].speech,
+          ]);
           await _tts.speak(speech);
         }
       } catch (_) {

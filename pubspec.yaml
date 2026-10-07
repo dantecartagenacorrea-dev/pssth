@@ -39,6 +39,8 @@ dependencies:
   archive: ^4.0.7
   image_picker: ^1.1.2
   record: ^7.1.1
+  sherpa_onnx: ^1.13.8
+  just_audio: ^0.10.5
 
 dev_dependencies:
   flutter_test:

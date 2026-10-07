@@ -40,6 +40,21 @@ class AudioCache {
     return '${h.toRadixString(16).padLeft(16, '0')}${bytes.length.toRadixString(16)}';
   }
 
+  /// Archivo de la caché para [key] (existe solo tras un [put]).
+  File fileFor(String key) => _file(key);
+
+  /// ¿Hay audio válido guardado? Lo marca como usado.
+  Future<bool> has(String key) => _serial(() async {
+        try {
+          final f = _file(key);
+          if (!await f.exists() || await f.length() == 0) return false;
+          _touch(key);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      });
+
   File _file(String key) => File('${dir.path}${Platform.pathSeparator}$key.wav');
 
   Future<Uint8List?> get(String key) => _serial(() => _get(key));
