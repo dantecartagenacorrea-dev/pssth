@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 
 import '../data/bookmark_store.dart';
 import '../domain/library_entry.dart';
 import '../domain/search.dart';
+import '../domain/summarizer.dart';
 import '../playback/tts_audio_handler.dart';
 
 void _snack(BuildContext c, String m) =>
@@ -218,4 +220,88 @@ Future<void> exportText(
   } catch (_) {
     if (context.mounted) _snack(context, 'No se pudo exportar el texto.');
   }
+}
+
+List<String> _summarize(String text) => summarizeExtractive(text);
+
+/// Resumen extractivo local del documento; se puede escuchar.
+Future<void> showSummarySheet(BuildContext context, TtsAudioHandler handler) async {
+  final source = handler.pages.isNotEmpty
+      ? handler.pages.join('\n\n')
+      : handler.chunks.map((c) => c.text).join(' ');
+  if (source.trim().isEmpty) {
+    _snack(context, 'No hay texto para resumir.');
+    return;
+  }
+  final future = compute(_summarize, source);
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) => SafeArea(
+      child: FutureBuilder<List<String>>(
+        future: future,
+        builder: (ctx, snap) {
+          if (!snap.hasData) {
+            return const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          final frases = snap.data!;
+          if (frases.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('El texto es demasiado corto para resumirlo.'),
+            );
+          }
+          return ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Resumen', style: Theme.of(ctx).textTheme.titleLarge),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Frases clave del propio texto, en su orden original.',
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Flexible(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final f in frases)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: Text(f, style: Theme.of(ctx).textTheme.bodyLarge),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      FilledButton.icon(
+                        onPressed: () => handler.speakAside(frases.join(' ')),
+                        icon: const Icon(Icons.volume_up),
+                        label: const Text('Escuchar resumen'),
+                      ),
+                      const SizedBox(width: 12),
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Cerrar'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ),
+  );
+  await handler.stopAside();
 }

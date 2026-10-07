@@ -400,6 +400,21 @@ class TtsAudioHandler extends BaseAudioHandler {
     _refresh();
   }
 
+  /// Lee un texto suelto (p. ej. el resumen) sin cambiar la posición del documento.
+  Future<void> speakAside(String text) async {
+    await pause();
+    try {
+      await _tts.stop();
+      await _tts.speak(text);
+    } catch (_) {}
+  }
+
+  Future<void> stopAside() async {
+    try {
+      await _tts.stop();
+    } catch (_) {}
+  }
+
   /// Texto original por página (para exportar y buscar), sin normalizar.
   List<String> pages = const [];
 

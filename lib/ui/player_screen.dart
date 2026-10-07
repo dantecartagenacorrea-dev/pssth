@@ -61,6 +61,8 @@ class PlayerScreen extends StatelessWidget {
                   showChaptersSheet(context, handler);
                 case 'marcadores':
                   showBookmarksSheet(context, handler, bookmarkStore, entry);
+                case 'resumen':
+                  showSummarySheet(context, handler);
                 case 'exportar':
                   exportText(context, handler, entry);
               }
@@ -69,6 +71,7 @@ class PlayerScreen extends StatelessWidget {
               PopupMenuItem(value: 'buscar', child: Text('Buscar en el texto')),
               PopupMenuItem(value: 'capitulos', child: Text('Capítulos')),
               PopupMenuItem(value: 'marcadores', child: Text('Marcadores')),
+              PopupMenuItem(value: 'resumen', child: Text('Resumen del texto')),
               PopupMenuItem(value: 'exportar', child: Text('Exportar texto')),
             ],
           ),
