@@ -132,7 +132,10 @@ List<String> _splitByLength(String text, int maxLength) {
   final chunks = <String>[];
   var remaining = text;
   while (remaining.length > maxLength) {
-    var cut = remaining.lastIndexOf(' ', maxLength);
+    var cut = _clauseCut(remaining, maxLength);
+    if (cut <= 0) {
+      cut = remaining.lastIndexOf(' ', maxLength);
+    }
     if (cut <= 0) {
       cut = maxLength;
     }
@@ -143,4 +146,17 @@ List<String> _splitByLength(String text, int maxLength) {
     chunks.add(remaining);
   }
   return chunks;
+}
+
+/// Último límite de cláusula (`, ; :` seguido de espacio) en la segunda mitad
+/// de la ventana, para no cortar a mitad de una idea. Devuelve -1 si no hay.
+int _clauseCut(String text, int maxLength) {
+  final end = maxLength < text.length ? maxLength : text.length - 1;
+  for (var i = end; i >= maxLength ~/ 2; i--) {
+    final c = text[i - 1];
+    if ((c == ',' || c == ';' || c == ':') && text[i] == ' ') {
+      return i;
+    }
+  }
+  return -1;
 }
