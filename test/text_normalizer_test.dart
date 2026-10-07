@@ -67,4 +67,12 @@ void _lecturaTests() {
   test('no toca importes ni porcentajes', () {
     expect(n.normalize('Bs 1.234,50 al 13%'), '1.234,50 bolivianos al 13 por ciento');
   });
+  test('abreviaturas masónicas con puntos triangulares', () {
+    expect(n.normalize('de la Mas.·. y los HH.·. de las LLog.·.'),
+        'de la Masonería y los Hermanos de las Logias');
+    expect(n.normalize('el G.·.A.·.D.·.U.·. ha'), 'el Gran Arquitecto del Universo ha');
+    expect(n.normalize('en los TTall.·. .'), 'en los Talleres.');
+    expect(n.normalize('la Ord:. por completo'), 'la Orden por completo');
+    expect(n.normalize('el Or.·.'), 'el Oriente');
+  });
 }

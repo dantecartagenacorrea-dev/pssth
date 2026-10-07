@@ -56,4 +56,9 @@ void _capituloTests() {
     expect(c.first, 'CAPITULO 1. Sobre la sociedad');
     expect(c[1], startsWith('Este es el párrafo'));
   });
+  test('no corta la frase tras abreviaturas masónicas', () {
+    final f = splitSentences('La Mas.·. atraviesa un período difícil. Siguiente frase.');
+    expect(f.length, 2);
+    expect(f.first, startsWith('La Mas.·. atraviesa'));
+  });
 }

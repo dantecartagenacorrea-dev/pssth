@@ -143,6 +143,9 @@ class TtsAudioHandler extends BaseAudioHandler {
       } catch (_) {}
     }
     try {
+      await _tts.setVolume(1.0); // máximo del motor; más alto solo con el volumen del sistema
+    } catch (_) {}
+    try {
       await _tts.setLanguage('es-ES');
     } catch (_) {}
     await _loadVoices();

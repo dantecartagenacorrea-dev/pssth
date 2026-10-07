@@ -14,6 +14,20 @@ class TextNormalizer {
   static final _bullets = RegExp(r'[•▪◦●■□]');
   static const _l = r'(?<![\p{L}\p{N}])';
 
+  // Abreviaturas masónicas: "Mas.·.", "HH.·.", "Ord:." (letra doble = plural).
+  static final _gadu = RegExp(r'G\.\s*·\.\s*A\.\s*·\.\s*D\.\s*·\.\s*U\.\s*·\.');
+  static final _masonic = RegExp(
+    r'(?<![\p{L}\p{N}])(\p{L}{1,6})(?:\.\s*·\.|[.:]·[.:]?|:\.)',
+    unicode: true,
+  );
+  static const _masonicWords = {
+    'mas': 'Masonería', 'ord': 'Orden', 'or': 'Oriente',
+    'h': 'Hermano', 'hh': 'Hermanos', 'log': 'Logia', 'llog': 'Logias',
+    'tall': 'Taller', 'ttall': 'Talleres', 'obed': 'Obediencia',
+    'oobed': 'Obediencias', 'gr': 'Grado', 'ggr': 'Grados',
+    'dign': 'Dignidad', 'ddign': 'Dignidades', 'mm': 'Maestros Masones',
+  };
+
   static final List<(RegExp, String)> _legalRules = [
     (RegExp('${_l}Arts\\.', unicode: true), 'Artículos'),
     (RegExp('${_l}Art\\.', unicode: true), 'Artículo'),
@@ -110,6 +124,12 @@ class TextNormalizer {
       );
       t = t.replaceAll(re, entry.value);
     }
+
+    t = t.replaceAll(_gadu, 'Gran Arquitecto del Universo');
+    t = t.replaceAllMapped(_masonic, (m) {
+      final w = m[1]!;
+      return _masonicWords[w.toLowerCase()] ?? w;
+    });
 
     if (legalMode) {
       t = t.replaceAllMapped(_bs, (m) => '${m[1]} bolivianos');

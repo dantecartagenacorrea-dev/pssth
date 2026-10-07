@@ -61,3 +61,6 @@ adb_actual.bat
 adb_cmds.bat
 diag.log
 *.flag
+adb_run_*.bat
+adb_out_*.txt
+adb_launch.log

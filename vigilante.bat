@@ -3,14 +3,7 @@ title Vigilante LECTOR PDF (deja esta ventana abierta)
 cd /d "%~dp0"
 echo Esperando orden de verificacion... (cerrar la ventana para detener)
 :loop
-if exist adb_cmds.bat (
-  move /y adb_cmds.bat adb_actual.bat >nul
-  echo [%time%] Ejecutando adb_actual.bat
-  setlocal
-  call adb_actual.bat > adb_out.txt 2>&1
-  endlocal
-  echo [%time%] Listo.
-)
+if exist adb_cmds.bat call adb_launch.bat
 if exist run.flag (
   del /f /q run.flag
   if exist run.flag (

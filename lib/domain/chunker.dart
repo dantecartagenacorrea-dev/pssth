@@ -46,6 +46,7 @@ List<String> splitSentences(String paragraph) {
     final m = RegExp(r'([^\s]+)\.$').firstMatch(text);
     final last = (m?.group(1) ?? '').toLowerCase();
     final esAbreviatura = _abreviaturas.contains(last) ||
+        last.contains('·') ||
         RegExp(r'^[\d.]+$').hasMatch(last) ||
         RegExp(r'^[a-záéíóúñ]$').hasMatch(last);
     if (!esAbreviatura) {
