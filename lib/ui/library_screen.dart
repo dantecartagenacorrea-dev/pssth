@@ -109,6 +109,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _busyLabel = 'Abriendo…';
       });
       final f = File(file.path);
+      final ext = file.name.contains('.') ? file.name.split('.').last.toLowerCase() : '';
+      if (_audioExt.contains(ext)) {
+        _importingExternal = false;
+        if (mounted) setState(() => _busy = false);
+        await _transcribeAndOpen(file.path, file.name.substring(0, file.name.length - ext.length - 1), deleteSource: true);
+        return;
+      }
       final bytes = await f.readAsBytes();
       if (bytes.isEmpty) throw AppException('No se pudo leer el archivo recibido.');
       final entry = await widget.libraryStore.importFile(originalName: file.name, bytes: bytes);
@@ -144,6 +151,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
       MaterialPageRoute(builder: (_) => const RecorderScreen()),
     );
     if (rec == null || !mounted) return;
+    final now = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    await _transcribeAndOpen(
+      rec.path,
+      'Grabación ${two(now.day)}-${two(now.month)} ${two(now.hour)}.${two(now.minute)}',
+      deleteSource: true,
+    );
+  }
+
+  /// Transcribe un audio (grabado aquí o importado) y lo abre como documento.
+  /// El audio se guarda junto a la entrada: "Eliminar" borra también el audio.
+  Future<void> _transcribeAndOpen(String audioPath, String title, {required bool deleteSource}) async {
     setState(() {
       _busy = true;
       _busyLabel = 'Transcribiendo…';
@@ -152,7 +171,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       String text;
       String? aviso;
       try {
-        text = await _speech.transcribe(rec.path);
+        text = await _speech.transcribe(audioPath);
         if (text.isEmpty) {
           text = 'La grabación no contiene voz reconocible.';
           aviso = 'No se reconoció voz en la grabación.';
@@ -161,17 +180,14 @@ class _LibraryScreenState extends State<LibraryScreen> {
         text = 'Grabación sin transcripción. ${e.message}';
         aviso = '${e.message} El audio se guardó.';
       }
-      final now = DateTime.now();
-      String two(int n) => n.toString().padLeft(2, '0');
-      final name = 'Grabación ${two(now.day)}-${two(now.month)} ${two(now.hour)}.${two(now.minute)}.txt';
       final entry = await widget.libraryStore.importFile(
-        originalName: name,
+        originalName: '$title.txt',
         bytes: utf8.encode(text),
       );
       try {
-        // Se llama como la entrada: "Eliminar" borra también el audio.
-        await File(rec.path).copy('${widget.libraryStore.root.path}/${entry.id}.wav');
-        await File(rec.path).delete();
+        final ext = audioPath.contains('.') ? audioPath.substring(audioPath.lastIndexOf('.') + 1) : 'wav';
+        await File(audioPath).copy('${widget.libraryStore.root.path}/${entry.id}.$ext');
+        if (deleteSource) await File(audioPath).delete();
       } catch (_) {}
       await widget.settingsStore.saveLastDocumentId(entry.id);
       if (aviso != null && mounted) showSafeMessage(context, AppException(aviso));
@@ -184,6 +200,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  static const _audioExt = {'wav', 'm4a', 'mp3', 'aac', 'caf'};
 
   List<LibraryEntry> get _entries => widget.libraryStore.data.entries;
 
@@ -428,6 +446,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         type: FileType.custom,
         allowedExtensions: const [
           'pdf', 'epub', 'txt', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'tif', 'tiff', 'bmp',
+          'wav', 'm4a', 'mp3', 'aac', 'caf',
         ],
         withData: true,
       );
@@ -435,6 +454,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return;
       }
       final file = result.files.single;
+      final ext = file.name.contains('.') ? file.name.split('.').last.toLowerCase() : '';
+      if (_audioExt.contains(ext)) {
+        // Audio (una clase grabada con otra app): se transcribe y se abre como texto.
+        final src = file.path;
+        if (src == null) throw AppException('No se pudo leer el audio seleccionado.');
+        if (mounted) setState(() => _busy = false);
+        await _transcribeAndOpen(src, file.name.substring(0, file.name.length - ext.length - 1), deleteSource: false);
+        return;
+      }
       final bytes = file.bytes;
       if (bytes == null || bytes.isEmpty) {
         throw AppException('No se pudo leer el archivo seleccionado.');

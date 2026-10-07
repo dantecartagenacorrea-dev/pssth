@@ -81,6 +81,7 @@
 				<string>org.idpf.epub-container</string>
 				<string>public.plain-text</string>
 				<string>public.image</string>
+				<string>public.audio</string>
 			</array>
 		</dict>
 	</array>

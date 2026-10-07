@@ -37,6 +37,7 @@
                 <data android:mimeType="application/epub+zip"/>
                 <data android:mimeType="text/plain"/>
                 <data android:mimeType="image/*"/>
+                <data android:mimeType="audio/*"/>
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
@@ -45,6 +46,7 @@
                 <data android:mimeType="application/epub+zip"/>
                 <data android:mimeType="text/plain"/>
                 <data android:mimeType="image/*"/>
+                <data android:mimeType="audio/*"/>
             </intent-filter>
         </activity>
 
