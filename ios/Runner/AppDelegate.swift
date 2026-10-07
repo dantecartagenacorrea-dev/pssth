@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import Vision
 import NaturalLanguage
+import Speech
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -16,6 +17,9 @@ import NaturalLanguage
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "NativeTextTools") {
       NativeTextTools.register(with: registrar)
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "SpeechBridge") {
+      SpeechBridge.register(with: registrar)
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "OpenFileBridge") {
       OpenFileBridge.register(with: registrar)
@@ -157,6 +161,57 @@ final class NativeTextTools: NSObject, FlutterPlugin {
     case .leftMirrored: return .leftMirrored
     case .rightMirrored: return .rightMirrored
     @unknown default: return .up
+    }
+  }
+}
+
+
+/// Transcripción de grabaciones SOLO en el dispositivo (sin enviar audio a Apple).
+final class SpeechBridge: NSObject {
+  private static var task: SFSpeechRecognitionTask?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "lector/speech", binaryMessenger: registrar.messenger())
+    channel.setMethodCallHandler { call, result in
+      let args = call.arguments as? [String: Any]
+      let localeId = args?["locale"] as? String ?? "es-ES"
+      let recognizer = SFSpeechRecognizer(locale: Locale(identifier: localeId))
+      switch call.method {
+      case "available":
+        result(recognizer?.supportsOnDeviceRecognition ?? false)
+      case "transcribe":
+        guard let path = args?["path"] as? String, let recognizer = recognizer,
+              recognizer.supportsOnDeviceRecognition else {
+          result(FlutterError(code: "unavailable", message: "Reconocimiento sin conexión no disponible para este idioma.", details: nil))
+          return
+        }
+        SFSpeechRecognizer.requestAuthorization { status in
+          DispatchQueue.main.async {
+            guard status == .authorized else {
+              result(FlutterError(code: "denied", message: "Permiso de reconocimiento de voz denegado.", details: nil))
+              return
+            }
+            let request = SFSpeechURLRecognitionRequest(url: URL(fileURLWithPath: path))
+            request.requiresOnDeviceRecognition = true
+            request.shouldReportPartialResults = false
+            var answered = false
+            task = recognizer.recognitionTask(with: request) { res, error in
+              if answered { return }
+              if let res = res, res.isFinal {
+                answered = true
+                task = nil
+                result(res.bestTranscription.formattedString)
+              } else if let error = error {
+                answered = true
+                task = nil
+                result(FlutterError(code: "failed", message: error.localizedDescription, details: nil))
+              }
+            }
+          }
+        }
+      default:
+        result(FlutterMethodNotImplemented)
+      }
     }
   }
 }

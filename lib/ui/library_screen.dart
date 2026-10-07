@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -20,8 +21,10 @@ import '../domain/text_normalizer.dart';
 import '../ocr/ocr_engine.dart';
 import '../platform/native_text.dart';
 import '../platform/open_file_bridge.dart';
+import '../platform/speech_transcriber.dart';
 import '../playback/tts_audio_handler.dart';
 import 'player_screen.dart';
+import 'recorder_screen.dart';
 import 'pronunciation_screen.dart';
 
 /// Versión mostrada en "Acerca de" (mantener igual que pubspec.yaml).
@@ -115,6 +118,56 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  final SpeechTranscriber _speech = NativeSpeechTranscriber();
+
+  /// Graba una clase o conversación, la transcribe en el dispositivo y la abre
+  /// como un documento más (se puede escuchar, buscar y resumir).
+  Future<void> _record() async {
+    final rec = await Navigator.of(context).push<RecordingResult>(
+      MaterialPageRoute(builder: (_) => const RecorderScreen()),
+    );
+    if (rec == null || !mounted) return;
+    setState(() {
+      _busy = true;
+      _busyLabel = 'Transcribiendo…';
+    });
+    try {
+      String text;
+      String? aviso;
+      try {
+        text = await _speech.transcribe(rec.path);
+        if (text.isEmpty) {
+          text = 'La grabación no contiene voz reconocible.';
+          aviso = 'No se reconoció voz en la grabación.';
+        }
+      } on TranscriptionUnavailable catch (e) {
+        text = 'Grabación sin transcripción. ${e.message}';
+        aviso = '${e.message} El audio se guardó.';
+      }
+      final now = DateTime.now();
+      String two(int n) => n.toString().padLeft(2, '0');
+      final name = 'Grabación ${two(now.day)}-${two(now.month)} ${two(now.hour)}.${two(now.minute)}.txt';
+      final entry = await widget.libraryStore.importFile(
+        originalName: name,
+        bytes: utf8.encode(text),
+      );
+      try {
+        // Se llama como la entrada: "Eliminar" borra también el audio.
+        await File(rec.path).copy('${widget.libraryStore.root.path}/${entry.id}.m4a');
+        await File(rec.path).delete();
+      } catch (_) {}
+      await widget.settingsStore.saveLastDocumentId(entry.id);
+      if (aviso != null && mounted) showSafeMessage(context, AppException(aviso));
+      if (!mounted) return;
+      setState(() => _busy = false);
+      await _openEntry(entry, recienImportado: true);
+    } catch (error) {
+      if (mounted) showSafeMessage(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   List<LibraryEntry> get _entries => widget.libraryStore.data.entries;
 
   LibraryEntry? get _continueEntry {
@@ -197,6 +250,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   onPressed: _busy ? null : _openFile,
                   icon: const Icon(Icons.folder_open),
                   label: Text(_busy ? _busyLabel : 'Abrir documento'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : _record,
+                  icon: const Icon(Icons.mic),
+                  label: const Text('Grabar clase o conversación'),
                 ),
                 const SizedBox(height: 8),
                 Row(
