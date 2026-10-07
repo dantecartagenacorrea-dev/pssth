@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 
 import '../data/library_store.dart';
 import '../data/settings_store.dart';
@@ -12,19 +10,10 @@ import '../domain/library_entry.dart';
 import '../domain/reading_position.dart';
 import '../domain/text_chunk.dart';
 import '../domain/voice_ranking.dart';
+import 'engines/apple_tts_engine.dart';
+import 'tts_engine.dart';
 
-class VoiceOption {
-  const VoiceOption({required this.name, required this.locale, this.quality});
-  final String name;
-  final String locale;
-  /// Calidad informada por el sistema (iOS: default/enhanced/premium).
-  final String? quality;
-  String get id => '$name|$locale';
-  String get label {
-    final q = quality == null || quality!.isEmpty || quality == 'default' ? '' : ' · ${quality!}';
-    return '$name ($locale)$q';
-  }
-}
+export 'tts_engine.dart' show VoiceOption;
 
 class PlayerSnapshot {
   const PlayerSnapshot({
@@ -75,11 +64,12 @@ class TtsAudioHandler extends BaseAudioHandler {
   TtsAudioHandler({
     required this.libraryStore,
     required this.settingsStore,
-  });
+    TtsEngine? engine,
+  }) : _tts = engine ?? AppleTtsEngine();
 
   final LibraryStore libraryStore;
   final SettingsStore settingsStore;
-  final FlutterTts _tts = FlutterTts();
+  final TtsEngine _tts;
   final ValueNotifier<PlayerSnapshot> snapshot = ValueNotifier(
     const PlayerSnapshot(
       title: '',
@@ -118,30 +108,17 @@ class TtsAudioHandler extends BaseAudioHandler {
     if (_ready) {
       return;
     }
-    await _tts.awaitSpeakCompletion(true);
-    _tts.setProgressHandler((String text, int start, int end, String word) {
+    _tts.onProgress = (String text, int start, int end) {
       final c = currentChunk;
       if (c == null || c.speech != text) return;
       wordRange.value = (start, end);
-    });
-    _tts.setErrorHandler((message) {
+    };
+    _tts.onError = (message) {
       _speaking = false;
       _refresh(playing: false, message: 'El motor de voz no está disponible.');
       _broadcastState(playing: false);
-    });
-    if (Platform.isIOS) {
-      try {
-        await _tts.setSharedInstance(true);
-        await _tts.setIosAudioCategory(
-          IosTextToSpeechAudioCategory.playback,
-          [
-            IosTextToSpeechAudioCategoryOptions.allowBluetooth,
-            IosTextToSpeechAudioCategoryOptions.allowBluetoothA2DP,
-            IosTextToSpeechAudioCategoryOptions.allowAirPlay,
-          ],
-        );
-      } catch (_) {}
-    }
+    };
+    await _tts.init();
     try {
       await _tts.setVolume(1.0); // máximo del motor; más alto solo con el volumen del sistema
     } catch (_) {}
@@ -235,7 +212,7 @@ class TtsAudioHandler extends BaseAudioHandler {
     );
     try {
       if (match.isNotEmpty) {
-        await _tts.setVoice({'name': match.first.name, 'locale': match.first.locale});
+        await _tts.setVoice(match.first);
         _activeVoice = match.first;
       } else {
         await _tts.setLanguage(lang);
@@ -246,26 +223,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   }
 
   Future<void> _loadVoices() async {
-    try {
-      final raw = await _tts.getVoices;
-      if (raw is List) {
-        _voices = raw
-            .whereType<Map>()
-            .map(
-              (m) => VoiceOption(
-                name: '${m['name'] ?? ''}',
-                locale: '${m['locale'] ?? ''}',
-                quality: m['quality'] == null ? null : '${m['quality']}',
-              ),
-            )
-            .where((v) => v.name.isNotEmpty)
-            .toList();
-        final seen = <String>{};
-        _voices = _voices.where((v) => seen.add(v.id)).toList();
-      }
-    } catch (_) {
-      _voices = [];
-    }
+    _voices = await _tts.voices();
   }
 
   Future<void> _applyVoice() async {
@@ -286,7 +244,7 @@ class TtsAudioHandler extends BaseAudioHandler {
       return;
     }
     try {
-      await _tts.setVoice({'name': _voiceName!, 'locale': _voiceLocale ?? ''});
+      await _tts.setVoice(VoiceOption(name: _voiceName!, locale: _voiceLocale ?? ''));
       _activeVoice = VoiceOption(name: _voiceName!, locale: _voiceLocale ?? '');
     } catch (_) {
       _voiceName = null;
@@ -297,7 +255,7 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   Future<void> _applySpeed() async {
     try {
-      await _tts.setSpeechRate(ttsRateFor(_speed));
+      await _tts.setRate(ttsRateFor(_speed));
     } catch (_) {}
   }
 
