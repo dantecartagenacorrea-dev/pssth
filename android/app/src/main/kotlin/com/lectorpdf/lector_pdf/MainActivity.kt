@@ -13,6 +13,9 @@ import java.io.File
 class MainActivity : AudioServiceActivity() {
     private var channel: MethodChannel? = null
     private var pending: Map<String, String>? = null
+    /// Dart ya escucha el canal (lo sabemos cuando pide "takePending").
+    /// Antes de eso un "opened" se perdería: el archivo se guarda como pendiente.
+    private var dartListo = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -20,7 +23,7 @@ class MainActivity : AudioServiceActivity() {
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "lector/open_file")
         channel?.setMethodCallHandler { call, result ->
             when (call.method) {
-                "takePending" -> { result.success(pending); pending = null }
+                "takePending" -> { dartListo = true; result.success(pending); pending = null }
                 else -> result.notImplemented()
             }
         }
@@ -49,7 +52,7 @@ class MainActivity : AudioServiceActivity() {
             } ?: return
             val payload = mapOf("path" to target.absolutePath, "name" to name)
             val ch = channel
-            if (ch != null) ch.invokeMethod("opened", payload) else pending = payload
+            if (ch != null && dartListo) ch.invokeMethod("opened", payload) else pending = payload
             // Evitar reabrir el mismo archivo al rotar/recrear la actividad.
             intent?.action = Intent.ACTION_MAIN
         } catch (_: Exception) {

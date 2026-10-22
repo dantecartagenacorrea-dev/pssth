@@ -48,6 +48,9 @@ final class OpenFileBridge: NSObject, FlutterPlugin {
   static let shared = OpenFileBridge()
   private var channel: FlutterMethodChannel?
   private var pending: [String: String]?
+  /// Dart ya escucha el canal (lo sabemos cuando pide "takePending").
+  /// Antes de eso un "opened" se perdería: el archivo queda pendiente.
+  private var dartListo = false
 
   static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "lector/open_file", binaryMessenger: registrar.messenger())
@@ -58,6 +61,7 @@ final class OpenFileBridge: NSObject, FlutterPlugin {
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
     case "takePending":
+      dartListo = true
       result(pending)
       pending = nil
     default:
@@ -78,7 +82,7 @@ final class OpenFileBridge: NSObject, FlutterPlugin {
       return
     }
     let payload = ["path": target.path, "name": name]
-    if let channel = channel {
+    if let channel = channel, dartListo {
       channel.invokeMethod("opened", arguments: payload)
     } else {
       pending = payload
