@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+
+import 'theme/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -95,11 +97,10 @@ class LectorPdfApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'LECTOR PDF',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1B4332)),
-        useMaterial3: true,
-      ),
+      title: 'PSSTH!',
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.system,
       home: LibraryScreen(
         handler: handler,
         libraryStore: libraryStore,

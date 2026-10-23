@@ -27,7 +27,14 @@ class PlayerScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('PSSTH!'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset('assets/branding/logo.png', height: 30),
+            const SizedBox(width: 8),
+            const Text('PSSTH!'),
+          ],
+        ),
         actions: [
           IconButton(
             tooltip: 'Agregar marcador',
@@ -83,150 +90,201 @@ class PlayerScreen extends StatelessWidget {
       body: ValueListenableBuilder<PlayerSnapshot>(
         valueListenable: handler.snapshot,
         builder: (context, state, _) {
+          final theme = Theme.of(context);
+          final gray = theme.colorScheme.secondary;
           return Center(
             child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-            child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  state.title.isEmpty ? entry.name : state.title,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  state.pageCount <= 0
-                      ? 'Página —'
-                      : 'Página ${state.pageIndex + 1} / ${state.pageCount}',
-                ),
-                const SizedBox(height: 12),
-                LinearProgressIndicator(value: state.hasText ? state.progress : 0),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: state.message == null && state.currentText.isNotEmpty
-                        ? _HighlightedText(handler: handler, text: state.currentText)
-                        : Text(
-                            state.message ?? 'Pulsa Play para escuchar.',
-                            style: Theme.of(context).textTheme.bodyLarge,
-                          ),
+              constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          entry.name.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          state.title.isEmpty ? entry.name : state.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.headlineSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          state.pageCount <= 0
+                              ? 'Página —'
+                              : 'Página ${state.pageIndex + 1} de ${state.pageCount}',
+                          style: TextStyle(fontSize: 15, color: gray),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    IconButton(
-                      tooltip: 'Página anterior',
-                      onPressed: state.hasText ? handler.previousPage : null,
-                      icon: const Icon(Icons.fast_rewind, size: 32),
-                    ),
-                    IconButton(
-                      tooltip: 'Frase anterior',
-                      onPressed: state.hasText ? handler.skipToPrevious : null,
-                      icon: const Icon(Icons.skip_previous, size: 36),
-                    ),
-                    IconButton(
-                      tooltip: state.playing ? 'Pausa' : 'Play',
-                      onPressed: !state.hasText
-                          ? null
-                          : () {
-                              if (state.playing) {
-                                handler.pause();
-                              } else {
-                                handler.play();
-                              }
-                            },
-                      icon: Icon(
-                        state.playing ? Icons.pause_circle : Icons.play_circle,
-                        size: 64,
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Frase siguiente',
-                      onPressed: state.hasText ? handler.skipToNext : null,
-                      icon: const Icon(Icons.skip_next, size: 36),
-                    ),
-                    IconButton(
-                      tooltip: 'Página siguiente',
-                      onPressed: state.hasText ? handler.nextPage : null,
-                      icon: const Icon(Icons.fast_forward, size: 32),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Text('Velocidad'),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButton<double>(
-                        isExpanded: true,
-                        value: state.speed,
-                        items: speeds
-                            .map(
-                              (s) => DropdownMenuItem(
-                                value: s,
-                                child: Text('$s×'),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            handler.setSpeed(value);
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                Row(
-                  children: [
-                    const Text('Voz'),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: DropdownButton<String>(
-                        isExpanded: true,
-                        value: _voiceValue(state),
-                        items: [
-                          const DropdownMenuItem(
-                            value: '',
-                            child: Text('Voz del sistema'),
-                          ),
-                          ...state.voices.map(
-                            (v) => DropdownMenuItem(
-                              value: v.id,
-                              child: Text(v.label, overflow: TextOverflow.ellipsis),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 22, 24, 16),
+                      child: state.message == null && state.currentText.isNotEmpty
+                          ? _HighlightedText(handler: handler, text: state.currentText)
+                          : Text(
+                              state.message ?? 'Pulsa Play para escuchar.',
+                              style: theme.textTheme.bodyLarge?.copyWith(color: gray),
                             ),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value == null || value.isEmpty) {
-                            handler.setVoice(null);
-                            return;
-                          }
-                          final voice = state.voices.where((v) => v.id == value);
-                          if (voice.isNotEmpty) {
-                            handler.setVoice(voice.first);
-                          }
-                        },
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+                    child: Card(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                        child: Column(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                minHeight: 4,
+                                value: state.hasText ? state.progress : 0,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                IconButton(
+                                  tooltip: 'Página anterior',
+                                  onPressed: state.hasText ? handler.previousPage : null,
+                                  icon: const Icon(Icons.skip_previous_rounded, size: 26),
+                                ),
+                                IconButton(
+                                  tooltip: 'Frase anterior',
+                                  onPressed: state.hasText ? handler.skipToPrevious : null,
+                                  icon: const Icon(Icons.replay_rounded, size: 28),
+                                ),
+                                _PlayButton(
+                                  playing: state.playing,
+                                  enabled: state.hasText,
+                                  onTap: () => state.playing ? handler.pause() : handler.play(),
+                                ),
+                                IconButton(
+                                  tooltip: 'Frase siguiente',
+                                  onPressed: state.hasText ? handler.skipToNext : null,
+                                  icon: const Icon(Icons.forward_rounded, size: 28),
+                                ),
+                                IconButton(
+                                  tooltip: 'Página siguiente',
+                                  onPressed: state.hasText ? handler.nextPage : null,
+                                  icon: const Icon(Icons.skip_next_rounded, size: 26),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _Pill(
+                                    label: 'Velocidad',
+                                    value: '${state.speed}×',
+                                    onTap: () => _pickSpeed(context, state),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _Pill(
+                                    label: 'Voz',
+                                    value: _voiceLabel(state),
+                                    onTap: () => _pickVoice(context, state),
+                                    onLongPress: () => _showVoiceHelp(context, state),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    IconButton(
-                      tooltip: 'Mejorar la voz',
-                      icon: const Icon(Icons.help_outline),
-                      onPressed: () => _showVoiceHelp(context, state),
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
-          )));
+          );
         },
       ),
     );
+  }
+
+  String _voiceLabel(PlayerSnapshot state) {
+    final id = _voiceValue(state);
+    if (id.isEmpty) return 'Sistema';
+    final v = state.voices.firstWhere((v) => v.id == id);
+    final label = v.label.split('(').first.trim();
+    return label.isEmpty ? v.label : label;
+  }
+
+  Future<void> _pickSpeed(BuildContext context, PlayerSnapshot state) async {
+    final v = await showModalBottomSheet<double>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final s in speeds)
+              ListTile(
+                title: Text('$s×'),
+                trailing: s == state.speed ? const Icon(Icons.check_rounded) : null,
+                onTap: () => Navigator.pop(ctx, s),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (v != null) handler.setSpeed(v);
+  }
+
+  Future<void> _pickVoice(BuildContext context, PlayerSnapshot state) async {
+    final current = _voiceValue(state);
+    final v = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: const Text('Voz del sistema'),
+              trailing: current.isEmpty ? const Icon(Icons.check_rounded) : null,
+              onTap: () => Navigator.pop(ctx, ''),
+            ),
+            for (final voice in state.voices)
+              ListTile(
+                title: Text(voice.label, overflow: TextOverflow.ellipsis),
+                trailing: voice.id == current ? const Icon(Icons.check_rounded) : null,
+                onTap: () => Navigator.pop(ctx, voice.id),
+              ),
+            ListTile(
+              leading: const Icon(Icons.help_outline_rounded),
+              title: const Text('Mejorar la voz'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showVoiceHelp(context, state);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+    if (v == null) return;
+    if (v.isEmpty) {
+      handler.setVoice(null);
+      return;
+    }
+    final voice = state.voices.where((x) => x.id == v);
+    if (voice.isNotEmpty) handler.setVoice(voice.first);
   }
 
   /// Cómo conseguir gratis voces de mayor calidad (son del sistema, no de Lector).
@@ -310,6 +368,67 @@ class _HighlightedText extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+
+class _PlayButton extends StatelessWidget {
+  const _PlayButton({required this.playing, required this.enabled, required this.onTap});
+  final bool playing;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = Theme.of(context).colorScheme.surface;
+    final bg = Theme.of(context).colorScheme.onSurface;
+    return Semantics(
+      button: true,
+      label: playing ? 'Pausa' : 'Play',
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 150),
+        opacity: enabled ? 1 : 0.35,
+        child: Material(
+          color: bg,
+          shape: const CircleBorder(),
+          elevation: 6,
+          shadowColor: Colors.black26,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: enabled ? onTap : null,
+            child: SizedBox(
+              width: 72,
+              height: 72,
+              child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 34, color: fg),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({required this.label, required this.value, required this.onTap, this.onLongPress});
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final gray = Theme.of(context).colorScheme.secondary;
+    return FilledButton(
+      onPressed: onTap,
+      onLongPress: onLongPress,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: TextStyle(color: gray, fontWeight: FontWeight.w400)),
+          Flexible(child: Text(value, overflow: TextOverflow.ellipsis)),
+        ],
+      ),
     );
   }
 }

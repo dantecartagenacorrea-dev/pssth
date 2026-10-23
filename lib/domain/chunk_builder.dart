@@ -1,6 +1,7 @@
 import 'chunker.dart';
 import 'text_chunk.dart';
 import 'text_normalizer.dart';
+import '../services/transcript_cleaner.dart';
 
 /// Convierte textos de página (ya limpios) en bloques para TTS.
 List<TextChunk> buildChunks({
@@ -9,8 +10,10 @@ List<TextChunk> buildChunks({
   required TextNormalizer normalizer,
 }) {
   final chunks = <TextChunk>[];
+  final cleaner = TranscriptCleaner.instance;
+  final context = pages.join('\n');
   for (var i = 0; i < pages.length; i++) {
-    final parts = splitPageText(pages[i]);
+    final parts = splitPageText(cleaner.clean(pages[i], context: context));
     for (var c = 0; c < parts.length; c++) {
       chunks.add(
         TextChunk(
