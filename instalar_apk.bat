@@ -29,7 +29,12 @@ if errorlevel 1 (
 
 echo Instalando...
 "%ADB%" install -r "%APK%"
-if errorlevel 1 ( echo Fallo la instalacion. & pause & exit /b 1 )
+if errorlevel 1 (
+  echo La version anterior tiene otra firma: se desinstala y se instala de nuevo.
+  "%ADB%" uninstall com.lectorpdf.lectorPdf >nul 2>&1
+  "%ADB%" install "%APK%"
+  if errorlevel 1 ( echo Fallo la instalacion. & pause & exit /b 1 )
+)
 
 echo Copiando PDF de prueba y abriendo Lector...
 "%ADB%" push "pruebas\1_pdf_texto_es.pdf" /sdcard/Download/ >nul
