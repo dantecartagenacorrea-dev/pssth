@@ -1,13 +1,13 @@
-# Ficha de App Store — Lector
+# Ficha de App Store — PSSTH!
 
 ## Nombre
-Lector
+PSSTH!
 
 ## Subtítulo (30 caracteres máx.)
 Escucha tus documentos
 
 ## Descripción
-Lector convierte cualquier documento en una experiencia de audiolibro: abre un PDF, una foto, un texto o un EPUB, pulsa Play y escucha.
+PSSTH! convierte cualquier documento en una experiencia de audiolibro: abre un PDF, una foto, un texto o un EPUB, pulsa Play y escucha.
 
 - Lee PDFs con texto y PDFs escaneados (reconocimiento de texto en el dispositivo).
 - Fotos y capturas: apunta con la cámara a una hoja y escúchala.
@@ -32,7 +32,7 @@ Productividad (secundaria: Educación)
 4+
 
 ## Privacidad de la app (cuestionario de App Store Connect)
-Datos recopilados: **Ninguno** ("Data Not Collected"). Lector no recopila datos vinculados ni no vinculados al usuario y no realiza seguimiento.
+Datos recopilados: **Ninguno** ("Data Not Collected"). PSSTH! no recopila datos vinculados ni no vinculados al usuario y no realiza seguimiento.
 
 ## URL de política de privacidad
 Publicar tienda/PRIVACIDAD.md en una página pública (por ejemplo GitHub Pages de un repositorio público pequeño) y usar esa URL.
@@ -49,8 +49,8 @@ Necesarias: iPhone 6,7" (1290×2796) y opcionalmente 6,5". Tomarlas en el iPhone
 5. Capítulos o marcadores.
 
 ## Notas para la revisión de Apple
-La app no requiere cuenta. Para probar: abrir cualquier PDF desde Archivos con "Abrir en Lector" y pulsar Play. El permiso de cámara/fotos solo se solicita al usar esas funciones.
+La app no requiere cuenta. Para probar: abrir cualquier PDF desde Archivos con "Abrir en PSSTH!" y pulsar Play. El permiso de cámara/fotos solo se solicita al usar esas funciones.
 
 ## Texto de los permisos (ya en Info.plist)
-- NSCameraUsageDescription: "Lector usa la cámara para fotografiar páginas y leerlas en voz alta. Las fotos se procesan solo en tu dispositivo."
-- NSPhotoLibraryUsageDescription: "Lector necesita acceder a tus fotos para leer en voz alta el texto de una imagen. Se procesa solo en tu dispositivo."
+- NSCameraUsageDescription: "PSSTH! usa la cámara para fotografiar páginas y leerlas en voz alta. Las fotos se procesan solo en tu dispositivo."
+- NSPhotoLibraryUsageDescription: "PSSTH! necesita acceder a tus fotos para leer en voz alta el texto de una imagen. Se procesa solo en tu dispositivo."

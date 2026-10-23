@@ -366,7 +366,7 @@ Future<void> showShareAudioSheet(
     final titulo = dot > 0 ? entry.name.substring(0, dot) : entry.name;
     await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {
       'path': path,
-      'text': 'Fragmento de "$titulo" leído con Lector',
+      'text': 'Fragmento de "$titulo" leído con PSSTH!',
     });
   } catch (error) {
     if (context.mounted) _snack(context, '$error');

@@ -237,7 +237,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Lector'),
+        title: const Text('PSSTH!'),
         actions: [
           IconButton(
             tooltip: 'Pronunciación',
@@ -265,7 +265,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               if (v == 'acerca') {
                 showAboutDialog(
                   context: context,
-                  applicationName: 'Lector',
+                  applicationName: 'PSSTH!',
                   applicationVersion: kAppVersion,
                   applicationLegalese:
                       'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo; '
