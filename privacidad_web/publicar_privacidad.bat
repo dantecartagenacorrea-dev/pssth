@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-set URL=https://github.com/dantecartagenacorrea-dev/lector-privacidad.git
+set URL=https://github.com/dantecartagenacorrea-dev/pssth-privacidad.git
 > publicar_privacidad.log echo === privacidad ===
 git init >> publicar_privacidad.log 2>&1
 git branch -M main >> publicar_privacidad.log 2>&1
