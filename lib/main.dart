@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 
+import 'services/llm_cleaner.dart';
 import 'theme/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -21,6 +22,7 @@ import 'ui/library_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LlmCleaner.instance.load();
   await pdfrxFlutterInitialize();
 
   final libraryStore = LibraryStore();

@@ -25,6 +25,7 @@ import '../platform/open_file_bridge.dart';
 import '../platform/speech_transcriber.dart';
 import '../platform/whisper_transcriber.dart';
 import '../playback/tts_audio_handler.dart';
+import '../services/llm_cleaner.dart';
 import 'player_screen.dart';
 import 'recorder_screen.dart';
 import 'voices_screen.dart';
@@ -262,6 +263,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ),
                 );
               }
+              if (v == 'ia') {
+                _showLlmSettings(context);
+              }
               if (v == 'acerca') {
                 showAboutDialog(
                   context: context,
@@ -277,6 +281,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'voces', child: Text('Voces y modelos')),
+              PopupMenuItem(value: 'ia', child: Text('Corrección avanzada (IA local)')),
               PopupMenuItem(value: 'acerca', child: Text('Acerca de Lector y licencias')),
             ],
           ),
@@ -511,6 +516,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final updated = widget.libraryStore.byId(entry.id) ?? entry;
       await widget.settingsStore.saveLastDocumentId(updated.id);
 
+      if (LlmCleaner.instance.ready && mounted) {
+        setState(() => _busyLabel = 'Corrigiendo con IA local…');
+        final fixed = await LlmCleaner.instance.cleanPages(
+          doc.pages,
+          onProgress: (d, t) {
+            if (mounted) setState(() => _busyLabel = 'Corrigiendo con IA local… $d/$t');
+          },
+        );
+        doc.pages
+          ..clear()
+          ..addAll(fixed);
+      }
       var chunks = _chunksFor(updated, doc, _normalizer);
       String? notice;
       final firstOcr = Completer<void>();
@@ -605,4 +622,64 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final lang = await _native.detectLanguage(sample) ?? detectLanguageHeuristic(sample);
     await widget.handler.applyDocumentLanguage(lang);
   }
+}
+
+
+Future<void> _showLlmSettings(BuildContext context) async {
+  final llm = LlmCleaner.instance;
+  await llm.load();
+  final urlCtl = TextEditingController(text: llm.url.isEmpty ? 'http://192.168.1.10:11434' : llm.url);
+  final modelCtl = TextEditingController(text: llm.model);
+  var on = llm.enabled;
+  String? status;
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setS) => AlertDialog(
+        title: const Text('Corrección avanzada (IA local)'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Usa un modelo Ollama en tu PC (misma red) para corregir errores nuevos. '
+              'Si no responde, se lee el texto sin esta capa.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Activar'),
+              value: on,
+              onChanged: (v) => setS(() => on = v),
+            ),
+            TextField(controller: urlCtl, decoration: const InputDecoration(labelText: 'URL de Ollama')),
+            TextField(controller: modelCtl, decoration: const InputDecoration(labelText: 'Modelo')),
+            if (status != null) ...[
+              const SizedBox(height: 8),
+              Text(status!, style: const TextStyle(fontSize: 12)),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await llm.save(url: urlCtl.text, model: modelCtl.text, enabled: on);
+              final e = await llm.ping();
+              setS(() => status = e == null ? 'Conectado ✓' : 'Sin conexión: $e');
+            },
+            child: const Text('Probar'),
+          ),
+          TextButton(
+            onPressed: () async {
+              await llm.save(url: urlCtl.text, model: modelCtl.text, enabled: on);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
