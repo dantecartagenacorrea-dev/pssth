@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-set URL=https://github.com/cartagenacorrealimitada-cell/lector.git
+set URL=https://github.com/dantecartagenacorrea-dev/lector.git
 > publicar.log echo === publicar ===
 git --version >> publicar.log 2>&1
 git init >> publicar.log 2>&1

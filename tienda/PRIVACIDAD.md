@@ -24,4 +24,4 @@ El OCR y la síntesis de voz usan las capacidades del sistema operativo de tu di
 Al eliminar un documento de la biblioteca se borran su copia local, el texto reconocido, el progreso y los marcadores. Al desinstalar la aplicación se eliminan todos sus datos.
 
 ## Contacto
-cartagenacorrealimitada@gmail.com
+dantecartagenacorrea@gmail.com
