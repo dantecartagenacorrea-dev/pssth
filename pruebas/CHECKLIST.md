@@ -1,5 +1,5 @@
-# Checklist de prueba en iPhone
-Copia esta carpeta a la app Archivos del iPhone y abre cada archivo desde Lector.
+# Checklist de prueba en dispositivo real (iPhone o tablet Android)
+Copia esta carpeta a la app Archivos / Descargas y abre cada archivo desde PSSTH!.
 1. 1_pdf_texto_es.pdf: Play, voz en español; 13% -> "13 por ciento"; Bs -> bolivianos; Art. -> Artículo; no lee encabezado ni número de página.
 2. 2_pdf_texto_en.pdf: detecta inglés y usa voz inglesa.
 3. 3_pdf_escaneado.pdf: OCR progresivo; suena antes de terminar. Reabrir: no repite OCR (caché).
@@ -12,5 +12,8 @@ Copia esta carpeta a la app Archivos del iPhone y abre cada archivo desde Lector
 10. Pantalla bloqueada: Play, bloquear, sigue sonando; controles en bloqueo y auriculares.
 11. Cerrar y reabrir: continúa donde quedó. Marcador, búsqueda, temporizador, exportar texto.
 12. Cámara: foto de una hoja impresa -> OCR -> Play.
-13. VoiceOver y texto grande.
+13. VoiceOver / TalkBack y texto grande.
+14. Compartir fragmento en audio: ⋮ → frase actual → WhatsApp; llega y se reproduce (iPhone: M4A). Probar también "página actual" y con voz natural instalada.
+15. Primera frase: anotar segundos desde Play hasta que suena (voz del sistema) y con voz natural (Kokoro).
+16. Abrir desde otra app (Archivos / WhatsApp → "Abrir con PSSTH!") con la app cerrada: debe abrir ese archivo, no el último.
 Anota qué falla y pásamelo.
