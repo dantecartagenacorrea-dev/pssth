@@ -121,6 +121,14 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   }
 
   @override
+  Future<String?> renderToFile(String text, String path) async {
+    if (_worker == null) return null;
+    final target = path.replaceFirst(RegExp(r'\.[A-Za-z0-9]+$'), '.wav');
+    await File(target).writeAsBytes(await synthesize(text), flush: true);
+    return target;
+  }
+
+  @override
   void prefetch(List<String> upcoming) {
     if (_worker == null || _tooSlow) return;
     for (final t in upcoming.take(2)) {

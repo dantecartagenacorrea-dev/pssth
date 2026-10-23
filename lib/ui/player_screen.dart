@@ -65,6 +65,8 @@ class PlayerScreen extends StatelessWidget {
                   showSummarySheet(context, handler);
                 case 'exportar':
                   exportText(context, handler, entry);
+                case 'compartir':
+                  showShareAudioSheet(context, handler, entry);
               }
             },
             itemBuilder: (_) => const [
@@ -73,6 +75,7 @@ class PlayerScreen extends StatelessWidget {
               PopupMenuItem(value: 'marcadores', child: Text('Marcadores')),
               PopupMenuItem(value: 'resumen', child: Text('Resumen del texto')),
               PopupMenuItem(value: 'exportar', child: Text('Exportar texto')),
+              PopupMenuItem(value: 'compartir', child: Text('Compartir fragmento en audio')),
             ],
           ),
         ],

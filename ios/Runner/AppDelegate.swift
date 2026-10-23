@@ -25,6 +25,9 @@ import AVFoundation
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "OpenFileBridge") {
       OpenFileBridge.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AudioExportBridge") {
+      AudioExportBridge.register(with: registrar)
+    }
   }
 
   /// "Abrir en Lector" desde Archivos, Mail, Safari, hoja Compartir...
@@ -224,6 +227,39 @@ final class SpeechBridge: NSObject {
         }
       default:
         result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+}
+
+/// Convierte un audio local (CAF/WAV de la voz del sistema o de Kokoro) a M4A
+/// para compartirlo como nota de voz. Canal "lector/audio_export", método "toM4a".
+final class AudioExportBridge: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "lector/audio_export", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(AudioExportBridge(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "toM4a",
+          let args = call.arguments as? [String: Any],
+          let path = args["path"] as? String,
+          let out = args["out"] as? String else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+    guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+      result(nil)
+      return
+    }
+    let outURL = URL(fileURLWithPath: out)
+    try? FileManager.default.removeItem(at: outURL)
+    session.outputURL = outURL
+    session.outputFileType = .m4a
+    session.exportAsynchronously {
+      DispatchQueue.main.async {
+        result(session.status == .completed ? out : nil)
       }
     }
   }

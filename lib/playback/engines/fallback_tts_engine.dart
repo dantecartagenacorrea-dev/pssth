@@ -230,6 +230,20 @@ class FallbackTtsEngine extends TtsEngine {
   }
 
   @override
+  Future<String?> renderToFile(String text, String path) async {
+    if (!usingFallback) {
+      try {
+        final r = await primary.renderToFile(text, path);
+        if (r != null) return r;
+      } catch (e) {
+        await _disablePrimary(e);
+      }
+    }
+    await _initFallback();
+    return fallback.renderToFile(text, path);
+  }
+
+  @override
   Future<void> pause() => _active.pause();
 
   @override

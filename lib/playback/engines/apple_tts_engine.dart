@@ -1,4 +1,4 @@
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -16,6 +16,9 @@ class AppleTtsEngine extends TtsEngine {
   @override
   Future<void> init() async {
     await _tts.awaitSpeakCompletion(true);
+    try {
+      await _tts.awaitSynthCompletion(true);
+    } catch (_) {}
     _tts.setProgressHandler((String text, int start, int end, String word) {
       onProgress?.call(text, start, end);
     });
@@ -72,6 +75,17 @@ class AppleTtsEngine extends TtsEngine {
 
   @override
   Future<void> speak(String text) => _tts.speak(text);
+
+  @override
+  Future<String?> renderToFile(String text, String path) async {
+    // iOS escribe CAF; Android, WAV. La extensión la decide la plataforma.
+    final target = Platform.isIOS
+        ? path.replaceFirst(RegExp(r'\.[A-Za-z0-9]+$'), '.caf')
+        : path.replaceFirst(RegExp(r'\.[A-Za-z0-9]+$'), '.wav');
+    final r = await _tts.synthesizeToFile(text, target, true);
+    if (r != 1) return null;
+    return File(target).existsSync() ? target : null;
+  }
 
   @override
   Future<void> pause() => _tts.pause();

@@ -79,4 +79,24 @@ void main() {
     expect(engine.prefetched.last, isEmpty);
     tmp.deleteSync(recursive: true);
   });
+
+  test('shareText devuelve la frase actual o toda la página', () async {
+    SharedPreferences.setMockInitialValues({});
+    final tmp = Directory.systemTemp.createTempSync('lib');
+    final store = LibraryStore();
+    await store.initAt(tmp);
+    final h = TtsAudioHandler(libraryStore: store, settingsStore: SettingsStore(), engine: RecEngine());
+    await h.setup();
+    expect(h.shareText(), '');
+    final entry = LibraryEntry(id: 'd', name: 'd.txt', storedPath: '', pageCount: 2, totalChunks: 3);
+    await store.upsert(entry);
+    await h.loadDocument(entry: entry, chunks: [
+      TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 0, text: 'Uno.'),
+      TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 1, text: 'Dos.'),
+      TextChunk(documentId: 'd', pageIndex: 1, chunkIndex: 0, text: 'Tres.'),
+    ]);
+    expect(h.shareText(), 'Uno.');
+    expect(h.shareText(wholePage: true), 'Uno. Dos.');
+    tmp.deleteSync(recursive: true);
+  });
 }

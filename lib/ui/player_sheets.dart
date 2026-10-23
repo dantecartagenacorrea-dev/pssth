@@ -1,9 +1,14 @@
 import 'dart:convert';
+import 'dart:io' show File, Platform;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show MethodChannel;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
+import '../core/app_exception.dart';
 import '../data/bookmark_store.dart';
 import '../domain/library_entry.dart';
 import '../domain/search.dart';
@@ -304,4 +309,76 @@ Future<void> showSummarySheet(BuildContext context, TtsAudioHandler handler) asy
     ),
   );
   await handler.stopAside();
+}
+
+/// "Compartir fragmento en audio": sintetiza la frase o la página actual con
+/// la voz activa y la ofrece por la hoja Compartir (WhatsApp, Mensajes…).
+/// Todo local: el audio se genera en el dispositivo y se borra al terminar.
+Future<void> showShareAudioSheet(
+  BuildContext context,
+  TtsAudioHandler handler,
+  LibraryEntry entry,
+) async {
+  if (handler.shareText().isEmpty) {
+    _snack(context, 'No hay texto para compartir.');
+    return;
+  }
+  final wholePage = await showModalBottomSheet<bool>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ListTile(title: Text('Compartir como nota de voz')),
+          ListTile(
+            leading: const Icon(Icons.short_text),
+            title: const Text('La frase actual'),
+            onTap: () => Navigator.pop(ctx, false),
+          ),
+          ListTile(
+            leading: const Icon(Icons.article_outlined),
+            title: const Text('La página actual'),
+            onTap: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (wholePage == null || !context.mounted) return;
+  _snack(context, 'Preparando el audio…');
+  String? path;
+  String? original;
+  try {
+    final dir = await getTemporaryDirectory();
+    final base = '${dir.path}/lector_fragmento_${DateTime.now().millisecondsSinceEpoch}';
+    path = await handler.renderShareAudio('$base.wav', wholePage: wholePage);
+    if (path == null) throw AppException('Esta voz no permite guardar audio. Elige otra voz e inténtalo de nuevo.');
+    if (Platform.isIOS) {
+      // CAF/WAV no viajan bien como nota de voz; iOS los convierte a M4A.
+      final m4a = await const MethodChannel('lector/audio_export')
+          .invokeMethod<String>('toM4a', {'path': path, 'out': '$base.m4a'});
+      if (m4a != null && m4a.isNotEmpty) {
+        original = path;
+        path = m4a;
+      }
+    }
+    if (!context.mounted) return;
+    final dot = entry.name.lastIndexOf('.');
+    final titulo = dot > 0 ? entry.name.substring(0, dot) : entry.name;
+    final box = context.findRenderObject() as RenderBox?;
+    await SharePlus.instance.share(ShareParams(
+      files: [XFile(path)],
+      text: 'Fragmento de "$titulo" leído con Lector',
+      sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
+    ));
+  } catch (error) {
+    if (context.mounted) _snack(context, '$error');
+  } finally {
+    for (final p in [path, original]) {
+      if (p == null) continue;
+      try {
+        await File(p).delete();
+      } catch (_) {}
+    }
+  }
 }

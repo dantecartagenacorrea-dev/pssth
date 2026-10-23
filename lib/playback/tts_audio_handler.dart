@@ -484,6 +484,29 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   List<Chapter> chapters = [];
   List<TextChunk> get chunks => _chunks;
+
+  /// Texto (listo para la voz) de lo que se está leyendo: la frase actual o,
+  /// con [wholePage], toda la página actual. Vacío si no hay documento.
+  String shareText({bool wholePage = false}) {
+    if (_chunks.isEmpty) return '';
+    final c = _chunks[_index];
+    if (!wholePage) return c.speech.trim();
+    return _chunks
+        .where((x) => x.pageIndex == c.pageIndex)
+        .map((x) => x.speech.trim())
+        .where((t) => t.isNotEmpty)
+        .join(' ');
+  }
+
+  /// Sintetiza la frase o la página actual con la voz activa en un archivo de
+  /// audio (sin reproducirlo) para compartirlo. Pausa la lectura si estaba
+  /// sonando. Devuelve la ruta escrita o `null` si el motor no puede.
+  Future<String?> renderShareAudio(String path, {bool wholePage = false}) async {
+    final text = shareText(wholePage: wholePage);
+    if (text.isEmpty) return null;
+    if (_speaking) await pause();
+    return _tts.renderToFile(text, path);
+  }
   TextChunk? get currentChunk => _chunks.isEmpty ? null : _chunks[_index];
 
   Future<void> jumpToIndex(int index) async {

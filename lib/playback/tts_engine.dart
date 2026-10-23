@@ -43,6 +43,11 @@ abstract class TtsEngine {
   /// los preparan; el resto lo ignora).
   void prefetch(List<String> upcoming) {}
 
+  /// Sintetiza [text] en un archivo de audio en [path] (sin reproducirlo) y
+  /// devuelve la ruta real escrita (la extensión puede cambiar según el motor:
+  /// .wav en Android/Kokoro, .caf en iOS). `null` = el motor no sabe hacerlo.
+  Future<String?> renderToFile(String text, String path) async => null;
+
   Future<void> pause();
   Future<void> stop();
   Future<void> dispose();

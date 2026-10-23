@@ -3,12 +3,14 @@ import 'package:lector_pdf/playback/engines/fallback_tts_engine.dart';
 import 'package:lector_pdf/playback/tts_engine.dart';
 
 class FakeEngine extends TtsEngine {
-  FakeEngine(this.id, {this.failInit = false, this.failSpeak = false, this.locales = const ['es-ES']});
+  FakeEngine(this.id, {this.failInit = false, this.failSpeak = false, this.locales = const ['es-ES'], this.renders = true});
   @override
   final String id;
   final bool failInit;
   bool failSpeak;
   final List<String> locales;
+  final bool renders;
+  final rendered = <String>[];
   final spoken = <String>[];
   final prefetched = <List<String>>[];
   final calls = <String>[];
@@ -42,6 +44,13 @@ class FakeEngine extends TtsEngine {
   }
 
   @override
+  Future<String?> renderToFile(String text, String path) async {
+    if (!renders) return null;
+    rendered.add(text);
+    return '$path.$id';
+  }
+
+  @override
   Future<void> pause() async {}
   @override
   Future<void> stop() async {}
@@ -50,6 +59,28 @@ class FakeEngine extends TtsEngine {
 }
 
 void main() {
+  group('renderToFile (compartir audio)', () {
+    test('usa el motor activo y, si no sabe, el del sistema', () async {
+      final p = FakeEngine('kokoro', renders: false);
+      final f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+      await e.setVoice(const VoiceOption(name: 'kokoro-es-ES', locale: 'es-ES'));
+      expect(await e.renderToFile('hola', '/t/x.wav'), '/t/x.wav.apple');
+      expect(f.rendered, ['hola']);
+    });
+
+    test('con voz natural activa renderiza con ella', () async {
+      final p = FakeEngine('kokoro');
+      final f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+      await e.setVoice(const VoiceOption(name: 'kokoro-es-ES', locale: 'es-ES'));
+      expect(await e.renderToFile('hola', '/t/x.wav'), '/t/x.wav.kokoro');
+      expect(f.rendered, isEmpty);
+    });
+  });
+
   test('usa el motor primario si funciona', () async {
     final p = FakeEngine('neural'), f = FakeEngine('apple');
     final e = FallbackTtsEngine(primary: p, fallback: f);
