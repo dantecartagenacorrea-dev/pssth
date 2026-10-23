@@ -30,6 +30,10 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // Sin recorte de código ni recursos: R8 rompía librerías nativas
+            // (sherpa-onnx/JNI, ML Kit) y la app se cerraba al abrir en dispositivos reales.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
