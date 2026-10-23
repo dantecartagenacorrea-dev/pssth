@@ -2,8 +2,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lector_pdf/domain/chunk_builder.dart';
 import 'package:lector_pdf/domain/page_cleaner.dart';
 import 'package:lector_pdf/domain/text_normalizer.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  // buildChunks pasa por TranscriptCleaner, que lee SharedPreferences.
+  TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
   test('quita encabezado repetido y número de página', () {
     const words = ['alfa', 'beta', 'gamma', 'delta', 'epsilon', 'zeta'];
     final pages = List.generate(

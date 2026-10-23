@@ -20,6 +20,8 @@ PSSTH! convierte cualquier documento en una experiencia de audiolibro: abre un P
 
 Privacidad total: todo se procesa en tu dispositivo. Sin cuentas, sin Internet, sin anuncios.
 
+Opcional para usuarios avanzados: corrección del texto con un modelo Ollama en tu propio ordenador, dentro de tu red (desactivada por defecto).
+
 Nota: el reconocimiento de texto y la voz pueden contener errores; consulta el documento original para cualquier uso formal.
 
 ## Palabras clave (100 caracteres máx.)
@@ -32,7 +34,7 @@ Productividad (secundaria: Educación)
 4+
 
 ## Privacidad de la app (cuestionario de App Store Connect)
-Datos recopilados: **Ninguno** ("Data Not Collected"). PSSTH! no recopila datos vinculados ni no vinculados al usuario y no realiza seguimiento.
+Datos recopilados: **Ninguno** ("Data Not Collected"). PSSTH! no recopila datos vinculados ni no vinculados al usuario y no realiza seguimiento. La corrección opcional con Ollama envía texto solo al servidor que el usuario configura (normalmente su propio ordenador); el desarrollador no recibe esos datos.
 
 ## URL de política de privacidad
 Publicar tienda/PRIVACIDAD.md en una página pública (por ejemplo GitHub Pages de un repositorio público pequeño) y usar esa URL.
@@ -49,8 +51,9 @@ Necesarias: iPhone 6,7" (1290×2796) y opcionalmente 6,5". Tomarlas en el iPhone
 5. Capítulos o marcadores.
 
 ## Notas para la revisión de Apple
-La app no requiere cuenta. Para probar: abrir cualquier PDF desde Archivos con "Abrir en PSSTH!" y pulsar Play. El permiso de cámara/fotos solo se solicita al usar esas funciones.
+La app no requiere cuenta. Para probar: abrir cualquier PDF desde Archivos con "Abrir en PSSTH!" y pulsar Play. El permiso de cámara/fotos solo se solicita al usar esas funciones. La "Corrección avanzada (IA local)" está desactivada por defecto, necesita un servidor Ollama propio del usuario en su red y no es necesaria para probar la app; el permiso de red local solo se solicita al activarla.
 
 ## Texto de los permisos (ya en Info.plist)
 - NSCameraUsageDescription: "PSSTH! usa la cámara para fotografiar páginas y leerlas en voz alta. Las fotos se procesan solo en tu dispositivo."
 - NSPhotoLibraryUsageDescription: "PSSTH! necesita acceder a tus fotos para leer en voz alta el texto de una imagen. Se procesa solo en tu dispositivo."
+- NSLocalNetworkUsageDescription: "PSSTH! se conecta a tu propio ordenador en la red local solo si activas la corrección avanzada con Ollama."
