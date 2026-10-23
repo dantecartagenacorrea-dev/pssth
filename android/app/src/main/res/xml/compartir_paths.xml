@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Carpeta temporal desde la que Lector comparte audios generados. -->
+<paths>
+    <cache-path name="compartir" path="." />
+</paths>

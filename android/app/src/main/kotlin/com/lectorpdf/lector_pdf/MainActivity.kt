@@ -27,6 +27,25 @@ class MainActivity : AudioServiceActivity() {
                 else -> result.notImplemented()
             }
         }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "lector/share").setMethodCallHandler { call, result ->
+            if (call.method != "shareFile") { result.notImplemented(); return@setMethodCallHandler }
+            try {
+                val path = call.argument<String>("path")!!
+                val text = call.argument<String>("text") ?: ""
+                val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.compartir", File(path))
+                val mime = if (path.endsWith(".wav")) "audio/wav" else "audio/*"
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = mime
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    if (text.isNotEmpty()) putExtra(Intent.EXTRA_TEXT, text)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(send, "Compartir audio"))
+                result.success(true)
+            } catch (e: Exception) {
+                result.error("share", e.message, null)
+            }
+        }
         handleIntent(intent)
     }
 

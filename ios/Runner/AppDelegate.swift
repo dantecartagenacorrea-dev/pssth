@@ -28,6 +28,9 @@ import AVFoundation
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "AudioExportBridge") {
       AudioExportBridge.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ShareBridge") {
+      ShareBridge.register(with: registrar)
+    }
   }
 
   /// "Abrir en Lector" desde Archivos, Mail, Safari, hoja Compartir...
@@ -261,6 +264,41 @@ final class AudioExportBridge: NSObject, FlutterPlugin {
       DispatchQueue.main.async {
         result(session.status == .completed ? out : nil)
       }
+    }
+  }
+}
+
+/// Hoja Compartir del sistema para un archivo local. Canal "lector/share", método "shareFile".
+final class ShareBridge: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "lector/share", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(ShareBridge(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "shareFile",
+          let args = call.arguments as? [String: Any],
+          let path = args["path"] as? String else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    var items: [Any] = [URL(fileURLWithPath: path)]
+    if let text = args["text"] as? String, !text.isEmpty { items.append(text) }
+    DispatchQueue.main.async {
+      guard let root = UIApplication.shared.connectedScenes
+        .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+        .first?.rootViewController else {
+        result(false)
+        return
+      }
+      let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+      if let pop = vc.popoverPresentationController {
+        pop.sourceView = root.view
+        pop.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 1, height: 1)
+        pop.permittedArrowDirections = []
+      }
+      vc.completionWithItemsHandler = { _, _, _, _ in result(true) }
+      root.present(vc, animated: true)
     }
   }
 }

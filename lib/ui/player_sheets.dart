@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../core/app_exception.dart';
 import '../data/bookmark_store.dart';
@@ -365,12 +364,10 @@ Future<void> showShareAudioSheet(
     if (!context.mounted) return;
     final dot = entry.name.lastIndexOf('.');
     final titulo = dot > 0 ? entry.name.substring(0, dot) : entry.name;
-    final box = context.findRenderObject() as RenderBox?;
-    await SharePlus.instance.share(ShareParams(
-      files: [XFile(path)],
-      text: 'Fragmento de "$titulo" leído con Lector',
-      sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
-    ));
+    await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {
+      'path': path,
+      'text': 'Fragmento de "$titulo" leído con Lector',
+    });
   } catch (error) {
     if (context.mounted) _snack(context, '$error');
   } finally {
