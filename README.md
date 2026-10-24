@@ -1,4 +1,6 @@
-# Lector (lector_pdf)
+<img src="assets/icon.png" width="80" align="left" style="margin-right:16px">
+
+# PSSTH! (lector_pdf)
 
 Convierte PDF, EPUB, imágenes, TXT y grabaciones en audio. Todo local, offline y sin coste: sin servidores, cuentas ni analítica.
 
