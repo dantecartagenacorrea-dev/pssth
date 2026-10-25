@@ -1,5 +1,9 @@
 # Ficha de App Store — PSSTH!
 
+![PSSTH!](logo_horizontal.png)
+
+Icono: `assets/icon.png` (1024×1024). Logo horizontal: `tienda/logo_horizontal.png`. Fuente vectorial: `assets/logo.svg`, `assets/logo_horizontal.svg`. Colores: fondo #1F3A4A, labios #C2603A, dedo #F3EBDD, acento #E8A77C.
+
 ## Nombre
 PSSTH!
 
