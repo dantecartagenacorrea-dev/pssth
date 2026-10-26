@@ -12,10 +12,17 @@ on:
         default: true
 jobs:
   build:
-    runs-on: macos-latest
-    timeout-minutes: 45
+    # Intel: los Mac arm64 (macos-latest) no estaban disponibles por capacidad.
+    runs-on: macos-15-intel
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+      - name: Usar Xcode 26 (App Store exige el SDK de iOS 26)
+        run: |
+          XC=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XC" ]; then echo "::error::Esta imagen no tiene Xcode 26"; ls -d /Applications/Xcode*.app; exit 1; fi
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
