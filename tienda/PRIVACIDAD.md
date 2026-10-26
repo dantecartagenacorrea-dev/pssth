@@ -29,3 +29,19 @@ Al eliminar un documento de la biblioteca se borran su copia local, el texto rec
 
 ## Contacto
 dantecartagenacorrea@gmail.com
+
+## Aviso legal
+PSSTH! es una herramienta que funciona en tu dispositivo: no aloja, revisa ni publica lo que abres o grabas.
+
+<details><summary>Tu contenido</summary>
+Eres responsable de tener derecho a usar los documentos, imágenes y audios que abres en PSSTH!. La app los procesa solo en tu dispositivo y para tu uso personal; el desarrollador no los recibe, no los guarda y no los comparte.
+</details>
+<details><summary>Grabaciones</summary>
+Si grabas a otras personas, obtén su consentimiento cuando la ley lo exija. Las grabaciones quedan en tu dispositivo.
+</details>
+<details><summary>Sin garantías</summary>
+El reconocimiento de texto, la transcripción y la voz pueden contener errores; consulta el documento original para cualquier uso formal. PSSTH! se ofrece tal cual, sin garantías, en la medida en que lo permita la ley aplicable.
+</details>
+<details><summary>Software de terceros</summary>
+PSSTH! usa software de código abierto. Las voces naturales y la transcripción opcionales usan los modelos Kokoro-82M (Apache 2.0) y Whisper (MIT) a través de sherpa-onnx. Las licencias completas están en la app, en «Acerca de».
+</details>

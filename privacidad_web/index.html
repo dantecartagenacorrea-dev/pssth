@@ -9,6 +9,9 @@ body{font-family:-apple-system,system-ui,Segoe UI,Roboto,sans-serif;max-width:72
 h1{color:#1F3A4A} h2{margin-top:1.6em} a{color:#C2603A}
 header{display:flex;align-items:center;gap:16px;margin-bottom:8px} header img{width:64px;height:64px;border-radius:14px}
 footer{margin-top:3em;font-size:.9em;color:#555}
+.legal{margin-top:2.5em;font-size:.9em;color:#555} .legal h2{font-size:1.1em;color:#1F3A4A}
+.legal details{border-top:1px solid #e3e8e3;padding:.4em 0} .legal summary{cursor:pointer;color:#1b1b1b}
+.legal summary:focus-visible{outline:2px solid #C2603A;outline-offset:2px}
 </style>
 </head>
 <body>
@@ -42,6 +45,14 @@ footer{margin-top:3em;font-size:.9em;color:#555}
 <p>dantecartagenacorrea@gmail.com</p>
 <h2>Soporte</h2>
 <p>Para cualquier consulta sobre PSSTH! escribe a <a href="mailto:dantecartagenacorrea@gmail.com">dantecartagenacorrea@gmail.com</a>.</p>
+<section class="legal" aria-labelledby="aviso-legal">
+<h2 id="aviso-legal">Aviso legal</h2>
+<p>PSSTH! es una herramienta que funciona en tu dispositivo: no aloja, revisa ni publica lo que abres o grabas.</p>
+<details><summary>Tu contenido</summary><p>Eres responsable de tener derecho a usar los documentos, imágenes y audios que abres en PSSTH!. La app los procesa solo en tu dispositivo y para tu uso personal; el desarrollador no los recibe, no los guarda y no los comparte.</p></details>
+<details><summary>Grabaciones</summary><p>Si grabas a otras personas, obtén su consentimiento cuando la ley lo exija. Las grabaciones quedan en tu dispositivo.</p></details>
+<details><summary>Sin garantías</summary><p>El reconocimiento de texto, la transcripción y la voz pueden contener errores; consulta el documento original para cualquier uso formal. PSSTH! se ofrece tal cual, sin garantías, en la medida en que lo permita la ley aplicable.</p></details>
+<details><summary>Software de terceros</summary><p>PSSTH! usa software de código abierto. Las voces naturales y la transcripción opcionales usan los modelos Kokoro-82M (Apache 2.0) y Whisper (MIT) a través de sherpa-onnx. Las licencias completas están en la app, en «Acerca de».</p></details>
+</section>
 <footer>PSSTH! · Aplicación de lectura en voz alta · Todo el procesamiento ocurre en tu dispositivo, salvo la corrección opcional con Ollama en tu red.</footer>
 </body>
 </html>
