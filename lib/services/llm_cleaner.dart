@@ -49,24 +49,22 @@ class LlmCleaner {
     }
   }
 
-  /// Corrige [pages]; cada página por separado para no superar el contexto.
-  /// Si el servidor no responde, no se intenta página por página (con un
-  /// documento largo serían minutos de espera); si falla a mitad, el resto
-  /// se deja como estaba.
-  Future<List<String>> cleanPages(List<String> pages, {void Function(int done, int total)? onProgress}) async {
-    if (!ready) return pages;
-    if (await ping() != null) return pages;
-    final out = <String>[];
-    for (var i = 0; i < pages.length; i++) {
+  /// Corrección en segundo plano, mientras se escucha; cada página por
+  /// separado para no superar el contexto. Empieza por [startPage] (lo que se
+  /// va a leer primero), sigue hasta el final y luego las anteriores. Salta
+  /// páginas vacías y las de [skip] (ya corregidas). Si el servidor no
+  /// responde no se intenta página por página; si falla a mitad, se detiene.
+  Stream<(int, String)> cleanInBackground(List<String> pages, {required int startPage, Set<int> skip = const {}}) async* {
+    if (!ready || pages.isEmpty) return;
+    if (await ping() != null) return;
+    final start = startPage.clamp(0, pages.length - 1);
+    final order = [for (var i = start; i < pages.length; i++) i, for (var i = 0; i < start; i++) i];
+    for (final i in order) {
+      if (skip.contains(i) || pages[i].trim().isEmpty) continue;
       final fixed = await _cleanOne(pages[i]);
-      if (fixed == null) {
-        out.addAll(pages.skip(i));
-        break;
-      }
-      out.add(fixed);
-      onProgress?.call(i + 1, pages.length);
+      if (fixed == null) return;
+      yield (i, fixed);
     }
-    return out;
   }
 
   /// Texto corregido, el original si la corrección no es fiable, o null si el

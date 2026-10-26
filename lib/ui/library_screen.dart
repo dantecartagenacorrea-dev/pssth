@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import '../core/app_exception.dart';
 import '../data/batch_import.dart';
 import '../data/bookmark_store.dart';
+import '../data/corrected_pages_store.dart';
 import '../data/document_loader.dart';
 import '../data/library_store.dart';
 import '../data/model_store.dart';
@@ -545,17 +546,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final updated = widget.libraryStore.byId(entry.id) ?? entry;
       await widget.settingsStore.saveLastDocumentId(updated.id);
 
-      if (LlmCleaner.instance.ready && mounted) {
-        setState(() => _busyLabel = 'Corrigiendo con IA local…');
-        final fixed = await LlmCleaner.instance.cleanPages(
-          doc.pages,
-          onProgress: (d, t) {
-            if (mounted) setState(() => _busyLabel = 'Corrigiendo con IA local… $d/$t');
-          },
-        );
-        doc.pages
-          ..clear()
-          ..addAll(fixed);
+      // IA local: lo ya corregido en otra apertura se usa al momento; el resto
+      // se corrige en segundo plano mientras se escucha (ver _runLlm).
+      final llm = LlmCleaner.instance;
+      final corrected = llm.ready ? await _corrected.load(updated.id, model: llm.model) : const <int, String>{};
+      for (final e in corrected.entries) {
+        if (e.key < doc.pages.length) doc.pages[e.key] = e.value;
       }
       var chunks = _chunksFor(updated, doc, _normalizer);
       String? notice;
@@ -595,6 +591,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));
       widget.handler.pages = List.of(doc.pages);
       unawaited(_applyLanguage(chunks, manual: updated.language));
+      if (llm.ready) unawaited(_runLlm(updated, doc, job, corrected));
       if (!mounted) {
         return;
       }
@@ -649,6 +646,34 @@ class _LibraryScreenState extends State<LibraryScreen> {
       // un fallo de OCR no debe detener la reproducción
     } finally {
       if (!first.isCompleted) first.complete();
+    }
+  }
+
+  late final CorrectedPagesStore _corrected = CorrectedPagesStore(widget.libraryStore.root);
+
+  /// Corrige con la IA local mientras se escucha, empezando por la página
+  /// actual. Cada página corregida reemplaza a la original (sin perder la
+  /// posición) y se guarda para la próxima vez. Si falla, se sigue con el
+  /// texto original.
+  Future<void> _runLlm(LibraryEntry entry, LoadedDocument doc, int job, Map<int, String> done) async {
+    final llm = LlmCleaner.instance;
+    final saved = Map<int, String>.of(done);
+    try {
+      await for (final (page, text) in llm.cleanInBackground(
+        List.of(doc.pages),
+        startPage: entry.pageIndex,
+        skip: saved.keys.toSet(),
+      )) {
+        if (job != _ocrJob) return; // se abrió otro documento
+        saved[page] = text;
+        await _corrected.save(entry.id, model: llm.model, pages: saved);
+        if (doc.pages[page] == text) continue;
+        doc.pages[page] = text;
+        await widget.handler.replaceChunks(_chunksFor(entry, doc, _normalizer));
+        widget.handler.pages = List.of(doc.pages);
+      }
+    } on Exception {
+      // la corrección es opcional: si falla, se sigue leyendo el original
     }
   }
 
