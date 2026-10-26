@@ -13,7 +13,8 @@ import 'kokoro_worker.dart';
 class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   KokoroEngine({required this.modelDir, required this.cache});
 
-  /// Carpeta del modelo (model.int8.onnx, voices.bin, tokens.txt, espeak-ng-data...).
+  /// Carpeta del modelo (model.int8.onnx, voices.bin, tokens.txt...). Desde sherpa-onnx 2.0
+  /// no se usa espeak-ng: el español se pasa como fonemas (ver spanish_phonemizer.dart).
   final String modelDir;
   final AudioCache cache;
 
@@ -26,8 +27,7 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   static bool isInstalled(String dir) =>
       File('$dir/model.int8.onnx').existsSync() &&
       File('$dir/voices.bin').existsSync() &&
-      File('$dir/tokens.txt').existsSync() &&
-      Directory('$dir/espeak-ng-data').existsSync();
+      File('$dir/tokens.txt').existsSync();
 
   KokoroWorker? _worker;
   final AudioPlayer _player = AudioPlayer();

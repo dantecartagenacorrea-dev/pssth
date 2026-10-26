@@ -14,11 +14,12 @@ void main() {
     final store = ModelStore(tmp);
     expect(store.isInstalled(kokoroEsModel), isFalse);
     final d = store.dirFor(kokoroEsModel)..createSync(recursive: true);
-    for (final f in kokoroEsModel.requiredFiles.take(3)) {
+    for (final f in kokoroEsModel.requiredFiles.take(2)) {
       File('${d.path}/$f').writeAsStringSync('x');
     }
     expect(store.isInstalled(kokoroEsModel), isFalse);
-    Directory('${d.path}/espeak-ng-data').createSync();
+    // Desde sherpa-onnx 2.0 no hace falta espeak-ng-data.
+    File('${d.path}/${kokoroEsModel.requiredFiles[2]}').writeAsStringSync('x');
     expect(store.isInstalled(kokoroEsModel), isTrue);
     expect(await store.installedBytes(kokoroEsModel), 3);
     await store.remove(kokoroEsModel);
