@@ -176,6 +176,13 @@ class TtsAudioHandler extends BaseAudioHandler {
     _broadcastState(playing: false);
   }
 
+  /// Aviso en la pantalla de lectura mientras el documento no tiene texto
+  /// (p. ej. el OCR terminó sin reconocer nada).
+  void showMessage(String message) {
+    if (_chunks.isNotEmpty) return;
+    _refresh(hasText: false, message: message);
+  }
+
   /// Sustituye los bloques (p. ej. al terminar el OCR de nuevas páginas)
   /// conservando la posición actual.
   Future<void> replaceChunks(List<TextChunk> chunks) async {

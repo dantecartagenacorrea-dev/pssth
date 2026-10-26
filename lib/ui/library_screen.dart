@@ -560,6 +560,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       var chunks = _chunksFor(updated, doc, _normalizer);
       String? notice;
       final firstOcr = Completer<void>();
+      var noTextMessage = noSelectableTextMessage;
 
       if (doc.pendingOcr.isNotEmpty) {
         final available = await _native.isAvailable();
@@ -571,18 +572,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
           if (chunks.isEmpty && mounted) {
             setState(() => _busyLabel = 'Reconociendo texto…');
           }
-          unawaited(_runOcr(updated, doc, job, firstOcr));
+          final ocr = _runOcr(updated, doc, job, firstOcr);
+          unawaited(ocr);
           if (chunks.isEmpty) {
             await firstOcr.future;
             chunks = _chunksFor(updated, doc, _normalizer);
           }
+          // Las demás páginas siguen reconociéndose: no decir que no hay texto.
+          noTextMessage = ocrInProgressMessage;
+          unawaited(ocr.then((_) {
+            if (job == _ocrJob) widget.handler.showMessage(ocrNoTextMessage);
+          }));
         }
       }
 
       await widget.handler.loadDocument(
         entry: updated,
         chunks: chunks,
-        noTextMessage: noSelectableTextMessage,
+        noTextMessage: noTextMessage,
         notice: notice,
       );
       widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));

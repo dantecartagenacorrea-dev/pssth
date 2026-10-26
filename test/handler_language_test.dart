@@ -80,6 +80,25 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
+  test('un aviso sin texto todavía se muestra y desaparece al llegar el texto del OCR', () async {
+    SharedPreferences.setMockInitialValues({});
+    final tmp = Directory.systemTemp.createTempSync('lib');
+    final store = LibraryStore();
+    await store.initAt(tmp);
+    final h = TtsAudioHandler(libraryStore: store, settingsStore: SettingsStore(), engine: RecEngine());
+    await h.setup();
+    final entry = LibraryEntry(id: 'd', name: 'd.pdf', storedPath: '', pageCount: 2, totalChunks: 0);
+    await store.upsert(entry);
+    await h.loadDocument(entry: entry, chunks: const [], noTextMessage: 'Reconociendo…');
+    expect(h.snapshot.value.message, 'Reconociendo…');
+    h.showMessage('No se encontró texto.');
+    expect(h.snapshot.value.message, 'No se encontró texto.');
+    await h.replaceChunks([TextChunk(documentId: 'd', pageIndex: 1, chunkIndex: 0, text: 'Hola.')]);
+    expect(h.snapshot.value.message, isNull);
+    expect(h.snapshot.value.currentText, 'Hola.');
+    tmp.deleteSync(recursive: true);
+  });
+
   test('shareText devuelve la frase actual o toda la página', () async {
     SharedPreferences.setMockInitialValues({});
     final tmp = Directory.systemTemp.createTempSync('lib');

@@ -50,17 +50,28 @@ class LlmCleaner {
   }
 
   /// Corrige [pages]; cada página por separado para no superar el contexto.
+  /// Si el servidor no responde, no se intenta página por página (con un
+  /// documento largo serían minutos de espera); si falla a mitad, el resto
+  /// se deja como estaba.
   Future<List<String>> cleanPages(List<String> pages, {void Function(int done, int total)? onProgress}) async {
     if (!ready) return pages;
+    if (await ping() != null) return pages;
     final out = <String>[];
     for (var i = 0; i < pages.length; i++) {
-      out.add(await _cleanOne(pages[i]));
+      final fixed = await _cleanOne(pages[i]);
+      if (fixed == null) {
+        out.addAll(pages.skip(i));
+        break;
+      }
+      out.add(fixed);
       onProgress?.call(i + 1, pages.length);
     }
     return out;
   }
 
-  Future<String> _cleanOne(String text) async {
+  /// Texto corregido, el original si la corrección no es fiable, o null si el
+  /// servidor falló.
+  Future<String?> _cleanOne(String text) async {
     if (text.trim().isEmpty) return text;
     const system =
         'Eres un corrector de transcripciones de voz en español. Corrige SOLO errores de '
@@ -77,13 +88,14 @@ class LlmCleaner {
           {'role': 'user', 'content': text},
         ],
       }, timeout: const Duration(seconds: 120));
-      final content = (r?['message'] as Map?)?['content'] as String?;
+      if (r == null) return null;
+      final content = (r['message'] as Map?)?['content'] as String?;
       if (content == null || content.trim().isEmpty) return text;
       // Protección: si el modelo recortó demasiado, conservar original.
       if (content.length < text.length * 0.7) return text;
       return content.trim();
     } catch (_) {
-      return text;
+      return null;
     }
   }
 
