@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../core/app_exception.dart';
+import '../data/batch_import.dart';
 import '../data/bookmark_store.dart';
 import '../data/document_loader.dart';
 import '../data/library_store.dart';
@@ -169,27 +170,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _busyLabel = 'Transcribiendo…';
     });
     try {
-      String text;
-      String? aviso;
-      try {
-        text = await _speech.transcribe(audioPath);
-        if (text.isEmpty) {
-          text = 'La grabación no contiene voz reconocible.';
-          aviso = 'No se reconoció voz en la grabación.';
-        }
-      } on TranscriptionUnavailable catch (e) {
-        text = 'Grabación sin transcripción. ${e.message}';
-        aviso = '${e.message} El audio se guardó.';
-      }
-      final entry = await widget.libraryStore.importFile(
-        originalName: '$title.txt',
-        bytes: utf8.encode(text),
-      );
-      try {
-        final ext = audioPath.contains('.') ? audioPath.substring(audioPath.lastIndexOf('.') + 1) : 'wav';
-        await File(audioPath).copy('${widget.libraryStore.root.path}/${entry.id}.$ext');
-        if (deleteSource) await File(audioPath).delete();
-      } catch (_) {}
+      final (entry, aviso) = await _transcribeToLibrary(audioPath, title, deleteSource: deleteSource);
       await widget.settingsStore.saveLastDocumentId(entry.id);
       if (aviso != null && mounted) showSafeMessage(context, AppException(aviso));
       if (!mounted) return;
@@ -202,7 +183,34 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  static const _audioExt = {'wav', 'm4a', 'mp3', 'aac', 'caf'};
+  /// Transcribe el audio y lo guarda en la biblioteca (sin abrirlo). Devuelve
+  /// la entrada y, si la hay, una advertencia para el usuario.
+  Future<(LibraryEntry, String?)> _transcribeToLibrary(String audioPath, String title, {required bool deleteSource}) async {
+    String text;
+    String? aviso;
+    try {
+      text = await _speech.transcribe(audioPath);
+      if (text.isEmpty) {
+        text = 'La grabación no contiene voz reconocible.';
+        aviso = 'No se reconoció voz en la grabación.';
+      }
+    } on TranscriptionUnavailable catch (e) {
+      text = 'Grabación sin transcripción. ${e.message}';
+      aviso = '${e.message} El audio se guardó.';
+    }
+    final entry = await widget.libraryStore.importFile(
+      originalName: '$title.txt',
+      bytes: utf8.encode(text),
+    );
+    try {
+      final ext = audioPath.contains('.') ? audioPath.substring(audioPath.lastIndexOf('.') + 1) : 'wav';
+      await File(audioPath).copy('${widget.libraryStore.root.path}/${entry.id}.$ext');
+      if (deleteSource) await File(audioPath).delete();
+    } catch (_) {}
+    return (entry, aviso);
+  }
+
+  static const _audioExt = audioExtensions;
 
   List<LibraryEntry> get _entries => widget.libraryStore.data.entries;
 
@@ -453,9 +461,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
           'pdf', 'epub', 'txt', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'tif', 'tiff', 'bmp',
           'wav', 'm4a', 'mp3', 'aac', 'caf',
         ],
-        withData: true,
+        allowMultiple: true,
       );
       if (result == null || result.files.isEmpty) {
+        return;
+      }
+      if (result.files.length > 1) {
+        await _importBatch(result.files);
         return;
       }
       final file = result.files.single;
@@ -468,7 +480,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
         await _transcribeAndOpen(src, file.name.substring(0, file.name.length - ext.length - 1), deleteSource: false);
         return;
       }
-      final bytes = file.bytes;
+      final path = file.path;
+      final bytes = file.bytes ?? (path == null ? null : await File(path).readAsBytes());
       if (bytes == null || bytes.isEmpty) {
         throw AppException('No se pudo leer el archivo seleccionado.');
       }
@@ -488,6 +501,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
         setState(() => _busy = false);
       }
     }
+  }
+
+  /// Varios archivos a la vez: se guardan en la biblioteca sin abrirlos y al
+  /// final se muestra un resumen.
+  Future<void> _importBatch(List<PlatformFile> picked) async {
+    final result = await importBatch(
+      files: [for (final f in picked) BatchFile(name: f.name, path: f.path)],
+      store: widget.libraryStore,
+      importAudio: (path, title) async => (await _transcribeToLibrary(path, title, deleteSource: false)).$1,
+      onProgress: (i, total, f) {
+        if (mounted) setState(() => _busyLabel = '${f.isAudio ? 'Transcribiendo' : 'Importando'} $i/$total…');
+      },
+    );
+    if (!mounted) return;
+    setState(() {});
+    showSafeMessage(context, AppException(result.summary));
   }
 
   List<TextChunk> _chunksFor(LibraryEntry entry, LoadedDocument doc, TextNormalizer n) =>

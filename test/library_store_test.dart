@@ -21,4 +21,22 @@ void main() {
     expect(store.data.entries.length, 2);
     await dir.delete(recursive: true);
   });
+
+  test('importar varios archivos en el mismo milisegundo no repite el identificador', () async {
+    final dir = await Directory.systemTemp.createTemp('lector_lib');
+    final fixed = DateTime(2026, 10, 26, 12);
+    final store = LibraryStore(clock: () => fixed);
+    await store.initAt(dir);
+    final ids = <String>{};
+    for (var i = 0; i < 20; i++) {
+      final e = await store.importFile(originalName: 'doc$i.txt', bytes: [i]);
+      ids.add(e.id);
+    }
+    expect(ids.length, 20);
+    expect(store.data.entries.length, 20);
+    for (final e in store.data.entries) {
+      expect(await File(e.storedPath).exists(), isTrue);
+    }
+    await dir.delete(recursive: true);
+  });
 }

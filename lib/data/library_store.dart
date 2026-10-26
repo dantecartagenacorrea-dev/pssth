@@ -6,6 +6,9 @@ import 'package:path_provider/path_provider.dart';
 import '../domain/library_entry.dart';
 
 class LibraryStore {
+  LibraryStore({DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
+
+  final DateTime Function() _clock;
   LibraryData _data = LibraryData();
   late Directory _root;
 
@@ -83,7 +86,7 @@ class LibraryStore {
         }
       } catch (_) {}
     }
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    final id = _newId();
     final kind = kindFor(originalName);
     final dot = originalName.lastIndexOf('.');
     final ext = dot < 0 ? (kind == 'pdf' ? 'pdf' : kind) : originalName.substring(dot + 1).toLowerCase();
@@ -102,6 +105,16 @@ class LibraryStore {
     _data.entries.insert(0, entry);
     await _save();
     return entry;
+  }
+
+  /// Identificador por hora en milisegundos; al importar en lote dos archivos
+  /// pueden caer en el mismo milisegundo, así que se avanza hasta uno libre.
+  String _newId() {
+    var n = _clock().millisecondsSinceEpoch;
+    while (_data.entries.any((e) => e.id == '$n')) {
+      n++;
+    }
+    return '$n';
   }
 
   static bool _sameBytes(List<int> a, List<int> b) {
