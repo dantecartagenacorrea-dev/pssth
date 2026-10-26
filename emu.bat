@@ -6,7 +6,8 @@ set ANDROID_SDK_ROOT=%SDK%
 set ADB=%SDK%\platform-tools\adb.exe
 set AVD=%USERPROFILE%\.android\avd
 set FL=%USERPROFILE%\flutter\bin\flutter.bat
-set JAVA_HOME=%~dp0tool-jdk\jdk-17.0.20.1+1
+rem JDK propio si existe; si no, el JAVA_HOME del sistema.
+if exist "%~dp0tool-jdk\jdk-17.0.20.1+1" set JAVA_HOME=%~dp0tool-jdk\jdk-17.0.20.1+1
 set PATH=%JAVA_HOME%\bin;%PATH%
 set LOG=emu.log
 > %LOG% echo === emu %date% %time% ===
