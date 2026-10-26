@@ -28,3 +28,28 @@ pdfrx, flutter_tts, audio_service, file_picker, path_provider, shared_preference
 - Probar en iPhone (TestFlight): OCR Vision, pantalla bloqueada, Voz personal, transcripción nativa, rendimiento real de Kokoro (en emulador es lento).
 - NLTokenizer nativo: descartado por ahora; el divisor en Dart ya trata abreviaturas y cláusulas y no se puede probar en iOS todavía.
 - Documentos reales del usuario (escaneados, largos, dos columnas).
+
+### Antes de publicar en App Store (revisión legal, 26-10-2026; aplicar en conjunto)
+**1. Licencia: bloquea la publicación.** `sherpa_onnx` 1.13.8 lleva espeak-ng (GPL-3.0-or-later) compilado dentro de las librerías nativas de Android e iOS. Verificado en los binarios y reconocido por el proyecto (k2-fsa/sherpa-onnx#3731 y #4053). No publicar con esta versión.
+- Actualizar a `sherpa_onnx` 2.0.0 (23-10-2026), que ya no incluye espeak-ng (PR #4055).
+- `kokoro_worker.dart`: `maxNumSenetences` pasa a ser `maxNumSentences` (si no, no compila). Quitar `dataDir` (en la 2.0 se ignora).
+- `model_store.dart`: quitar `espeak-ng-data` de `requiredFiles`. Actualizar el comentario de `kokoro_engine.dart`.
+- Whisper (`whisper_transcriber.dart`): sin cambios de API.
+- **Decisión pendiente, voces Kokoro en español (Dora/Alex).** En la 2.0 no hay léxico español oficial, y Kokoro se salta sin avisar las palabras que no están en el léxico. Solo con actualizar, el español dejaría de sonar bien. Opciones:
+  - (a) Conversor propio texto→fonemas IPA en español, en Dart y sin GPL, pasado como `phonemeCodepoints` en `generateWithConfig`. Hay que imitar la salida de espeak `es` y probar la calidad escuchando.
+  - (b) Quitar Kokoro para español y dejar solo las voces del sistema.
+  - No usar `piper_phonemize`: también es GPL.
+
+**2. Privacidad y ficha de la tienda: los textos no describen todo lo que hace la app.**
+- `privacidad_web/index.html` y `tienda/PRIVACIDAD.md` deben explicar:
+  - Micrófono y grabación: el audio se guarda en el dispositivo junto al documento y "Eliminar" lo borra.
+  - Transcripción local: iOS con reconocimiento obligatorio en el dispositivo; si no, Whisper local, sin enviar audio fuera.
+  - Audios recibidos de otras apps: se guarda una copia.
+  - Descarga opcional de modelos desde GitHub: es una conexión a Internet, y GitHub ve la IP.
+- `tienda/FICHA_APP_STORE.md`: corregir "Sin Internet" (las descargas de modelos son opcionales). Añadir grabación y transcripción a la descripción, los textos de micrófono y reconocimiento de voz a "Texto de los permisos", y una mención en las notas para la revisión.
+- Aviso al grabar: recordar que grabar a otras personas puede requerir su consentimiento (en la pantalla de grabación y en la política).
+
+**3. Coherencia de nombre y créditos.**
+- `ios/Runner/Info.plist`: los textos de cámara, fotos, micrófono y reconocimiento de voz dicen "Lector"; cambiarlos a "PSSTH!". El menú dice "Acerca de Lector y licencias".
+- Créditos de modelos en "Acerca de" / "Voces y modelos": Kokoro-82M (Apache 2.0; entrenado con datos CC BY: Koniwa y SIWIS) y Whisper (MIT). Hoy solo dice "sherpa-onnx (Apache 2.0)", y eso solo será cierto tras actualizar a la 2.0.
+- Sin comprobar: si la marca "PSSTH!" está registrada por terceros.
