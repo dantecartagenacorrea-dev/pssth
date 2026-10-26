@@ -587,7 +587,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
       widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));
       widget.handler.pages = List.of(doc.pages);
-      unawaited(_applyLanguage(chunks));
+      unawaited(_applyLanguage(chunks, manual: updated.language));
       if (!mounted) {
         return;
       }
@@ -645,11 +645,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
-  Future<void> _applyLanguage(List<TextChunk> chunks) async {
+  Future<void> _applyLanguage(List<TextChunk> chunks, {String? manual}) async {
     if (chunks.isEmpty) return;
     final sample = chunks.take(12).map((c) => c.text).join(' ');
     final lang = await _native.detectLanguage(sample) ?? detectLanguageHeuristic(sample);
-    await widget.handler.applyDocumentLanguage(lang);
+    await widget.handler.applyDocumentLanguage(lang, manual: manual);
   }
 }
 

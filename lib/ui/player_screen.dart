@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import '../core/app_exception.dart';
 import '../data/bookmark_store.dart';
 import '../domain/library_entry.dart';
+import '../domain/reading_window.dart';
+import '../domain/voice_groups.dart';
 import '../playback/tts_audio_handler.dart';
 import 'player_sheets.dart';
 
@@ -130,7 +132,7 @@ class PlayerScreen extends StatelessWidget {
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.fromLTRB(24, 22, 24, 16),
                       child: state.message == null && state.currentText.isNotEmpty
-                          ? _HighlightedText(handler: handler, text: state.currentText)
+                          ? _ReadingView(handler: handler, index: handler.chunkIndex)
                           : Text(
                               state.message ?? 'Pulsa Play para escuchar.',
                               style: theme.textTheme.bodyLarge?.copyWith(color: gray),
@@ -195,6 +197,14 @@ class PlayerScreen extends StatelessWidget {
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: _Pill(
+                                    label: 'Idioma',
+                                    value: languageName(handler.documentLanguage ?? 'es'),
+                                    onTap: () => _pickLanguage(context),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: _Pill(
                                     label: 'Voz',
                                     value: _voiceLabel(state),
                                     onTap: () => _pickVoice(context, state),
@@ -246,35 +256,96 @@ class PlayerScreen extends StatelessWidget {
     if (v != null) handler.setSpeed(v);
   }
 
-  Future<void> _pickVoice(BuildContext context, PlayerSnapshot state) async {
-    final current = _voiceValue(state);
+  /// Idioma del documento: automático o uno con voz instalada. Se recuerda.
+  Future<void> _pickLanguage(BuildContext context) async {
+    final manual = handler.manualLanguage;
+    final langs = handler.availableLanguages.toList()..sort((a, b) => languageName(a).compareTo(languageName(b)));
     final v = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            ListTile(
-              title: const Text('Voz del sistema'),
-              trailing: current.isEmpty ? const Icon(Icons.check_rounded) : null,
-              onTap: () => Navigator.pop(ctx, ''),
-            ),
-            for (final voice in state.voices)
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+          child: ListView(
+            shrinkWrap: true,
+            children: [
               ListTile(
-                title: Text(voice.label, overflow: TextOverflow.ellipsis),
-                trailing: voice.id == current ? const Icon(Icons.check_rounded) : null,
-                onTap: () => Navigator.pop(ctx, voice.id),
+                title: const Text('Automático'),
+                subtitle: const Text('Lo detecta según el texto'),
+                trailing: manual == null ? const Icon(Icons.check_rounded) : null,
+                onTap: () => Navigator.pop(ctx, ''),
               ),
-            ListTile(
-              leading: const Icon(Icons.help_outline_rounded),
-              title: const Text('Mejorar la voz'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _showVoiceHelp(context, state);
-              },
-            ),
-          ],
+              for (final l in langs)
+                ListTile(
+                  title: Text(languageName(l)),
+                  trailing: manual == l ? const Icon(Icons.check_rounded) : null,
+                  onTap: () => Navigator.pop(ctx, l),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (v == null) return;
+    await handler.setManualLanguage(v.isEmpty ? null : v);
+  }
+
+  Future<void> _pickVoice(BuildContext context, PlayerSnapshot state) async {
+    final current = _voiceValue(state);
+    // Agrupadas: recomendadas, el idioma del documento y el resto plegado.
+    final groups = groupVoices<VoiceOption>(
+      state.voices,
+      preferredLanguage: handler.documentLanguage ?? 'es',
+      name: (v) => v.name,
+      locale: (v) => v.locale,
+      quality: (v) => v.quality,
+    );
+    Widget tile(BuildContext ctx, VoiceOption voice) => ListTile(
+          title: Text(
+            voiceDisplayLabel(name: voice.name, locale: voice.locale, quality: voice.quality),
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: voice.id == current ? const Icon(Icons.check_rounded) : null,
+          onTap: () => Navigator.pop(ctx, voice.id),
+        );
+    final v = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              ListTile(
+                title: const Text('Automática (la mejor para el idioma)'),
+                trailing: current.isEmpty ? const Icon(Icons.check_rounded) : null,
+                onTap: () => Navigator.pop(ctx, ''),
+              ),
+              for (final g in groups)
+                if (g.expanded) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                    child: Text(g.title, style: Theme.of(ctx).textTheme.titleSmall),
+                  ),
+                  for (final voice in g.voices) tile(ctx, voice),
+                ] else
+                  ExpansionTile(
+                    title: Text('${g.title} (${g.voices.length})'),
+                    children: [for (final voice in g.voices) tile(ctx, voice)],
+                  ),
+              ListTile(
+                leading: const Icon(Icons.help_outline_rounded),
+                title: const Text('Mejorar la voz'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showVoiceHelp(context, state);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -333,13 +404,14 @@ void showSafeMessage(BuildContext context, Object error) {
 /// Muestra el bloque actual y resalta la palabra leída (cuando el texto de voz
 /// coincide con el original; si no, se muestra sin resaltar).
 class _HighlightedText extends StatelessWidget {
-  const _HighlightedText({required this.handler, required this.text});
+  const _HighlightedText({required this.handler, required this.text, this.style});
   final TtsAudioHandler handler;
   final String text;
+  final TextStyle? style;
 
   @override
   Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.titleLarge;
+    final style = this.style ?? Theme.of(context).textTheme.titleLarge;
     return ValueListenableBuilder<(int, int)?>(
       valueListenable: handler.wordRange,
       builder: (context, range, _) {
@@ -372,6 +444,73 @@ class _HighlightedText extends StatelessWidget {
   }
 }
 
+
+/// Varios fragmentos alrededor del que se lee, para seguir el texto: el actual
+/// resaltado (con la palabra, si la voz la informa) y la vista se desplaza sola.
+class _ReadingView extends StatefulWidget {
+  const _ReadingView({required this.handler, required this.index});
+  final TtsAudioHandler handler;
+  final int index;
+
+  @override
+  State<_ReadingView> createState() => _ReadingViewState();
+}
+
+class _ReadingViewState extends State<_ReadingView> {
+  final _currentKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollToCurrent();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ReadingView old) {
+    super.didUpdateWidget(old);
+    if (old.index != widget.index) _scrollToCurrent();
+  }
+
+  void _scrollToCurrent() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _currentKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(ctx, alignment: 0.25, duration: const Duration(milliseconds: 300));
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final chunks = widget.handler.chunks;
+    final (start, end) = readingWindow(total: chunks.length, index: widget.index);
+    final base = theme.textTheme.bodyLarge?.copyWith(fontSize: 19, height: 1.45);
+    final dim = base?.copyWith(color: theme.colorScheme.secondary);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = start; i < end; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: i == widget.index
+                ? Container(
+                    key: _currentKey,
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: _HighlightedText(handler: widget.handler, text: chunks[i].text, style: base),
+                  )
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(chunks[i].text, style: dim),
+                  ),
+          ),
+      ],
+    );
+  }
+}
 
 class _PlayButton extends StatelessWidget {
   const _PlayButton({required this.playing, required this.enabled, required this.onTap});

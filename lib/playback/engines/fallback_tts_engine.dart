@@ -45,6 +45,30 @@ class FallbackTtsEngine extends TtsEngine {
   @override
   String get id => _active.id;
 
+  TtsEngine get _other => identical(_active, primary) ? fallback : primary;
+
+  bool _ready(TtsEngine e) => identical(e, primary) ? _primaryOk : _fallbackReady;
+
+  /// Cambia de motor callando el que se deja: puede estar hablando o tener un
+  /// audio a medio sintetizar que, si no, sonaría encima del nuevo.
+  Future<void> _switchTo(TtsEngine next) async {
+    if (identical(next, _active)) return;
+    final prev = _active;
+    _active = next;
+    if (!_ready(prev)) return;
+    try {
+      await prev.stop();
+    } catch (_) {}
+  }
+
+  Future<void> _stopOther() async {
+    final other = _other;
+    if (!_ready(other)) return;
+    try {
+      await other.stop();
+    } catch (_) {}
+  }
+
   void _wire(TtsEngine e) {
     e.onProgress = (t, s, en) => onProgress?.call(t, s, en);
     e.onError = (m) => onError?.call(m);
@@ -145,7 +169,7 @@ class FallbackTtsEngine extends TtsEngine {
   Future<void> setVoice(VoiceOption voice) async {
     if (_primaryOk && _primaryVoiceIds.contains(voice.id)) {
       _primaryVoice = voice;
-      _active = primary;
+      await _switchTo(primary);
       try {
         await primary.setVoice(voice);
         await primary.setVolume(_volume);
@@ -157,7 +181,7 @@ class FallbackTtsEngine extends TtsEngine {
       }
     }
     _primaryVoice = null;
-    _active = fallback;
+    await _switchTo(fallback);
     await fallback.setVoice(voice);
   }
 
@@ -175,7 +199,7 @@ class FallbackTtsEngine extends TtsEngine {
       }
     }
     if (_primaryOk && _primaryVoice != null) {
-      _active = _primarySpeaks(locale) ? primary : fallback;
+      await _switchTo(_primarySpeaks(locale) ? primary : fallback);
     }
   }
 
@@ -244,10 +268,16 @@ class FallbackTtsEngine extends TtsEngine {
   }
 
   @override
-  Future<void> pause() => _active.pause();
+  Future<void> pause() async {
+    await _stopOther();
+    await _active.pause();
+  }
 
   @override
-  Future<void> stop() => _active.stop();
+  Future<void> stop() async {
+    await _stopOther();
+    await _active.stop();
+  }
 
   @override
   Future<void> dispose() async {

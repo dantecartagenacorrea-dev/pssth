@@ -50,10 +50,13 @@ class FakeEngine extends TtsEngine {
     return '$path.$id';
   }
 
+  int stops = 0;
+  int pauses = 0;
+
   @override
-  Future<void> pause() async {}
+  Future<void> pause() async => pauses++;
   @override
-  Future<void> stop() async {}
+  Future<void> stop() async => stops++;
   @override
   Future<void> dispose() async {}
 }
@@ -173,6 +176,47 @@ void main() {
     await e.speak('adiós');
     expect(p.spoken, ['hola', 'adiós']);
     expect(f.spoken, ['hello']);
+  });
+
+  group('nunca suenan dos motores a la vez', () {
+    test('stop detiene ambos motores aunque el activo sea el del sistema', () async {
+      final p = FakeEngine('neural'), f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
+      await e.init();
+      await e.stop();
+      expect(f.stops, 1);
+      expect(p.stops, 1);
+    });
+
+    test('pause pausa el activo y detiene el otro', () async {
+      final p = FakeEngine('neural'), f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+      await e.pause();
+      expect(p.pauses, 1);
+      expect(f.stops, 1);
+    });
+
+    test('al elegir una voz del sistema se calla la voz natural', () async {
+      final p = FakeEngine('neural'), f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
+      await e.init();
+      final voces = await e.voices();
+      await e.setVoice(voces.first); // natural
+      await e.setVoice(voces.last); // sistema
+      expect(p.stops, 1);
+      expect(f.stops, 1); // y antes, al pasar a la natural, se calló el sistema
+    });
+
+    test('un fragmento en otro idioma calla la voz natural antes de pasar al sistema', () async {
+      final p = FakeEngine('neural'), f = FakeEngine('apple', locales: ['es-ES', 'en-US']);
+      final e = FallbackTtsEngine(primary: p, fallback: f, startWithPrimary: false);
+      await e.init();
+      await e.setVoice((await e.voices()).first);
+      final antes = p.stops;
+      await e.setLanguage('en');
+      expect(p.stops, antes + 1);
+    });
   });
 
   test('prefetch solo llega al motor activo', () async {

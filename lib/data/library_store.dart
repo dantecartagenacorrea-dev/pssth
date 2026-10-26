@@ -153,6 +153,14 @@ class LibraryStore {
     await _save();
   }
 
+  /// Idioma elegido a mano para el documento (null = automático).
+  Future<void> setLanguage(String id, String? language) async {
+    final match = _data.entries.where((e) => e.id == id);
+    if (match.isEmpty) return;
+    match.first.language = language;
+    await _save();
+  }
+
   Future<void> updateExtraction({
     required String id,
     required int pageCount,

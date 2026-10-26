@@ -11,6 +11,7 @@ class LibraryEntry {
     this.kind = 'pdf',
     this.favorite = false,
     this.finished = false,
+    this.language,
   });
 
   final String id;
@@ -26,6 +27,9 @@ class LibraryEntry {
   String? lastOpenedIso;
   bool favorite;
   bool finished;
+
+  /// Idioma elegido a mano ('es', 'en'…); null = detectarlo automáticamente.
+  String? language;
 
   double get progress {
     if (pageCount <= 0) {
@@ -50,6 +54,7 @@ class LibraryEntry {
     'kind': kind,
     'favorite': favorite,
     'finished': finished,
+    'language': language,
   };
 
   factory LibraryEntry.fromJson(Map<String, dynamic> json) {
@@ -65,6 +70,7 @@ class LibraryEntry {
       kind: json['kind'] as String? ?? 'pdf',
       favorite: json['favorite'] as bool? ?? false,
       finished: json['finished'] as bool? ?? false,
+      language: json['language'] as String?,
     );
   }
 }

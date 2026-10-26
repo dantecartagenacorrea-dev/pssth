@@ -147,6 +147,8 @@ class TtsAudioHandler extends BaseAudioHandler {
     _entry = entry;
     _chunks = chunks;
     _docLang = null;
+    _detectedLang = null;
+    _manualLang = null;
     _appliedLang = null;
     _chunkLangs = const [];
     final keys = chunks
@@ -201,24 +203,65 @@ class TtsAudioHandler extends BaseAudioHandler {
   String? _appliedLang;
   List<String> _chunkLangs = const [];
 
+  String? _detectedLang;
+  String? _manualLang;
+
   void _segmentLanguages() {
     final doc = _docLang;
     if (doc == null || _chunks.isEmpty) {
       _chunkLangs = const [];
       return;
     }
-    _chunkLangs = segmentLanguages(_chunks.map((c) => c.text).toList(), documentLanguage: doc);
+    if (_manualLang != null) {
+      // Idioma fijado a mano: no se cambia de voz a mitad del documento.
+      _chunkLangs = List.filled(_chunks.length, doc);
+      return;
+    }
+    _chunkLangs = segmentLanguages(
+      _chunks.map((c) => c.text).toList(),
+      documentLanguage: doc,
+      allowed: availableLanguages,
+    );
   }
+
+  /// Idioma del documento abierto ('es', 'en'…), o null si aún no se sabe.
+  String? get documentLanguage => _docLang;
+
+  /// Idioma fijado a mano para este documento (null = automático).
+  String? get manualLanguage => _manualLang;
+
+  /// Idiomas que tienen al menos una voz instalada.
+  Set<String> get availableLanguages =>
+      {for (final v in _voices) v.locale.toLowerCase().replaceAll('_', '-').split('-').first};
 
   /// Ajusta la voz al idioma del documento y prepara el idioma por fragmento
   /// (una frase corta en otro idioma no cambia la voz; un bloque largo sí).
-  /// No modifica las preferencias guardadas.
-  Future<void> applyDocumentLanguage(String? lang) async {
-    if (lang == null) return;
+  /// [detected] es lo que reconoció el detector; [manual], lo elegido por el
+  /// usuario (manda sobre el detector). No modifica las preferencias guardadas.
+  Future<void> applyDocumentLanguage(String? detected, {String? manual}) async {
+    _detectedLang = detected;
+    _manualLang = manual;
+    final lang = manual ?? chooseDocumentLanguage(detected, available: availableLanguages);
     _docLang = lang;
     _appliedLang = null;
     _segmentLanguages();
     await _applyLanguage(lang);
+  }
+
+  /// El usuario elige el idioma del documento (null = volver a automático).
+  /// Se guarda con el documento y, si está leyendo, retoma el fragmento actual
+  /// con la voz nueva.
+  Future<void> setManualLanguage(String? lang) async {
+    final entry = _entry;
+    if (entry != null) {
+      entry.language = lang;
+      await libraryStore.setLanguage(entry.id, lang);
+    }
+    await applyDocumentLanguage(_detectedLang, manual: lang);
+    if (_speaking) {
+      _keepIndexAfterStop = true;
+      await _tts.stop();
+    }
   }
 
   Future<void> _applyLanguage(String lang) async {
@@ -508,6 +551,9 @@ class TtsAudioHandler extends BaseAudioHandler {
     return _tts.renderToFile(text, path);
   }
   TextChunk? get currentChunk => _chunks.isEmpty ? null : _chunks[_index];
+
+  /// Índice del fragmento que se está leyendo.
+  int get chunkIndex => _index;
 
   Future<void> jumpToIndex(int index) async {
     if (kDebugMode) debugPrint('[lector] jumpToIndex($index)');
