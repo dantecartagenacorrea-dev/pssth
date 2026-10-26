@@ -40,7 +40,7 @@ pdfrx, flutter_tts, audio_service, file_picker, path_provider, shared_preference
   - (b) Quitar Kokoro para español y dejar solo las voces del sistema.
   - No usar `piper_phonemize`: también es GPL.
 
-**2. Privacidad y ficha de la tienda: los textos no describen todo lo que hace la app.**
+**2. Privacidad y ficha de la tienda.** ✅ Hecho el 26-10-2026: política (web y `tienda/PRIVACIDAD.md`) y ficha ya cubren grabación, transcripción, copias de audios recibidos, descarga de modelos desde GitHub y el "sin Internet" corregido. El aviso de consentimiento ya estaba en la pantalla de grabación. Detalle original:
 - `privacidad_web/index.html` y `tienda/PRIVACIDAD.md` deben explicar:
   - Micrófono y grabación: el audio se guarda en el dispositivo junto al documento y "Eliminar" lo borra.
   - Transcripción local: iOS con reconocimiento obligatorio en el dispositivo; si no, Whisper local, sin enviar audio fuera.
@@ -49,7 +49,7 @@ pdfrx, flutter_tts, audio_service, file_picker, path_provider, shared_preference
 - `tienda/FICHA_APP_STORE.md`: corregir "Sin Internet" (las descargas de modelos son opcionales). Añadir grabación y transcripción a la descripción, los textos de micrófono y reconocimiento de voz a "Texto de los permisos", y una mención en las notas para la revisión.
 - Aviso al grabar: recordar que grabar a otras personas puede requerir su consentimiento (en la pantalla de grabación y en la política).
 
-**3. Coherencia de nombre y créditos.**
+**3. Coherencia de nombre y créditos.** ✅ Hecho el 26-10-2026 (textos de permisos, menú y "Acerca de" con créditos de Kokoro, Whisper, sherpa-onnx y espeak-ng mientras siga incluido), salvo la marca. Detalle original:
 - `ios/Runner/Info.plist`: los textos de cámara, fotos, micrófono y reconocimiento de voz dicen "Lector"; cambiarlos a "PSSTH!". El menú dice "Acerca de Lector y licencias".
 - Créditos de modelos en "Acerca de" / "Voces y modelos": Kokoro-82M (Apache 2.0; entrenado con datos CC BY: Koniwa y SIWIS) y Whisper (MIT). Hoy solo dice "sherpa-onnx (Apache 2.0)", y eso solo será cierto tras actualizar a la 2.0.
 - Sin comprobar: si la marca "PSSTH!" está registrada por terceros.

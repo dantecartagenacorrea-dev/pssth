@@ -157,7 +157,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
           _modelTile(
             kokoroEsModel,
             'Mayor naturalidad en español (voces Dora y Alex). Funciona sin conexión después de instalarse. '
-            'Necesita un teléfono reciente; si va lento, Lector vuelve solo a la voz del sistema.',
+            'Necesita un teléfono reciente; si va lento, PSSTH! vuelve solo a la voz del sistema.',
           ),
           if (Platform.isIOS) ...[
             const SizedBox(height: 8),
@@ -171,7 +171,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
                     const SizedBox(height: 4),
                     const Text(
                       'Si creaste tu Voz personal en iOS (Ajustes → Accesibilidad → Voz personal), '
-                      'Lector puede leer con ella. Solo tu propia voz, con tu permiso; nada sale del iPhone.',
+                      'PSSTH! puede leer con ella. Solo tu propia voz, con tu permiso; nada sale del iPhone.',
                     ),
                     const SizedBox(height: 12),
                     FilledButton.tonal(onPressed: _personalVoice, child: const Text('Usar mi voz personal')),
