@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
+import '../../domain/spanish_phonemizer.dart';
+
 /// Sintetiza con Kokoro (sherpa-onnx) en un isolate propio para no bloquear la
 /// interfaz. Devuelve audio WAV de 16 bits.
 class KokoroWorker {
@@ -53,7 +55,6 @@ void _entry(List<Object> args) {
           model: '$dir/model.int8.onnx',
           voices: '$dir/voices.bin',
           tokens: '$dir/tokens.txt',
-          dataDir: '$dir/espeak-ng-data',
           lexicon: '$dir/lexicon-us-en.txt,$dir/lexicon-zh.txt',
           lang: lang,
         ),
@@ -61,7 +62,7 @@ void _entry(List<Object> args) {
         debug: false,
         provider: 'cpu',
       ),
-      maxNumSenetences: 1,
+      maxNumSentences: 1,
     );
     tts = sherpa.OfflineTts(config);
   } catch (e) {
@@ -79,7 +80,21 @@ void _entry(List<Object> args) {
     final m = message as List;
     final reply = m[4] as SendPort;
     try {
-      final audio = tts.generate(text: m[1] as String, sid: m[2] as int, speed: m[3] as double);
+      // Sin espeak-ng (sherpa-onnx 2.0) el modelo no sabe leer español: se le
+      // pasan los fonemas del conversor propio, una lista por frase.
+      final frases = phonemizeSpanish(m[1] as String);
+      if (frases.isEmpty) {
+        reply.send(TransferableTypedData.fromList([_wav(Float32List(2400), tts.sampleRate)]));
+        return;
+      }
+      final audio = tts.generateWithConfig(
+        text: '',
+        config: sherpa.OfflineTtsGenerationConfig(
+          sid: m[2] as int,
+          speed: m[3] as double,
+          phonemeCodepoints: [for (final f in frases) f.runes.toList()],
+        ),
+      );
       reply.send(TransferableTypedData.fromList([_wav(audio.samples, audio.sampleRate)]));
     } catch (e) {
       reply.send('$e');

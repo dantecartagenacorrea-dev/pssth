@@ -39,7 +39,7 @@ dependencies:
   archive: ^4.0.7
   image_picker: ^1.1.2
   record: ^7.1.1
-  sherpa_onnx: ^1.13.8
+  sherpa_onnx: ^2.0.1
   just_audio: ^0.10.5
   crypto: ^3.0.6
 

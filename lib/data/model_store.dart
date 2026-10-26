@@ -47,7 +47,9 @@ const kokoroEsModel = ModelSpec(
   sizeBytes: 132303094,
   sha256: '4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e',
   extractedDir: 'kokoro-int8-multi-lang-v1_0',
-  requiredFiles: ['model.int8.onnx', 'voices.bin', 'tokens.txt', 'espeak-ng-data'],
+  requiredFiles: ['model.int8.onnx', 'voices.bin', 'tokens.txt'],
+  // Datos de espeak-ng (GPL): el paquete los trae, pero la app ya no los usa.
+  prune: ['espeak-ng-data'],
 );
 
 const whisperBaseModel = ModelSpec(
