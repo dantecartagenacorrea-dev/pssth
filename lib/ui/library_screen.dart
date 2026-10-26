@@ -281,17 +281,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   applicationName: 'PSSTH!',
                   applicationVersion: kAppVersion,
                   applicationLegalese:
-                      'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo; '
-                      'no se envían datos a ningún servidor.\n\n'
+                      'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo. '
+                      'Solo se usa Internet si descargas los modelos opcionales (desde GitHub), y la red local '
+                      'solo si activas la corrección con Ollama.\n\n'
                       'El reconocimiento de texto (OCR) y la voz pueden contener errores; '
-                      'consulta siempre el documento original para cualquier uso formal.',
+                      'consulta siempre el documento original para cualquier uso formal.\n\n'
+                      'Modelos opcionales: voz natural Kokoro-82M (Apache 2.0; entrenada con datos CC BY: '
+                      'Koniwa y SIWIS) y transcripción Whisper (MIT), ejecutados con sherpa-onnx (Apache 2.0). '
+                      'Esta versión incluye espeak-ng (GPL-3.0) dentro de sherpa-onnx. '
+                      'El resto de licencias está en «Ver licencias».',
                 );
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'voces', child: Text('Voces y modelos')),
               PopupMenuItem(value: 'ia', child: Text('Corrección avanzada (IA local)')),
-              PopupMenuItem(value: 'acerca', child: Text('Acerca de Lector y licencias')),
+              PopupMenuItem(value: 'acerca', child: Text('Acerca de PSSTH! y licencias')),
             ],
           ),
         ],

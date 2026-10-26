@@ -377,7 +377,7 @@ class PlayerScreen extends StatelessWidget {
         content: Text(
           '${buena ? 'Ya estás usando una voz de alta calidad del sistema.' : 'La voz actual es la básica del sistema. Puedes instalar gratis una voz más natural:'}'
           '\n\n$pasos'
-          '\n\nLector elige automáticamente la mejor voz instalada para el idioma del documento.',
+          '\n\nPSSTH! elige automáticamente la mejor voz instalada para el idioma del documento.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Entendido')),
