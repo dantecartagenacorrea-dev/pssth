@@ -591,7 +591,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ],
       ),
     );
-    controller.dispose();
+    // El diálogo sigue usando el campo mientras se cierra: liberarlo después.
+    Future.delayed(const Duration(seconds: 1), controller.dispose);
     if (raw == null || !mounted) return;
     final uri = parseUserUrl(raw);
     if (uri == null) {
