@@ -8,7 +8,9 @@ import '../domain/library_entry.dart';
 import '../domain/reading_window.dart';
 import '../domain/voice_groups.dart';
 import '../playback/tts_audio_handler.dart';
+import '../theme/app_theme.dart';
 import 'player_sheets.dart';
+import 'ether_text.dart';
 import 'voice_background.dart';
 
 /// Ancho máximo del contenido (iPad/macOS); en iPhone no interviene.
@@ -26,8 +28,12 @@ class PlayerScreen extends StatelessWidget {
   final LibraryEntry entry;
   final BookmarkStore bookmarkStore;
 
+  // El reproductor va siempre en oscuro: las letras "en el éter" lucen sobre
+  // fondo nocturno, sin importar el tema del sistema.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Theme(data: AppTheme.dark(), child: Builder(builder: _scaffold));
+
+  Widget _scaffold(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -303,60 +309,97 @@ class PlayerScreen extends StatelessWidget {
 
   Future<void> _pickVoice(BuildContext context, PlayerSnapshot state) async {
     final current = _voiceValue(state);
-    // Agrupadas: recomendadas, el idioma del documento y el resto plegado.
-    final groups = groupVoices<VoiceOption>(
-      state.voices,
-      preferredLanguage: handler.documentLanguage ?? 'es',
-      name: (v) => v.name,
-      locale: (v) => v.locale,
-      quality: (v) => v.quality,
-    );
-    Widget tile(BuildContext ctx, VoiceOption voice) => ListTile(
-          title: Text(
-            voiceDisplayLabel(name: voice.name, locale: voice.locale, quality: voice.quality),
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: voice.id == current ? const Icon(Icons.check_rounded) : null,
-          onTap: () => Navigator.pop(ctx, voice.id),
-        );
+    final store = handler.settingsStore;
+    final favorites = await store.loadFavoriteVoices();
+    final uses = await store.loadVoiceUses();
+    if (!context.mounted) return;
+    final hasNatural = state.voices.any((v) => v.quality == 'natural');
     final v = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              ListTile(
-                title: const Text('Automática (la mejor para el idioma)'),
-                trailing: current.isEmpty ? const Icon(Icons.check_rounded) : null,
-                onTap: () => Navigator.pop(ctx, ''),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          // Agrupadas: favoritas, más usadas, recomendadas, el idioma del
+          // documento y el resto plegado.
+          final groups = groupVoices<VoiceOption>(
+            state.voices,
+            preferredLanguage: handler.documentLanguage ?? 'es',
+            name: (v) => v.name,
+            locale: (v) => v.locale,
+            quality: (v) => v.quality,
+            id: (v) => v.id,
+            favorites: favorites,
+            uses: uses,
+          );
+          Widget tile(VoiceOption voice) {
+            final fav = favorites.contains(voice.id);
+            return ListTile(
+              title: Text(
+                voiceDisplayLabel(name: voice.name, locale: voice.locale, quality: voice.quality),
+                overflow: TextOverflow.ellipsis,
               ),
-              for (final g in groups)
-                if (g.expanded) ...[
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                    child: Text(g.title, style: Theme.of(ctx).textTheme.titleSmall),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (voice.id == current) const Icon(Icons.check_rounded),
+                  IconButton(
+                    tooltip: fav ? 'Quitar de favoritas' : 'Marcar como favorita',
+                    icon: Icon(fav ? Icons.star_rounded : Icons.star_border_rounded),
+                    onPressed: () {
+                      setSheet(() => fav ? favorites.remove(voice.id) : favorites.add(voice.id));
+                      store.saveFavoriteVoices(favorites);
+                    },
                   ),
-                  for (final voice in g.voices) tile(ctx, voice),
-                ] else
-                  ExpansionTile(
-                    title: Text('${g.title} (${g.voices.length})'),
-                    children: [for (final voice in g.voices) tile(ctx, voice)],
-                  ),
-              ListTile(
-                leading: const Icon(Icons.help_outline_rounded),
-                title: const Text('Mejorar la voz'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _showVoiceHelp(context, state);
-                },
+                ],
               ),
-            ],
-          ),
-        ),
+              onTap: () => Navigator.pop(ctx, voice.id),
+            );
+          }
+
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  ListTile(
+                    title: const Text('Automática (la mejor para el idioma)'),
+                    trailing: current.isEmpty ? const Icon(Icons.check_rounded) : null,
+                    onTap: () => Navigator.pop(ctx, ''),
+                  ),
+                  // Dora y Alex solo aparecen con el modelo instalado: se avisa dónde.
+                  if (!hasNatural)
+                    const ListTile(
+                      leading: Icon(Icons.auto_awesome_rounded),
+                      title: Text('Dora y Alex (voces naturales)'),
+                      subtitle: Text('Instálalas desde la pantalla principal: menú ⋮ → Voces y modelos.'),
+                    ),
+                  for (final g in groups)
+                    if (g.expanded) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                        child: Text(g.title, style: Theme.of(ctx).textTheme.titleSmall),
+                      ),
+                      for (final voice in g.voices) tile(voice),
+                    ] else
+                      ExpansionTile(
+                        title: Text('${g.title} (${g.voices.length})'),
+                        children: [for (final voice in g.voices) tile(voice)],
+                      ),
+                  ListTile(
+                    leading: const Icon(Icons.help_outline_rounded),
+                    title: const Text('Mejorar la voz'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _showVoiceHelp(context, state);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
     if (v == null) return;
@@ -365,7 +408,9 @@ class PlayerScreen extends StatelessWidget {
       return;
     }
     final voice = state.voices.where((x) => x.id == v);
-    if (voice.isNotEmpty) handler.setVoice(voice.first);
+    if (voice.isEmpty) return;
+    handler.setVoice(voice.first);
+    store.countVoiceUse(v);
   }
 
   /// Cómo conseguir gratis voces de mayor calidad (son del sistema, no de Lector).
@@ -411,50 +456,6 @@ void showSafeMessage(BuildContext context, Object error) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 }
 
-/// Muestra el bloque actual y resalta la palabra leída (cuando el texto de voz
-/// coincide con el original; si no, se muestra sin resaltar).
-class _HighlightedText extends StatelessWidget {
-  const _HighlightedText({required this.handler, required this.text, this.style});
-  final TtsAudioHandler handler;
-  final String text;
-  final TextStyle? style;
-
-  @override
-  Widget build(BuildContext context) {
-    final style = this.style ?? Theme.of(context).textTheme.titleLarge;
-    return ValueListenableBuilder<(int, int)?>(
-      valueListenable: handler.wordRange,
-      builder: (context, range, _) {
-        final spoken = handler.currentChunk?.speech;
-        if (range == null ||
-            spoken != text ||
-            range.$1 < 0 ||
-            range.$2 > text.length ||
-            range.$1 >= range.$2) {
-          return Text(text, style: style);
-        }
-        return Text.rich(
-          TextSpan(
-            style: style,
-            children: [
-              TextSpan(text: text.substring(0, range.$1)),
-              TextSpan(
-                text: text.substring(range.$1, range.$2),
-                style: TextStyle(
-                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              TextSpan(text: text.substring(range.$2)),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-
 /// Varios fragmentos alrededor del que se lee, para seguir el texto: el actual
 /// resaltado (con la palabra, si la voz la informa) y la vista se desplaza sola.
 class _ReadingView extends StatefulWidget {
@@ -467,7 +468,8 @@ class _ReadingView extends StatefulWidget {
 }
 
 class _ReadingViewState extends State<_ReadingView> {
-  final _currentKey = GlobalKey();
+  // Una llave por fragmento: cada uno conserva sus letras al moverse la ventana.
+  final _keys = <int, GlobalKey>{};
 
   @override
   void initState() {
@@ -483,7 +485,7 @@ class _ReadingViewState extends State<_ReadingView> {
 
   void _scrollToCurrent() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx = _currentKey.currentContext;
+      final ctx = _keys[widget.index]?.currentContext;
       if (ctx == null) return;
       Scrollable.ensureVisible(ctx, alignment: 0.25, duration: const Duration(milliseconds: 300));
     });
@@ -496,26 +498,20 @@ class _ReadingViewState extends State<_ReadingView> {
     final (start, end) = readingWindow(total: chunks.length, index: widget.index);
     final base = theme.textTheme.bodyLarge?.copyWith(fontSize: 19, height: 1.45);
     final dim = base?.copyWith(color: theme.colorScheme.secondary);
+    _keys.removeWhere((i, _) => i < start || i >= end);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (var i = start; i < end; i++)
           Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: i == widget.index
-                ? Container(
-                    key: _currentKey,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: _HighlightedText(handler: widget.handler, text: chunks[i].text, style: base),
-                  )
-                : Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(chunks[i].text, style: dim),
-                  ),
+            key: _keys.putIfAbsent(i, GlobalKey.new),
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 16),
+            child: EtherText(
+              handler: widget.handler,
+              text: chunks[i].text,
+              style: i < widget.index ? dim : base,
+              relation: (i - widget.index).sign,
+            ),
           ),
       ],
     );

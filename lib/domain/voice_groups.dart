@@ -58,19 +58,35 @@ String voiceDisplayLabel({required String name, required String locale, String? 
   return [limpio, ?region, calidad].join(' · ');
 }
 
-/// Agrupa las voces para elegir sin perderse entre cientos: primero unas pocas
-/// recomendadas (la natural y las mejores del idioma preferido), luego el
-/// idioma preferido completo y después el resto de idiomas, plegados.
-/// Las voces de efectos se descartan.
+/// Agrupa las voces para elegir sin perderse entre cientos: primero las
+/// favoritas y las más usadas, luego unas pocas recomendadas (la natural y las
+/// mejores del idioma preferido), el idioma preferido completo y después el
+/// resto de idiomas, plegados. Las voces de efectos se descartan.
+/// [id] identifica cada voz en [favorites] y en [uses] (veces elegida).
 List<VoiceGroup<T>> groupVoices<T>(
   Iterable<T> voices, {
   required String preferredLanguage,
   required String Function(T) name,
   required String Function(T) locale,
   String? Function(T)? quality,
+  String Function(T)? id,
+  Set<String> favorites = const {},
+  Map<String, int> uses = const {},
   int recommended = 3,
 }) {
   final usable = voices.where((v) => !_isEffect(name(v))).toList();
+  int usesOf(T v) => id == null ? 0 : uses[id(v)] ?? 0;
+  bool isFavorite(T v) => id != null && favorites.contains(id(v));
+  // De más a menos usada, sin perder el orden previo entre iguales.
+  List<T> byUse(List<T> list) {
+    final order = [for (var i = 0; i < list.length; i++) i]
+      ..sort((a, b) {
+        final c = usesOf(list[b]).compareTo(usesOf(list[a]));
+        return c != 0 ? c : a.compareTo(b);
+      });
+    return [for (final i in order) list[i]];
+  }
+
   List<T> ranked(Iterable<T> vs) {
     final list = vs.toList();
     final naturales = list.where((v) => _isNatural(quality?.call(v))).toList();
@@ -80,19 +96,29 @@ List<VoiceGroup<T>> groupVoices<T>(
       locale: locale,
       quality: quality,
     );
-    return [...naturales, ...resto];
+    return [...byUse(naturales), ...byUse(resto)];
   }
 
+  final favoritas = byUse(ranked(usable.where(isFavorite)));
+  final masUsadas = byUse(ranked(usable.where((v) => !isFavorite(v) && usesOf(v) > 0))).take(recommended).toList();
+  final destacadas = {...favoritas, ...masUsadas};
+
   final byLang = <String, List<T>>{};
-  for (final v in usable) {
+  for (final v in usable.where((v) => !destacadas.contains(v))) {
     byLang.putIfAbsent(_lang(locale(v)), () => []).add(v);
   }
   final preferred = ranked(byLang.remove(preferredLanguage) ?? const []);
   final top = preferred.take(recommended).toList();
   final groups = <VoiceGroup<T>>[
+    if (favoritas.isNotEmpty) VoiceGroup(title: 'Favoritas', voices: favoritas, expanded: true),
+    if (masUsadas.isNotEmpty) VoiceGroup(title: 'Más usadas', voices: masUsadas, expanded: true),
     if (top.isNotEmpty) VoiceGroup(title: 'Recomendadas', voices: top, expanded: true),
-    if (preferred.length > top.length)
-      VoiceGroup(title: languageName(preferredLanguage), voices: preferred.skip(top.length).toList(), expanded: true),
+    if (preferred.any((v) => !top.contains(v)))
+      VoiceGroup(
+        title: languageName(preferredLanguage),
+        voices: preferred.where((v) => !top.contains(v)).toList(),
+        expanded: true,
+      ),
   ];
   final otros = byLang.entries.map((e) => (languageName(e.key), e.value)).toList()
     ..sort((a, b) => a.$1.compareTo(b.$1));

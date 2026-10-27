@@ -6,6 +6,7 @@ import 'package:just_audio/just_audio.dart';
 
 import '../../data/audio_cache.dart';
 import '../../domain/wav_audio.dart';
+import '../../domain/word_timing.dart';
 import '../audio_prefetcher.dart';
 import '../tts_engine.dart';
 import 'kokoro_worker.dart';
@@ -117,7 +118,7 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     try {
       await _player.setFilePath(file.path);
       if (my != _gen) return;
-      levels = await _followLevel(file);
+      levels = await _followLevel(file, text);
       await _player.play(); // completa al terminar o al pausar/detener
     } on PlayerInterruptedException {
       // detenido a propósito: no es un fallo
@@ -129,10 +130,11 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
 
   static const _levelStep = Duration(milliseconds: 50);
 
-  /// Informa por [onLevel] el volumen del audio en el punto que va sonando.
-  Future<StreamSubscription<Duration>?> _followLevel(File file) async {
-    final cb = onLevel;
-    if (cb == null) return null;
+  /// Informa por [onLevel] el volumen del audio en el punto que va sonando y,
+  /// por [onProgress], la palabra que se estima que suena (esta voz no marca
+  /// tiempos: se reparte el tramo con voz según el largo de cada palabra).
+  Future<StreamSubscription<Duration>?> _followLevel(File file, String text) async {
+    if (onLevel == null && onProgress == null) return null;
     final List<double> env;
     try {
       env = WavAudio.parse(await file.readAsBytes()).envelope(windowMs: _levelStep.inMilliseconds);
@@ -140,9 +142,18 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
       return null;
     }
     if (env.isEmpty) return null;
-    return _player
-        .createPositionStream(minPeriod: _levelStep, maxPeriod: _levelStep)
-        .listen((pos) => cb(env[(pos.inMilliseconds ~/ _levelStep.inMilliseconds).clamp(0, env.length - 1)]));
+    final voiced = voicedRange(env);
+    (int, int)? lastWord;
+    return _player.createPositionStream(minPeriod: _levelStep, maxPeriod: _levelStep).listen((pos) {
+      final i = (pos.inMilliseconds ~/ _levelStep.inMilliseconds).clamp(0, env.length - 1);
+      onLevel?.call(env[i]);
+      if (voiced == null || i < voiced.$1) return;
+      final span = voiced.$2 - voiced.$1;
+      final word = wordAtFraction(text, span <= 0 ? 1 : (i - voiced.$1) / span);
+      if (word == null || word == lastWord) return;
+      lastWord = word;
+      onProgress?.call(text, word.$1, word.$2);
+    });
   }
 
   @override

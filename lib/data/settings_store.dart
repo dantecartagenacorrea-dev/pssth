@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class PlaybackPrefs {
@@ -19,6 +21,32 @@ class SettingsStore {
   static const _voiceNameKey = 'voiceName';
   static const _voiceLocaleKey = 'voiceLocale';
   static const _lastDocKey = 'lastDocumentId';
+  static const _favoriteVoicesKey = 'favoriteVoices';
+  static const _voiceUsesKey = 'voiceUses';
+
+  /// Voces marcadas con estrella (por su id).
+  Future<Set<String>> loadFavoriteVoices() async =>
+      ((await SharedPreferences.getInstance()).getStringList(_favoriteVoicesKey) ?? const []).toSet();
+
+  Future<void> saveFavoriteVoices(Set<String> ids) async =>
+      (await SharedPreferences.getInstance()).setStringList(_favoriteVoicesKey, ids.toList());
+
+  /// Cuántas veces se eligió cada voz (por su id).
+  Future<Map<String, int>> loadVoiceUses() async {
+    final raw = (await SharedPreferences.getInstance()).getString(_voiceUsesKey);
+    if (raw == null) return {};
+    try {
+      return (jsonDecode(raw) as Map<String, dynamic>).map((k, v) => MapEntry(k, (v as num).toInt()));
+    } on FormatException {
+      return {};
+    }
+  }
+
+  Future<void> countVoiceUse(String id) async {
+    final uses = await loadVoiceUses();
+    uses[id] = (uses[id] ?? 0) + 1;
+    await (await SharedPreferences.getInstance()).setString(_voiceUsesKey, jsonEncode(uses));
+  }
 
   Future<PlaybackPrefs> load() async {
     final prefs = await SharedPreferences.getInstance();
