@@ -18,6 +18,8 @@ import 'playback/engines/apple_tts_engine.dart';
 import 'playback/engines/fallback_tts_engine.dart';
 import 'playback/engines/kokoro_engine.dart';
 import 'playback/tts_audio_handler.dart';
+import 'ui/disintegrate_transition.dart';
+import 'ui/intro_screen.dart';
 import 'ui/library_screen.dart';
 
 Future<void> main() async {
@@ -59,6 +61,7 @@ Future<void> main() async {
   );
 
   await handler.setup();
+  await DisintegrateTransitionsBuilder.load();
 
   runApp(
     LectorPdfApp(
@@ -96,21 +99,36 @@ class LectorPdfApp extends StatelessWidget {
   final ModelStore modelStore;
   final Future<void> Function() onModelsChanged;
 
+  static final _ether = AppTheme.dark().copyWith(
+    scaffoldBackgroundColor: Colors.transparent,
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: DisintegrateTransitionsBuilder(),
+        TargetPlatform.iOS: DisintegrateTransitionsBuilder(),
+        TargetPlatform.macOS: DisintegrateTransitionsBuilder(),
+      },
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'PSSTH!',
-      theme: AppTheme.light(),
-      darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
-      home: LibraryScreen(
-        handler: handler,
-        libraryStore: libraryStore,
-        settingsStore: settingsStore,
-        bookmarkStore: bookmarkStore,
-        pronunciationStore: pronunciationStore,
-        modelStore: modelStore,
-        onModelsChanged: onModelsChanged,
+      // Toda la app en negro, sobre el fondo de puntos que trae cada pantalla;
+      // al entrar y salir, las pantallas se desintegran y se reconstruyen.
+      theme: _ether,
+      darkTheme: _ether,
+      themeMode: ThemeMode.dark,
+      home: IntroScreen(
+        next: (_) => LibraryScreen(
+          handler: handler,
+          libraryStore: libraryStore,
+          settingsStore: settingsStore,
+          bookmarkStore: bookmarkStore,
+          pronunciationStore: pronunciationStore,
+          modelStore: modelStore,
+          onModelsChanged: onModelsChanged,
+        ),
       ),
     );
   }
