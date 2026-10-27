@@ -39,4 +39,32 @@ void main() {
     final r = extractHtmlText(html);
     expect(r.wordCount, 0);
   });
+
+  test('las fórmulas de Wikipedia se leen en un solo trozo, sin el LaTeX', () {
+    const html = r"""
+<body><div class="mw-heading"><h2>Primer principio</h2><span class="mw-editsection">
+<a role="button" href="#">
+<span>editar</span>
+</a>
+</span></div>
+<p>La ecuación <span class="mwe-math-element"><span style="display: none;"><math alttext="{\displaystyle \Delta U=Q-W}">
+  <semantics>
+    <mrow>
+        <mi mathvariant="normal">Δ<!-- Δ --></mi>
+        <mi>U</mi>
+        <mo>=</mo>
+        <mi>Q</mi>
+        <mo>&#x2212;<!-- − --></mo>
+        <mi>W</mi>
+    </mrow>
+    <annotation encoding="application/x-tex">{\displaystyle \Delta U=Q-W}</annotation>
+  </semantics>
+</math></span><img src="x.svg" alt="{\displaystyle \Delta U=Q-W}"/></span>, donde U es la energía interna.</p>
+</body>""";
+    final r = extractHtmlText(html);
+    expect(r.text, contains('La ecuación ΔU=Q−W , donde U es la energía interna.'));
+    expect(r.text, isNot(contains('displaystyle')));
+    expect(r.text, isNot(contains('editar')));
+    expect(r.text.split('\n\n'), ['Primer principio', 'La ecuación ΔU=Q−W , donde U es la energía interna.']);
+  });
 }

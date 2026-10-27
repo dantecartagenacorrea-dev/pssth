@@ -28,6 +28,13 @@ HtmlText extractHtmlText(String html) {
     ' ',
   );
   body = body.replaceAll(RegExp(r'<!--.*?-->', dotAll: true), ' ');
+  // Fórmulas (MathML, como en Wikipedia): cada símbolo viene en su propia
+  // línea y además repetido en LaTeX ("{\displaystyle …}"). Se juntan en un
+  // solo trozo dentro de la frase ("ΔU=Q−W") y se descarta el LaTeX.
+  body = body.replaceAllMapped(
+    RegExp(r'<math\b[^>]*>(.*?)</math\s*>', caseSensitive: false, dotAll: true),
+    (m) => ' ${_mathText(m[1]!)} ',
+  );
 
   // Si hay un bloque principal con contenido suficiente, quedarse con él.
   for (final tag in const ['article', 'main']) {
@@ -43,6 +50,14 @@ HtmlText extractHtmlText(String html) {
   return HtmlText(title: title, text: _toText(body));
 }
 
+String _mathText(String inner) {
+  final noTex = inner.replaceAll(RegExp(r'<annotation\b[^>]*>.*?</annotation\s*>', caseSensitive: false, dotAll: true), '');
+  return decodeHtmlEntities(noTex.replaceAll(RegExp(r'<[^>]+>'), '')).replaceAll(RegExp(r'\s+'), '');
+}
+
+/// Enlaces "[editar]" de las secciones de Wikipedia: no son parte del texto.
+final _editLink = RegExp(r'^\[?\s*(editar|editar código|edit|edit source)\s*\]?$', caseSensitive: false);
+
 String _toText(String html) {
   var t = html.replaceAll(
     RegExp(r'<(br|/p|/div|/h[1-6]|/li|/tr|/blockquote|/section|/article|/pre)\b[^>]*>', caseSensitive: false),
@@ -56,7 +71,7 @@ String _toText(String html) {
   final lines = <String>[];
   for (final raw in t.split('\n')) {
     final line = raw.replaceAll(RegExp(r'[ \t ]+'), ' ').trim();
-    if (line.isEmpty) continue;
+    if (line.isEmpty || _editLink.hasMatch(line)) continue;
     lines.add(line);
   }
   return lines.join('\n\n');
