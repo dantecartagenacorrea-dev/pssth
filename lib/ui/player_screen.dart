@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
@@ -31,14 +32,14 @@ class PlayerScreen extends StatelessWidget {
   // El reproductor va siempre en oscuro: las letras "en el éter" lucen sobre
   // fondo nocturno, sin importar el tema del sistema.
   @override
-  Widget build(BuildContext context) => Theme(data: AppTheme.dark(), child: Builder(builder: _scaffold));
+  Widget build(BuildContext context) => Theme(data: AppTheme.dark(), child: _ChromeVisibility(handler: handler, child: Builder(builder: _scaffold)));
 
   Widget _scaffold(BuildContext context) {
     return Scaffold(
       // Sin barras opacas: el éter llega hasta los bordes de la pantalla.
       extendBodyBehindAppBar: true,
       backgroundColor: Colors.black,
-      appBar: AppBar(
+      appBar: PreferredSize(preferredSize: const Size.fromHeight(kToolbarHeight), child: _Fade(child: AppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
@@ -102,7 +103,7 @@ class PlayerScreen extends StatelessWidget {
             ],
           ),
         ],
-      ),
+      ),),),
       body: Stack(
         children: [
           Positioned.fill(child: VoiceBackground(handler: handler)),
@@ -127,7 +128,7 @@ class PlayerScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Padding(
+                  _Fade(child: Padding(
                     padding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,7 +155,7 @@ class PlayerScreen extends StatelessWidget {
                         ),
                       ],
                     ),
-                  ),
+                  ),),
                   // Los controles flotan sobre el texto: el polvo de letras pasa por detrás.
                   Expanded(
                     child: Stack(
@@ -172,7 +173,7 @@ class PlayerScreen extends StatelessWidget {
                         ),
                         Align(
                           alignment: Alignment.bottomCenter,
-                          child: Padding(
+                          child: _Fade(child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
                     // Controles sin fondo: flotan sobre la luz y el polvo.
                     child: ClipRRect(
@@ -260,6 +261,7 @@ class PlayerScreen extends StatelessWidget {
                     ),
                       ),
                   ),
+                          ),
                         ),
                       ],
                     ),
@@ -605,6 +607,91 @@ class _Pill extends StatelessWidget {
           Flexible(child: Text(value, overflow: TextOverflow.ellipsis)),
         ],
       ),
+    );
+  }
+}
+
+/// Despeja la pantalla: la barra, el título y los controles se esconden a los
+/// 3 segundos sin tocar mientras lee, y vuelven con cualquier toque o al
+/// pausar. Con lector de pantalla no se esconden nunca.
+class _ChromeVisibility extends StatefulWidget {
+  const _ChromeVisibility({required this.handler, required this.child});
+  final TtsAudioHandler handler;
+  final Widget child;
+
+  @override
+  State<_ChromeVisibility> createState() => _ChromeVisibilityState();
+}
+
+class _ChromeVisibilityState extends State<_ChromeVisibility> {
+  static const _hideAfter = Duration(seconds: 3);
+  final _visible = ValueNotifier(true);
+  Timer? _timer;
+  bool _wasPlaying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.handler.snapshot.addListener(_onPlayback);
+    _onPlayback();
+  }
+
+  void _onPlayback() {
+    final playing = widget.handler.snapshot.value.playing;
+    if (playing == _wasPlaying) return;
+    _wasPlaying = playing;
+    if (playing) {
+      _restart();
+    } else {
+      _timer?.cancel();
+      _visible.value = true;
+    }
+  }
+
+  void _restart() {
+    _timer?.cancel();
+    _timer = Timer(_hideAfter, () {
+      if (!mounted || !_wasPlaying || MediaQuery.accessibleNavigationOf(context)) return;
+      _visible.value = false;
+    });
+  }
+
+  void _touch() {
+    _visible.value = true;
+    _restart();
+  }
+
+  @override
+  void dispose() {
+    widget.handler.snapshot.removeListener(_onPlayback);
+    _timer?.cancel();
+    _visible.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => _touch(),
+        child: _ChromeScope(notifier: _visible, child: widget.child),
+      );
+}
+
+class _ChromeScope extends InheritedNotifier<ValueNotifier<bool>> {
+  const _ChromeScope({required super.notifier, required super.child});
+}
+
+/// Aparece y desaparece con la barra y los controles; escondido no recibe toques.
+class _Fade extends StatelessWidget {
+  const _Fade({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = context.dependOnInheritedWidgetOfExactType<_ChromeScope>()?.notifier?.value ?? true;
+    return IgnorePointer(
+      ignoring: !shown,
+      child: AnimatedOpacity(opacity: shown ? 1 : 0, duration: const Duration(milliseconds: 400), child: child),
     );
   }
 }
