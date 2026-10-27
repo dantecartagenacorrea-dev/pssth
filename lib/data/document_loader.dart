@@ -2,6 +2,7 @@ import 'dart:io';
 
 import '../domain/chapter_detector.dart';
 import '../domain/chunk_builder.dart';
+import '../domain/html_text.dart';
 import '../domain/library_entry.dart';
 import '../domain/text_paginator.dart';
 import '../ocr/ocr_engine.dart';
@@ -53,6 +54,9 @@ class DocumentLoader {
         chapters = book.chapters;
       case 'txt':
         pages = paginateText(decodeText(await File(entry.storedPath).readAsBytes()));
+      case 'html':
+        // Página web guardada (o una presentación en HTML): solo su texto legible.
+        pages = paginateText(extractHtmlText(decodeText(await File(entry.storedPath).readAsBytes())).text);
       case 'image':
         pages = [''];
       default:
@@ -66,7 +70,7 @@ class DocumentLoader {
       if (!pageNeedsOcr(pages[i])) continue;
       if (cache.has(i)) {
         pages[i] = cache.get(i)!;
-      } else if (entry.kind != 'txt' && entry.kind != 'epub') {
+      } else if (entry.kind != 'txt' && entry.kind != 'epub' && entry.kind != 'html') {
         pending.add(i);
       }
     }

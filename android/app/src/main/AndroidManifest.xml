@@ -36,6 +36,7 @@
                 <data android:mimeType="application/pdf"/>
                 <data android:mimeType="application/epub+zip"/>
                 <data android:mimeType="text/plain"/>
+                <data android:mimeType="text/html"/>
                 <data android:mimeType="image/*"/>
                 <data android:mimeType="audio/*"/>
             </intent-filter>
@@ -45,6 +46,7 @@
                 <data android:mimeType="application/pdf"/>
                 <data android:mimeType="application/epub+zip"/>
                 <data android:mimeType="text/plain"/>
+                <data android:mimeType="text/html"/>
                 <data android:mimeType="image/*"/>
                 <data android:mimeType="audio/*"/>
             </intent-filter>

@@ -429,6 +429,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         'image' => Icons.image,
         'epub' => Icons.menu_book,
         'txt' => Icons.article,
+        'html' => Icons.language,
         _ => Icons.picture_as_pdf,
       };
 
@@ -519,7 +520,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: const [
-          'pdf', 'epub', 'txt', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'tif', 'tiff', 'bmp',
+          'pdf', 'epub', 'txt', 'html', 'htm', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'tif', 'tiff', 'bmp',
           'wav', 'm4a', 'mp3', 'aac', 'caf',
         ],
         allowMultiple: true,
