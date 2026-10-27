@@ -1,3 +1,4 @@
+import 'dart:math' show sqrt;
 import 'dart:typed_data';
 
 /// Lectura mínima de WAV PCM (16 bits, mono o estéreo → mono) y corte en
@@ -73,6 +74,27 @@ class WavAudio {
     }
     if (samples.length > start) out.add(samples.sublist(start));
     return out;
+  }
+
+  /// Volumen de la voz (0–1) cada [windowMs] milisegundos, normalizado al
+  /// tramo más fuerte. Sirve para animar algo al ritmo del audio.
+  List<double> envelope({int windowMs = 50}) {
+    final window = (sampleRate * windowMs / 1000).round().clamp(1, 1 << 20);
+    final out = <double>[];
+    var peak = 0.0;
+    for (var i = 0; i < samples.length; i += window) {
+      final end = (i + window).clamp(0, samples.length);
+      var e = 0.0;
+      for (var j = i; j < end; j++) {
+        e += samples[j] * samples[j];
+      }
+      final rms = e / (end - i);
+      out.add(rms);
+      if (rms > peak) peak = rms;
+    }
+    if (peak <= 1e-9) return List.filled(out.length, 0);
+    // Raíz cuadrada: el RMS² exagera los picos y deja casi todo cerca de 0.
+    return [for (final v in out) sqrt(v / peak)];
   }
 
   /// ¿Hay algo más que silencio?

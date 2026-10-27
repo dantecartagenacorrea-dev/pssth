@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
 import '../../data/audio_cache.dart';
+import '../../domain/wav_audio.dart';
 import '../audio_prefetcher.dart';
 import '../tts_engine.dart';
 import 'kokoro_worker.dart';
@@ -111,13 +113,36 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     final my = ++_gen;
     final file = await _pf.fileFor(text);
     if (my != _gen) return; // se pidió detener/otro fragmento mientras se sintetizaba
+    StreamSubscription<Duration>? levels;
     try {
       await _player.setFilePath(file.path);
       if (my != _gen) return;
+      levels = await _followLevel(file);
       await _player.play(); // completa al terminar o al pausar/detener
     } on PlayerInterruptedException {
       // detenido a propósito: no es un fallo
+    } finally {
+      await levels?.cancel();
+      onLevel?.call(0);
     }
+  }
+
+  static const _levelStep = Duration(milliseconds: 50);
+
+  /// Informa por [onLevel] el volumen del audio en el punto que va sonando.
+  Future<StreamSubscription<Duration>?> _followLevel(File file) async {
+    final cb = onLevel;
+    if (cb == null) return null;
+    final List<double> env;
+    try {
+      env = WavAudio.parse(await file.readAsBytes()).envelope(windowMs: _levelStep.inMilliseconds);
+    } on FormatException {
+      return null;
+    }
+    if (env.isEmpty) return null;
+    return _player
+        .createPositionStream(minPeriod: _levelStep, maxPeriod: _levelStep)
+        .listen((pos) => cb(env[(pos.inMilliseconds ~/ _levelStep.inMilliseconds).clamp(0, env.length - 1)]));
   }
 
   @override

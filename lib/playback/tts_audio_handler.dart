@@ -90,6 +90,9 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   /// Rango (inicio, fin) de la palabra que se está leyendo en el bloque actual.
   final ValueNotifier<(int, int)?> wordRange = ValueNotifier(null);
+
+  /// Volumen de la voz (0–1) para el fondo del reproductor; 0 sin voz.
+  final ValueNotifier<double> voiceLevel = ValueNotifier(0);
   int _lastIndex = -1;
 
   List<TextChunk> _chunks = [];
@@ -114,6 +117,7 @@ class TtsAudioHandler extends BaseAudioHandler {
       if (c == null || c.speech != text) return;
       wordRange.value = (start, end);
     };
+    _tts.onLevel = (level) => voiceLevel.value = level;
     _tts.onError = (message) {
       _speaking = false;
       _refresh(playing: false, message: 'El motor de voz no está disponible.');

@@ -26,6 +26,10 @@ abstract class TtsEngine {
   /// Rango (inicio, fin) de la palabra leída dentro de [text].
   void Function(String text, int start, int end)? onProgress;
 
+  /// Volumen de la voz (0–1) mientras suena. Solo lo informan los motores que
+  /// reproducen su propio audio; los demás avisan por palabra en [onProgress].
+  void Function(double level)? onLevel;
+
   /// Error asíncrono del motor (p. ej. motor del sistema no disponible).
   void Function(String message)? onError;
 

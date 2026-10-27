@@ -9,6 +9,7 @@ import '../domain/reading_window.dart';
 import '../domain/voice_groups.dart';
 import '../playback/tts_audio_handler.dart';
 import 'player_sheets.dart';
+import 'voice_background.dart';
 
 /// Ancho máximo del contenido (iPad/macOS); en iPhone no interviene.
 const double kMaxContentWidth = 720;
@@ -89,7 +90,17 @@ class PlayerScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: ValueListenableBuilder<PlayerSnapshot>(
+      body: Stack(
+        children: [
+          Positioned.fill(child: VoiceBackground(handler: handler)),
+          _body(),
+        ],
+      ),
+    );
+  }
+
+  Widget _body() {
+    return ValueListenableBuilder<PlayerSnapshot>(
         valueListenable: handler.snapshot,
         builder: (context, state, _) {
           final theme = Theme.of(context);
@@ -223,8 +234,7 @@ class PlayerScreen extends StatelessWidget {
             ),
           );
         },
-      ),
-    );
+      );
   }
 
   String _voiceLabel(PlayerSnapshot state) {
