@@ -140,9 +140,32 @@ final class NativeTextTools: NSObject, FlutterPlugin {
           }
         }
       }
+    case "barcodes":
+      guard let args = call.arguments as? [String: Any],
+            let path = args["path"] as? String else {
+        result(FlutterError(code: "bad_args", message: "Falta path", details: nil))
+        return
+      }
+      DispatchQueue.global(qos: .userInitiated).async {
+        let codes = (try? NativeTextTools.barcodes(path: path)) ?? []
+        DispatchQueue.main.async { result(codes) }
+      }
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  /// Contenido de los códigos QR (y otros 2D) que aparecen en la imagen.
+  private static func barcodes(path: String) throws -> [String] {
+    guard let image = UIImage(contentsOfFile: path), let cg = image.cgImage else { return [] }
+    let request = VNDetectBarcodesRequest()
+    let handler = VNImageRequestHandler(
+      cgImage: cg,
+      orientation: orientation(image.imageOrientation),
+      options: [:]
+    )
+    try handler.perform([request])
+    return (request.results ?? []).compactMap { $0.payloadStringValue }
   }
 
   private static func recognize(path: String, languages: [String]) throws -> String {

@@ -6,6 +6,7 @@ import 'dart:typed_data' show BytesBuilder;
 import '../core/app_exception.dart';
 import '../domain/html_text.dart';
 import 'batch_import.dart' show audioExtensions;
+import 'youtube_transcript.dart';
 
 /// Límites de descarga por tipo (un artículo largo pesa menos de 1 MB).
 const maxPageBytes = 10 * 1024 * 1024;
@@ -65,6 +66,12 @@ Future<UrlContent> downloadUrl(
   http.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 '
       '(KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
   try {
+    // Un video de YouTube no tiene texto en la página: se lee su transcripción.
+    final videoId = youtubeVideoId(uri);
+    if (videoId != null) {
+      final video = await fetchYoutubeTranscript(videoId, http);
+      return UrlText(video.title, video.text);
+    }
     final req = await http.getUrl(uri);
     final res = await req.close().timeout(const Duration(seconds: 30));
     if (res.statusCode >= 400) {

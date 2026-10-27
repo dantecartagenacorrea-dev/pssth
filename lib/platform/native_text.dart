@@ -34,6 +34,18 @@ class NativeText implements OcrEngine {
     }
   }
 
+  /// Contenido de los códigos QR de la imagen; vacío si no hay o no se puede.
+  Future<List<String>> barcodes(String imagePath) async {
+    try {
+      final codes = await _channel.invokeMethod<List<Object?>>('barcodes', {'path': imagePath});
+      return (codes ?? const []).whereType<String>().toList();
+    } on MissingPluginException {
+      return const [];
+    } on PlatformException {
+      return const [];
+    }
+  }
+
   /// Idioma dominante ('es', 'en', ...) o null.
   Future<String?> detectLanguage(String text) async {
     try {

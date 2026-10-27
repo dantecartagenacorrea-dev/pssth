@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:image_picker/image_picker.dart';
 
 import '../core/app_exception.dart';
@@ -16,10 +17,12 @@ import '../data/model_store.dart';
 import '../data/pronunciation_store.dart';
 import '../data/settings_store.dart';
 import '../data/url_import.dart';
+import '../data/youtube_transcript.dart' show youtubeVideoId;
 import '../domain/chapter_detector.dart';
 import '../domain/chunk_builder.dart';
 import '../domain/language_detector.dart';
 import '../domain/library_entry.dart';
+import '../domain/link_finder.dart';
 import '../domain/text_chunk.dart';
 import '../domain/text_normalizer.dart';
 import '../ocr/ocr_engine.dart';
@@ -443,6 +446,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (bytes.isEmpty) {
         throw AppException('No se pudo leer la imagen.');
       }
+      // Foto de un QR o de una pantalla con una dirección: se ofrece abrirla.
+      if (mounted) setState(() => _busyLabel = 'Buscando enlaces…');
+      final link = await _findLinkInPhoto(shot.path);
+      if (link != null && mounted && await _askOpenLink(link)) {
+        if (mounted) await _importUri(link);
+        return;
+      }
       final stamp = DateTime.now().toIso8601String().substring(0, 16).replaceAll(':', '-');
       final entry = await widget.libraryStore.importFile(
         originalName: source == ImageSource.camera ? 'Foto $stamp.jpg' : shot.name,
@@ -460,6 +470,43 @@ class _LibraryScreenState extends State<LibraryScreen> {
         setState(() => _busy = false);
       }
     }
+  }
+
+  /// Primero un QR; si no hay, una dirección escrita en la foto (OCR).
+  Future<Uri?> _findLinkInPhoto(String path) async {
+    for (final code in await _native.barcodes(path)) {
+      final uri = findLinkInText(code);
+      if (uri != null) return uri;
+    }
+    try {
+      return findLinkInText(await _native.recognize(path));
+    } on OcrUnavailable {
+      return null;
+    } on PlatformException {
+      return null;
+    }
+  }
+
+  Future<bool> _askOpenLink(Uri link) async {
+    final video = youtubeVideoId(link) != null;
+    final open = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(video ? 'Video de YouTube en la foto' : 'Enlace en la foto'),
+        content: Text(
+          '${link.host}${link.path}${link.hasQuery ? '?${link.query}' : ''}\n\n'
+          '${video ? 'Puedo escuchar la transcripción del video.' : 'Puedo abrir la página y leerla.'}',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Leer la foto')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(video ? 'Escuchar video' : 'Abrir enlace'),
+          ),
+        ],
+      ),
+    );
+    return open ?? false;
   }
 
   Future<void> _openFile() async {
@@ -550,6 +597,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
       showSafeMessage(context, AppException('Eso no parece un enlace. Copia la dirección completa de la página.'));
       return;
     }
+    await _importUri(uri);
+  }
+
+  /// Descarga [uri] y lo abre: página como texto, video de YouTube por su
+  /// transcripción, PDF/EPUB como archivo y audio transcrito.
+  Future<void> _importUri(Uri uri) async {
     setState(() {
       _busy = true;
       _busyLabel = 'Descargando…';
