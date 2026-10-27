@@ -21,6 +21,12 @@ class AppleTtsEngine extends TtsEngine {
   DateTime _lastActivity = DateTime.now();
   bool _heard = false; // si esta lectura ya avisó alguna palabra
   int _gen = 0; // cambia al pausar o detener: deja de vigilar
+  Completer<bool> _abort = Completer<bool>();
+
+  void _cancelWatch() {
+    _gen++;
+    if (!_abort.isCompleted) _abort.complete(true);
+  }
 
   @override
   Future<void> init() async {
@@ -92,6 +98,7 @@ class AppleTtsEngine extends TtsEngine {
   @override
   Future<void> speak(String text) async {
     final my = ++_gen;
+    _abort = Completer<bool>();
     for (var attempt = 0; attempt < 2; attempt++) {
       if (await _speakWatched(text, my)) return;
       if (kDebugMode) debugPrint('[lector] la voz del sistema quedó muda; reintento ${attempt + 1}');
@@ -111,7 +118,7 @@ class AppleTtsEngine extends TtsEngine {
     final limit = Duration(seconds: 10 + (text.length * 0.4).round());
     final done = _tts.speak(text).then((_) => true, onError: (_) => true);
     while (true) {
-      final finished = await Future.any([done, Future.delayed(const Duration(seconds: 1), () => false)]);
+      final finished = await Future.any([done, _abort.future, Future.delayed(const Duration(seconds: 1), () => false)]);
       if (finished || my != _gen) return true;
       final now = DateTime.now();
       if (_heard && now.difference(_lastActivity) > _stallLimit) return false;
@@ -132,13 +139,13 @@ class AppleTtsEngine extends TtsEngine {
 
   @override
   Future<void> pause() {
-    _gen++;
+    _cancelWatch();
     return _tts.pause();
   }
 
   @override
   Future<void> stop() {
-    _gen++;
+    _cancelWatch();
     return _tts.stop();
   }
 

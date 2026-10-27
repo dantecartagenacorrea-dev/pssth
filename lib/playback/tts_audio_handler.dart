@@ -101,6 +101,17 @@ class TtsAudioHandler extends BaseAudioHandler {
   bool _ready = false;
   bool _speaking = false;
   bool _keepIndexAfterStop = false;
+
+  /// Identifica el bucle de lectura vigente: al pausar y reanudar rápido, el
+  /// bucle anterior puede seguir esperando su frase; con esto se retira solo
+  /// en vez de leer a la par del nuevo (se callaban entre sí y saltaban frases).
+  int _playGen = 0;
+
+  /// Errores del motor durante la frase actual y seguidos: una frase fallida
+  /// se salta; solo si fallan varias seguidas se detiene la lectura.
+  bool _chunkFailed = false;
+  int _failsInRow = 0;
+  static const _maxFailsInRow = 3;
   List<VoiceOption> _voices = [];
   String? _voiceName;
   /// Voz realmente en uso (puede diferir de la guardada si el documento está en otro idioma).
@@ -119,9 +130,8 @@ class TtsAudioHandler extends BaseAudioHandler {
     };
     _tts.onLevel = (level) => voiceLevel.value = level;
     _tts.onError = (message) {
-      _speaking = false;
-      _refresh(playing: false, message: 'El motor de voz no está disponible.');
-      _broadcastState(playing: false);
+      if (kDebugMode) debugPrint('[lector] error del motor de voz: $message');
+      _chunkFailed = true;
     };
     await _tts.init();
     try {
@@ -373,9 +383,12 @@ class TtsAudioHandler extends BaseAudioHandler {
       return; // ya hay un bucle de lectura en marcha
     }
     _speaking = true;
+    final my = ++_playGen;
+    _failsInRow = 0;
     _broadcastState(playing: true);
     _refresh(playing: true, message: null);
-    while (_speaking && _index < _chunks.length) {
+    while (_speaking && my == _playGen && _index < _chunks.length) {
+      _chunkFailed = false;
       try {
         final speech = _chunks[_index].speech;
         if (kDebugMode) debugPrint('[lector] speak idx=$_index len=${speech.length} "${speech.length > 70 ? speech.substring(0, 70) : speech}"');
@@ -388,16 +401,21 @@ class TtsAudioHandler extends BaseAudioHandler {
           await _tts.speak(speech);
         }
       } catch (_) {
-        _speaking = false;
-        _refresh(
-          playing: false,
-          message: 'No se pudo iniciar la lectura en voz alta.',
-        );
-        _broadcastState(playing: false);
-        return;
+        _chunkFailed = true;
       }
-      if (!_speaking) {
+      if (!_speaking || my != _playGen) {
         break;
+      }
+      if (_chunkFailed) {
+        _failsInRow += 1;
+        if (_failsInRow >= _maxFailsInRow) {
+          _speaking = false;
+          _refresh(playing: false, message: 'El motor de voz no está disponible.');
+          _broadcastState(playing: false);
+          return;
+        }
+      } else {
+        _failsInRow = 0;
       }
       if (_keepIndexAfterStop) {
         _keepIndexAfterStop = false;
@@ -421,6 +439,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   Future<void> pause() async {
     if (kDebugMode) debugPrint('[lector] pause() idx=$_index speaking=$_speaking');
     _speaking = false;
+    _playGen += 1;
     try {
       await _tts.pause();
     } catch (_) {
@@ -440,6 +459,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   @override
   Future<void> stop() async {
     _speaking = false;
+    _playGen += 1;
     await _tts.stop();
     _broadcastState(playing: false);
     _refresh(playing: false);
