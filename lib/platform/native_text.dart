@@ -23,12 +23,14 @@ class NativeText implements OcrEngine {
     String imagePath, {
     List<String> languages = const [],
     bool languageCorrection = true,
+    double? minimumTextHeight,
   }) async {
     try {
       final text = await _channel.invokeMethod<String>('recognize', {
         'path': imagePath,
         'languages': languages,
         'languageCorrection': languageCorrection,
+        'minimumTextHeight': ?minimumTextHeight,
       });
       return text ?? '';
     } on MissingPluginException {

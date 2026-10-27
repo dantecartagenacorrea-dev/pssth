@@ -466,7 +466,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   /// Primero un QR; si no hay, una dirección escrita en la foto (OCR).
-  Future<Uri?> _findLinkInPhoto(String path) async {
+  /// Ese OCR queda en caché: si no hay enlace, la foto se lee sin repetirlo.
+  Future<Uri?> _findLinkInPhoto(LibraryEntry entry) async {
+    final path = entry.storedPath;
     for (final code in await _native.barcodes(path)) {
       final uri = findLinkInText(code);
       if (uri != null) return uri;
@@ -474,7 +476,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
     try {
       // Sin corrección de idioma: la corrección "arregla" las direcciones
       // como si fueran palabras (youtube.corn, espacios tras el punto).
-      return findLinkInText(await _native.recognize(path, languageCorrection: false));
+      // Con letra mínima pequeña: en una foto del monitor la barra de
+      // direcciones mide mucho menos que el 1/32 de alto que Vision exige.
+      final text = await _native.recognize(path, languageCorrection: false, minimumTextHeight: 0.004);
+      if (text.trim().isNotEmpty) await _loader.rememberOcr(entry.id, 0, text);
+      return findLinkInText(text);
     } on OcrUnavailable {
       return null;
     } on PlatformException {
@@ -665,7 +671,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _busy = true;
         _busyLabel = 'Buscando enlaces…';
       });
-      final link = await _findLinkInPhoto(entry.storedPath);
+      final link = await _findLinkInPhoto(entry);
       if (!mounted) return;
       if (link != null && await _askOpenLink(link)) {
         if (mounted) await _importUri(link);

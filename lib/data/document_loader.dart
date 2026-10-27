@@ -38,6 +38,10 @@ class DocumentLoader {
 
   File _ocrFile(String id) => File('${cacheDir.path}/$id.ocr.json');
 
+  /// Guarda un OCR hecho fuera del cargador para no repetirlo al abrir.
+  Future<void> rememberOcr(String id, int page, String text) async =>
+      (await OcrCache.open(_ocrFile(id))).put(page, text);
+
   /// Carga rápida: texto directo + OCR ya cacheado. No ejecuta OCR nuevo.
   Future<LoadedDocument> load(LibraryEntry entry) async {
     final List<String> pages;
