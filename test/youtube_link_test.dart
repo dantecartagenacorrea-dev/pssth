@@ -43,6 +43,15 @@ void main() {
     expect(findLinkInText('Visita www.ejemplo.com, gracias')?.host, 'www.ejemplo.com');
   });
 
+  test('repara los errores típicos del OCR en la dirección', () {
+    const id = 'https://youtube.com/watch?v=17mLa8kbcVo';
+    expect(findLinkInText('youtube. com/watch?v=17mLa8kbcVo').toString(), id);
+    expect(findLinkInText('youtube.corn/watch?v=17mLa8kbcVo').toString(), id);
+    expect(findLinkInText('youtube.com/watch?v= 17mLa8kbcVo').toString(), id);
+    expect(findLinkInText('youtube.com/ watch?v=17mLa8kbcVo').toString(), id);
+    expect(findLinkInText('Hola. Ver más tarde'), isNull);
+  });
+
   test('no confunde abreviaturas con enlaces', () {
     expect(findLinkInText('Empresa S.A. y Cía. Ltda. al fin.de mes'), isNull);
     expect(findLinkInText('Texto sin direcciones'), isNull);

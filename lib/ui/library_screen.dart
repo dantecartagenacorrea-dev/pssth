@@ -446,13 +446,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (bytes.isEmpty) {
         throw AppException('No se pudo leer la imagen.');
       }
-      // Foto de un QR o de una pantalla con una dirección: se ofrece abrirla.
-      if (mounted) setState(() => _busyLabel = 'Buscando enlaces…');
-      final link = await _findLinkInPhoto(shot.path);
-      if (link != null && mounted && await _askOpenLink(link)) {
-        if (mounted) await _importUri(link);
-        return;
-      }
       final stamp = DateTime.now().toIso8601String().substring(0, 16).replaceAll(':', '-');
       final entry = await widget.libraryStore.importFile(
         originalName: source == ImageSource.camera ? 'Foto $stamp.jpg' : shot.name,
@@ -479,7 +472,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (uri != null) return uri;
     }
     try {
-      return findLinkInText(await _native.recognize(path));
+      // Sin corrección de idioma: la corrección "arregla" las direcciones
+      // como si fueran palabras (youtube.corn, espacios tras el punto).
+      return findLinkInText(await _native.recognize(path, languageCorrection: false));
     } on OcrUnavailable {
       return null;
     } on PlatformException {
@@ -663,6 +658,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
       buildChunks(documentId: entry.id, pages: doc.pages, normalizer: n);
 
   Future<void> _openEntry(LibraryEntry entry, {bool recienImportado = false}) async {
+    // Imagen recién llegada (cámara, Fotos, Archivos o compartida desde otra
+    // app) con un QR o una dirección escrita: se ofrece abrir el enlace.
+    if (recienImportado && entry.kind == 'image') {
+      setState(() {
+        _busy = true;
+        _busyLabel = 'Buscando enlaces…';
+      });
+      final link = await _findLinkInPhoto(entry.storedPath);
+      if (!mounted) return;
+      if (link != null && await _askOpenLink(link)) {
+        if (mounted) await _importUri(link);
+        return;
+      }
+      if (!mounted) return;
+    }
     setState(() {
       _busy = true;
       _busyLabel = 'Abriendo…';

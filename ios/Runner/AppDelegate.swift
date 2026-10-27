@@ -130,9 +130,10 @@ final class NativeTextTools: NSObject, FlutterPlugin {
         return
       }
       let languages = args["languages"] as? [String] ?? []
+      let correction = args["languageCorrection"] as? Bool ?? true
       DispatchQueue.global(qos: .userInitiated).async {
         do {
-          let text = try NativeTextTools.recognize(path: path, languages: languages)
+          let text = try NativeTextTools.recognize(path: path, languages: languages, correction: correction)
           DispatchQueue.main.async { result(text) }
         } catch {
           DispatchQueue.main.async {
@@ -168,13 +169,13 @@ final class NativeTextTools: NSObject, FlutterPlugin {
     return (request.results ?? []).compactMap { $0.payloadStringValue }
   }
 
-  private static func recognize(path: String, languages: [String]) throws -> String {
+  private static func recognize(path: String, languages: [String], correction: Bool = true) throws -> String {
     guard let image = UIImage(contentsOfFile: path), let cg = image.cgImage else {
       throw NSError(domain: "lector", code: 1, userInfo: [NSLocalizedDescriptionKey: "Imagen no válida"])
     }
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
-    request.usesLanguageCorrection = true
+    request.usesLanguageCorrection = correction
     if !languages.isEmpty {
       request.recognitionLanguages = languages
     } else if #available(iOS 16.0, *) {

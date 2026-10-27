@@ -22,11 +22,13 @@ class NativeText implements OcrEngine {
   Future<String> recognize(
     String imagePath, {
     List<String> languages = const [],
+    bool languageCorrection = true,
   }) async {
     try {
       final text = await _channel.invokeMethod<String>('recognize', {
         'path': imagePath,
         'languages': languages,
+        'languageCorrection': languageCorrection,
       });
       return text ?? '';
     } on MissingPluginException {
