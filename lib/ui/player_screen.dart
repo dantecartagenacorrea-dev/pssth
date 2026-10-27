@@ -510,7 +510,7 @@ class _ReadingViewState extends State<_ReadingView> {
               handler: widget.handler,
               text: chunks[i].text,
               style: i < widget.index ? dim : base,
-              relation: (i - widget.index).sign,
+              relation: i - widget.index,
             ),
           ),
       ],

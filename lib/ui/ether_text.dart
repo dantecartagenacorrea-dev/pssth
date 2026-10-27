@@ -20,12 +20,31 @@ class EtherText extends StatefulWidget {
   final String text;
   final TextStyle? style;
 
-  /// -1 si el fragmento ya se leyó (letras quietas), 0 si es el que suena y
-  /// 1 si todavía no llega (todas sus letras en pleno desorden).
+  /// Posición respecto al fragmento que suena: negativa si ya se leyó (letras
+  /// quietas), 0 si es el que suena y positiva si todavía no llega (1 es el
+  /// siguiente, que empieza a escribirse antes de que termine el actual).
   final int relation;
 
   @override
   State<EtherText> createState() => _EtherTextState();
+}
+
+/// Ritmo de la voz, compartido entre fragmentos: así el siguiente sabe cuándo
+/// empezar a escribirse.
+class _ReadingClock {
+  /// Las letras terminan de formarse este tiempo antes de que llegue la voz.
+  static const lead = 1.5;
+
+  /// Lo que tarda una letra en juntarse desde el polvo.
+  static const forming = 1.3;
+
+  static double wordsPerSecond = 2.8;
+
+  /// Palabras que le quedan al fragmento que suena.
+  static int remaining = 1 << 20;
+
+  /// Palabras por delante de la voz que ya deben estar escribiéndose.
+  static int get ahead => ((lead + forming) * wordsPerSecond).round();
 }
 
 class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMixin {
@@ -35,6 +54,9 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
   Duration _last = Duration.zero;
   bool _still = false;
   List<int> _wordOf = const []; // palabra de cada carácter (-1 si es espacio)
+  int _wordCount = 0;
+  int? _lastWord;
+  double _lastWordAt = 0;
   String? _dustFor; // texto y estilo cuyas letras de polvo ya se pidieron
   bool _dustReady = false;
 
@@ -69,7 +91,21 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
       }
     }
     _wordOf = word;
+    _wordCount = spans.length;
     _scene.reset(text.length, _rnd);
+  }
+
+  /// Mide el ritmo de la voz (palabras por segundo) y cuántas le quedan.
+  void _followVoice(int? cur) {
+    _ReadingClock.remaining = _wordCount - (cur ?? 0);
+    if (cur == null || cur == _lastWord) return;
+    final last = _lastWord;
+    final elapsed = _scene.time - _lastWordAt;
+    _lastWord = cur;
+    _lastWordAt = _scene.time;
+    if (last == null || cur <= last || elapsed < 0.05 || elapsed > 3) return;
+    final rate = ((cur - last) / elapsed).clamp(1.0, 6.0);
+    _ReadingClock.wordsPerSecond = _ReadingClock.wordsPerSecond * 0.8 + rate * 0.2;
   }
 
   /// Palabra que suena ahora, o null si la voz no informa (o no coincide).
@@ -85,17 +121,24 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
     final dt = ((now - _last).inMicroseconds / 1e6).clamp(0.0, 0.05);
     _last = now;
     _scene.time += dt;
-    final cur = _currentWord();
     final playing = _h.snapshot.value.playing;
+    // Antes de la primera palabra informada, la voz está al comienzo.
+    final cur = _currentWord() ?? (widget.relation == 0 && playing ? 0 : null);
+    if (widget.relation == 0) _followVoice(cur);
+    final ahead = _ReadingClock.ahead;
     final p = _scene.particles;
     for (var i = 0; i < p.length; i++) {
       final c = p[i];
       final w = i < _wordOf.length ? _wordOf[i] : -1;
       final dist = switch (widget.relation) {
         < 0 => -1,
-        > 0 => w < 0 ? null : 10,
+        1 => w < 0 ? null : _ReadingClock.remaining + w,
+        > 1 => w < 0 ? null : 1 << 20,
         _ => cur == null || w < 0 ? null : w - cur,
       };
+      // Escrita por adelantado: ya formada, esperando a la voz.
+      final written = dist != null && dist > 0 && dist <= ahead;
+      final far = dist == null ? 0.0 : math.min(1.0, (dist - ahead) / 10);
       double amp;
       double pull;
       if (dist == null) {
@@ -104,13 +147,12 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
       } else if (dist < 0) {
         amp = 0.4;
         pull = 10;
-      } else if (dist == 0) {
+      } else if (dist == 0 || written) {
         amp = 1.2;
         pull = 12;
       } else {
-        final k = math.min(1.0, dist / 10);
-        amp = 8 + 42 * k;
-        pull = 2 + (1 - k) * 4;
+        amp = 8 + 42 * far;
+        pull = 2 + (1 - far) * 4;
       }
       if (_still) amp = 0;
       final t = _scene.time * c.speed + c.phase;
@@ -125,14 +167,15 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
       c.lit += (litTarget - c.lit) * (1 - math.exp(-4 * dt));
       // Cuánto se deshace la letra en polvo: se junta de golpe al leerse y se
       // dispersa despacio.
-      final chaosTarget = _still || (dist != null && dist <= 0)
+      final chaosTarget = _still || written || (dist != null && dist <= 0)
           ? 0.0
           : dist == null
               ? 0.08
-              : 0.35 + 0.65 * math.min(1.0, dist / 10);
+              : 0.35 + 0.65 * far;
       c.chaos += (chaosTarget - c.chaos) * (1 - math.exp(-(chaosTarget < c.chaos ? 2.5 : 1.2) * dt));
-      // Ya formada y leída (o sonando), la letra se vuelve sólida y así queda.
-      final solidTarget = c.chaos < 0.04 && (dist == null || dist <= 0) ? 1.0 : 0.0;
+      // Ya formada (escrita por adelantado, sonando o leída), la letra se
+      // vuelve sólida y así queda.
+      final solidTarget = c.chaos < 0.04 && (dist == null || dist <= ahead) ? 1.0 : 0.0;
       c.solid += (solidTarget - c.solid) * (1 - math.exp(-(solidTarget > 0 ? 6 : 2) * dt));
     }
     _scene.notify();
