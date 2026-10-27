@@ -343,7 +343,8 @@ class _EtherPainter extends CustomPainter {
   // se funden en su forma al leerse.
   Float32List? _dotX;
   late Float32List _dotY, _gx, _gy, _ga, _gb, _gr, _px, _py, _buffer;
-  late Int32List _letterOf, _groupOf;
+  late Int32List _letterOf, _groupOf, _groupLetter;
+  late Float32List _threads;
   late Uint8List _bucket;
 
   // Letras y números rotos: un trozo sólido de un carácter al azar, que gira
@@ -358,8 +359,9 @@ class _EtherPainter extends CustomPainter {
     final homes = _homes();
     final r = math.Random(text.hashCode);
     final xs = <double>[], ys = <double>[], letterOf = <int>[], groupOf = <int>[];
-    final gx = <double>[], gy = <double>[], ga = <double>[], gb = <double>[], gr = <double>[];
-    void group(double cx, double cy) {
+    final gx = <double>[], gy = <double>[], ga = <double>[], gb = <double>[], gr = <double>[], gl = <int>[];
+    void group(int letter, double cx, double cy) {
+      gl.add(letter);
       gx.add(cx);
       gy.add(cy);
       ga.add(r.nextDouble() * 2 - 1);
@@ -376,7 +378,7 @@ class _EtherPainter extends CustomPainter {
       for (var j = 0; j < dots.length; j += 2) {
         final col = dots[j] ~/ _shardW, row = dots[j + 1] ~/ _shardH;
         final g = shards.putIfAbsent(col * 64 + row, () {
-          group(home.dx + (col + 0.5) * _shardW, home.dy + (row + 0.5) * _shardH);
+          group(i, home.dx + (col + 0.5) * _shardW, home.dy + (row + 0.5) * _shardH);
           return gx.length - 1;
         });
         xs.add(home.dx + dots[j]);
@@ -414,6 +416,8 @@ class _EtherPainter extends CustomPainter {
     _ga = Float32List.fromList(ga);
     _gb = Float32List.fromList(gb);
     _gr = Float32List.fromList(gr);
+    _groupLetter = Int32List.fromList(gl);
+    _threads = Float32List(gl.length * 4);
     _px = Float32List(n);
     _py = Float32List(n);
     _bucket = Uint8List(n);
@@ -510,6 +514,7 @@ class _EtherPainter extends CustomPainter {
       }
       canvas.drawRawPoints(PointMode.points, points, dot..color = (glowing ? glow : base).withValues(alpha: level));
     }
+    _paintThreads(canvas);
     _paintBits(canvas);
     // Encima, las letras que ya se solidificaron.
     final homes = _homes();
@@ -521,6 +526,43 @@ class _EtherPainter extends CustomPainter {
       final alpha = glowing ? math.min(1.0, 0.55 + c.glow) : 0.35 + 0.6 * c.lit;
       _glyph(text[i], alpha * c.solid, glowing).paint(canvas, home + Offset(c.dx * 0.5, c.dy * 0.5 - 3 * c.glow));
     }
+  }
+
+  /// Hilos de magnetismo: una línea tenue de cada trozo en camino hasta su
+  /// lugar en la letra, que aparece al acercarse y se corta al llegar.
+  void _paintThreads(Canvas canvas) {
+    final p = scene.particles;
+    final t = scene.time;
+    var n = 0;
+    var anyGlow = false;
+    for (var g = 0; g < _groupLetter.length; g++) {
+      final i = _groupLetter[g];
+      if (i >= p.length) continue;
+      final c = p[i];
+      if (c.solid > 0.5) continue;
+      final gb = _gb[g], ga = _ga[g];
+      final kd = (c.chaos * 1.6 - gb * 0.6).clamp(0.0, 1.0);
+      if (kd < 0.04 || kd > 0.85) continue;
+      final tx = _gx[g] + c.dx * 0.5, ty = _gy[g] + c.dy * 0.5;
+      final e = kd * kd;
+      final drift = ((t * (10 + 30 * gb) + gb * 200) % 80) - 40;
+      final bend = kd * (1 - kd) * 4;
+      final x = tx + e * (ga * ga * ga * 160 + drift) + bend * math.cos(_gx[g] * 0.05 + t * 2.2 + gb * 6.283) * 10;
+      final y = ty + e * (ga * 12 + (gb - 0.5) * 20) + bend * math.sin(_gx[g] * 0.04 + t * 1.8 + ga * 6.283) * 16;
+      _threads[n++] = x;
+      _threads[n++] = y;
+      _threads[n++] = tx;
+      _threads[n++] = ty;
+      anyGlow |= c.glow > 0.05;
+    }
+    if (n == 0) return;
+    canvas.drawRawPoints(
+      PointMode.lines,
+      Float32List.sublistView(_threads, 0, n),
+      Paint()
+        ..strokeWidth = 0.6
+        ..color = (anyGlow ? glow : base).withValues(alpha: 0.22),
+    );
   }
 
   TextPainter _bitGlyph(String ch, int level, bool glowing) => _bitGlyphs.putIfAbsent((ch, level, glowing), () {
@@ -550,10 +592,14 @@ class _EtherPainter extends CustomPainter {
       final e = k * k;
       final drift = ((t * (10 + 30 * bit.b) + bit.b * 200) % 80) - 40;
       final bend = k * (1 - k) * 4;
-      final x = home.dx + bit.ox * k + c.dx * 0.5 + e * (bit.a * bit.a * bit.a * 160 + drift) +
-          bend * math.cos(home.dx * 0.05 + t * 2.2 + bit.b * 6.283) * 10;
-      final y = home.dy + bit.oy * k + c.dy * 0.5 + e * (bit.a * 12 + (bit.b - 0.5) * 20) +
-          bend * math.sin(home.dx * 0.04 + t * 1.8 + bit.a * 6.283) * 16;
+      // El imán no lo atrapa: cuando su letra se forma, sube y se desvanece.
+      final rise = 1 - k;
+      final x = home.dx + bit.ox + c.dx * 0.5 + e * (bit.a * bit.a * bit.a * 160 + drift) +
+          bend * math.cos(home.dx * 0.05 + t * 2.2 + bit.b * 6.283) * 10 +
+          rise * math.sin(t * 1.3 + bit.b * 6.283) * 12;
+      final y = home.dy + bit.oy + c.dy * 0.5 + e * (bit.a * 12 + (bit.b - 0.5) * 20) +
+          bend * math.sin(home.dx * 0.04 + t * 1.8 + bit.a * 6.283) * 16 -
+          math.pow(rise, 1.5) * (120 + 80 * bit.b);
       final glyph = _bitGlyph(bit.ch, level, glowing);
       final w = glyph.width, h = glyph.height;
       canvas

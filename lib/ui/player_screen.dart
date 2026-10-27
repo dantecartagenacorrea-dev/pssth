@@ -35,7 +35,14 @@ class PlayerScreen extends StatelessWidget {
 
   Widget _scaffold(BuildContext context) {
     return Scaffold(
+      // Sin barras opacas: el éter llega hasta los bordes de la pantalla.
+      extendBodyBehindAppBar: true,
+      backgroundColor: Colors.black,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -99,7 +106,10 @@ class PlayerScreen extends StatelessWidget {
       body: Stack(
         children: [
           Positioned.fill(child: VoiceBackground(handler: handler)),
-          _body(),
+          Padding(
+            padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight),
+            child: _body(),
+          ),
         ],
       ),
     );
@@ -145,9 +155,13 @@ class PlayerScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                  // Los controles flotan sobre el texto: el polvo de letras pasa por detrás.
                   Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(24, 22, 24, 16),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(24, 22, 24, 260),
                       child: state.message == null && state.currentText.isNotEmpty
                           ? _ReadingView(handler: handler, index: handler.chunkIndex)
                           : Text(
@@ -155,13 +169,22 @@ class PlayerScreen extends StatelessWidget {
                               style: theme.textTheme.bodyLarge?.copyWith(color: gray),
                             ),
                     ),
-                  ),
-                  Padding(
+                        ),
+                        Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-                    child: Card(
+                    // Controles sin fondo: flotan sobre la luz y el polvo.
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(24),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: Card(
+                      color: Colors.transparent,
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
                         child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(2),
@@ -233,6 +256,12 @@ class PlayerScreen extends StatelessWidget {
                           ],
                         ),
                       ),
+                    ),
+                    ),
+                      ),
+                  ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -563,8 +592,10 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final gray = Theme.of(context).colorScheme.secondary;
+    final scheme = Theme.of(context).colorScheme;
+    final gray = scheme.secondary;
     return FilledButton(
+      style: FilledButton.styleFrom(backgroundColor: Colors.transparent),
       onPressed: onTap,
       onLongPress: onLongPress,
       child: Row(
