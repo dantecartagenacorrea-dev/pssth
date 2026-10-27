@@ -1,13 +1,15 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' show PointMode;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../playback/tts_audio_handler.dart';
 
-/// Fondo del reproductor que reacciona a la voz: manchas de luz suaves que se
-/// mueven despacio y crecen con el volumen (voz natural) o con cada palabra
-/// (voz del sistema). En pausa quedan tenues; con "Reducir movimiento" quietas.
+/// Fondo del reproductor que reacciona a la voz: una esfera de partículas que
+/// gira despacio y se deforma con el volumen (voz natural) o con cada palabra
+/// (voz del sistema). En pausa queda casi quieta; con "Reducir movimiento", fija.
 class VoiceBackground extends StatefulWidget {
   const VoiceBackground({super.key, required this.handler});
 
@@ -70,16 +72,8 @@ class _VoiceBackgroundState extends State<VoiceBackground>
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
     return RepaintBoundary(
-      child: CustomPaint(
-        painter: _BlobPainter(_paint, [
-          scheme.primary,
-          scheme.tertiary,
-          scheme.secondary,
-        ]),
-        size: Size.infinite,
-      ),
+      child: CustomPaint(painter: _SpherePainter(_paint), size: Size.infinite),
     );
   }
 }
@@ -90,40 +84,69 @@ class _BlobState extends ChangeNotifier {
   void notify() => notifyListeners();
 }
 
-class _BlobPainter extends CustomPainter {
-  _BlobPainter(this.state, this.colors) : super(repaint: state);
+/// Esfera de puntos repartidos en espiral (Fibonacci) sobre su superficie; su
+/// radio ondula con la energía de la voz y unas bandas brillan como vetas.
+class _SpherePainter extends CustomPainter {
+  _SpherePainter(this.state) : super(repaint: state);
 
   final _BlobState state;
-  final List<Color> colors;
 
-  // Recorrido de cada mancha (frecuencias distintas para que no se sincronicen).
-  static const _paths = [(0.7, 0.5, 0.0), (0.45, 0.8, 2.1), (0.9, 0.35, 4.2)];
+  static const _count = 2600;
+  static const _levels = 6;
+  static final List<(double, double, double)> _unit = [
+    for (var i = 0; i < _count; i++)
+      () {
+        final y = 1 - 2 * (i + 0.5) / _count;
+        final r = math.sqrt(1 - y * y);
+        final th = i * math.pi * (3 - math.sqrt(5));
+        return (math.cos(th) * r, y, math.sin(th) * r);
+      }(),
+  ];
 
   @override
   void paint(Canvas canvas, Size size) {
     final e = state.energy;
-    final t = state.phase;
-    final base = size.shortestSide;
-    for (var i = 0; i < _paths.length; i++) {
-      final (fx, fy, off) = _paths[i];
-      final center = Offset(
-        size.width * (0.5 + 0.32 * math.sin(t * fx + off)),
-        size.height * (0.45 + 0.3 * math.cos(t * fy + off * 1.3)),
-      );
-      final radius =
-          base * (0.45 + 0.25 * e) * (1 + 0.08 * math.sin(t * 2 + off));
-      final color = colors[i % colors.length];
-      final paint = Paint()
-        ..shader = RadialGradient(
-          colors: [
-            color.withValues(alpha: 0.10 + 0.22 * e),
-            color.withValues(alpha: 0),
-          ],
-        ).createShader(Rect.fromCircle(center: center, radius: radius));
-      canvas.drawCircle(center, radius, paint);
+    final t = state.phase * 2.2;
+    final cx = size.width / 2, cy = size.height * 0.42;
+    final radius = size.shortestSide * 0.36;
+    final ry = t * 0.35, rx = 0.35 * math.sin(t * 0.13);
+    final cyr = math.cos(ry), syr = math.sin(ry), cxr = math.cos(rx), sxr = math.sin(rx);
+    final amp = 0.05 + 0.32 * e;
+    final groups = List.generate(_levels, (_) => <double>[]);
+    for (final (ux, uy, uz) in _unit) {
+      final lat = math.asin(uy), lon = math.atan2(uz, ux);
+      // Deformación: ondas que recorren la esfera y crecen con la voz.
+      final wave = math.sin(3 * lat + t * 1.3) * math.cos(2 * lon - t) * 0.6 + math.sin(5 * lon + t * 2.1) * 0.4;
+      final k = 1 + amp * wave;
+      var x = ux * k, y = uy * k, z = uz * k;
+      // Giro: primero sobre el eje vertical, luego un leve cabeceo.
+      final x1 = x * cyr + z * syr;
+      final z1 = -x * syr + z * cyr;
+      final y1 = y * cxr - z1 * sxr;
+      final z2 = y * sxr + z1 * cxr;
+      x = x1;
+      y = y1;
+      z = z2;
+      final persp = 1 / (1.9 - z * 0.6);
+      // Vetas: bandas brillantes que se arremolinan con el tiempo.
+      final band = math.pow((math.sin(4 * lat + 2 * lon + t * 0.8) + 1) / 2, 6).toDouble();
+      final depth = (z + 1) / 2; // 0 atrás, 1 adelante
+      final light = (0.15 + 0.55 * depth + 0.6 * band) * (0.7 + 0.5 * e);
+      final l = (light.clamp(0.0, 1.0) * (_levels - 1)).round();
+      groups[l]
+        ..add(cx + x * radius * persp * 1.9)
+        ..add(cy + y * radius * persp * 1.9);
+    }
+    final paint = Paint()
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 1.5;
+    for (var l = 0; l < _levels; l++) {
+      if (groups[l].isEmpty) continue;
+      paint.color = Colors.white.withValues(alpha: 0.06 + 0.5 * l / (_levels - 1));
+      canvas.drawRawPoints(PointMode.points, Float32List.fromList(groups[l]), paint);
     }
   }
 
   @override
-  bool shouldRepaint(_BlobPainter old) => old.colors != colors;
+  bool shouldRepaint(_SpherePainter old) => false;
 }

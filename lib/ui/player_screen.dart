@@ -12,7 +12,6 @@ import '../playback/tts_audio_handler.dart';
 import '../theme/app_theme.dart';
 import 'player_sheets.dart';
 import 'ether_text.dart';
-import 'voice_background.dart';
 
 /// Ancho máximo del contenido (iPad/macOS); en iPhone no interviene.
 const double kMaxContentWidth = 720;
@@ -106,7 +105,6 @@ class PlayerScreen extends StatelessWidget {
       ),),),
       body: Stack(
         children: [
-          Positioned.fill(child: VoiceBackground(handler: handler)),
           Padding(
             padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight),
             child: _body(),

@@ -30,6 +30,7 @@ import '../platform/native_text.dart';
 import '../platform/open_file_bridge.dart';
 import '../platform/speech_transcriber.dart';
 import '../platform/whisper_transcriber.dart';
+import 'voice_background.dart';
 import '../playback/tts_audio_handler.dart';
 import '../services/llm_cleaner.dart';
 import 'player_screen.dart';
@@ -305,7 +306,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ),
         ],
       ),
-      body: Center(
+      // La esfera de partículas gira solo en la pantalla principal.
+      body: Stack(children: [Positioned.fill(child: VoiceBackground(handler: widget.handler)), Center(
         child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
         child: Column(
@@ -421,7 +423,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   ),
           ),
         ],
-      ))),
+      )))]),
     );
   }
 
