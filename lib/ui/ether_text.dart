@@ -349,7 +349,7 @@ class _EtherPainter extends CustomPainter {
 
   // Letras y números rotos: un trozo sólido de un carácter al azar, que gira
   // y viaja junto a cada letra hasta fundirse en ella.
-  final _bits = <({int letter, String ch, double ox, double oy, double a, double b, double rot, Rect keep})>[];
+  final _bits = <({int letter, String ch, double ox, double oy, double a, double b, double rot, Rect keep, bool absorb})>[];
   final _bitGlyphs = <(String, int, bool), TextPainter>{};
 
   static const _debrisPool = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -386,8 +386,9 @@ class _EtherPainter extends CustomPainter {
         letterOf.add(i);
         groupOf.add(g);
       }
-      // Una letra o número roto acompaña a cada dos letras en la corriente.
-      if (i.isOdd) continue;
+      // Una letra o número roto por letra viaja en la corriente: la mayoría
+      // desemboca en su letra, como el agua que se junta en el río; el resto
+      // no lo alcanza el imán y sube.
       final cut = r.nextInt(4); // qué lado se rompió
       final part = 0.45 + r.nextDouble() * 0.3;
       _bits.add((
@@ -404,6 +405,7 @@ class _EtherPainter extends CustomPainter {
           2 => Rect.fromLTRB(0, 0, part, 1),
           _ => Rect.fromLTRB(1 - part, 0, 1, 1),
         },
+        absorb: r.nextDouble() < 0.75,
       ));
     }
     final n = xs.length;
@@ -586,25 +588,38 @@ class _EtherPainter extends CustomPainter {
       final c = p[bit.letter];
       final k = c.chaos;
       final glowing = c.glow > 0.05;
-      final alpha = math.min(1.0, k * 1.4) * (glowing ? 0.9 : 0.55 + 0.3 * c.lit);
+      // Los que desembocan en la letra siguen visibles hasta casi el final y se
+      // funden cuando la letra se solidifica; los demás se apagan al subir.
+      final presence = bit.absorb ? math.min(1.0, k * 4) * (1 - c.solid) : math.min(1.0, k * 1.4);
+      final alpha = presence * (glowing ? 0.9 : 0.55 + 0.3 * c.lit);
       final level = (alpha.clamp(0.0, 1.0) * _levels).round();
       if (level == 0) continue;
       final e = k * k;
       final drift = ((t * (10 + 30 * bit.b) + bit.b * 200) % 80) - 40;
       final bend = k * (1 - k) * 4;
-      // El imán no lo atrapa: cuando su letra se forma, sube y se desvanece.
-      final rise = 1 - k;
-      final x = home.dx + bit.ox + c.dx * 0.5 + e * (bit.a * bit.a * bit.a * 160 + drift) +
-          bend * math.cos(home.dx * 0.05 + t * 2.2 + bit.b * 6.283) * 10 +
-          rise * math.sin(t * 1.3 + bit.b * 6.283) * 12;
-      final y = home.dy + bit.oy + c.dy * 0.5 + e * (bit.a * 12 + (bit.b - 0.5) * 20) +
-          bend * math.sin(home.dx * 0.04 + t * 1.8 + bit.a * 6.283) * 16 -
-          math.pow(rise, 1.5) * (120 + 80 * bit.b);
+      // Río: lejos corre en vetas; a medio camino serpentea; al final se junta.
+      var x = home.dx + c.dx * 0.5 + e * (bit.a * bit.a * bit.a * 160 + drift) +
+          bend * math.cos(home.dx * 0.05 + t * 2.2 + bit.b * 6.283) * 10;
+      var y = home.dy + c.dy * 0.5 + e * (bit.a * 12 + (bit.b - 0.5) * 20) +
+          bend * math.sin(home.dx * 0.04 + t * 1.8 + bit.a * 6.283) * 16;
+      if (bit.absorb) {
+        // Desemboca en su letra: se acerca hasta su lugar exacto.
+        x += bit.ox * k;
+        y += bit.oy * k;
+      } else {
+        // El imán no lo atrapa: cuando su letra se forma, sube y se desvanece.
+        final rise = 1 - k;
+        x += bit.ox + rise * math.sin(t * 1.3 + bit.b * 6.283) * 12;
+        y += bit.oy - math.pow(rise, 1.5) * (120 + 80 * bit.b);
+      }
       final glyph = _bitGlyph(bit.ch, level, glowing);
       final w = glyph.width, h = glyph.height;
+      // Al juntarse se encoge hasta el tamaño de un trazo de la letra.
+      final scale = bit.absorb ? 0.55 + 0.45 * k : 1.0;
       canvas
         ..save()
         ..translate(x + w / 2, y + h / 2)
+        ..scale(scale)
         ..rotate(k * bit.rot + math.sin(t * 0.8 + bit.b * 6.283) * 0.3 * k)
         ..clipRect(Rect.fromLTRB(
           -w / 2 + bit.keep.left * w,
