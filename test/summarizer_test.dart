@@ -47,7 +47,7 @@ Las herramientas de la construcción sirven como lenguaje simbólico para transm
     final a = summarizeExtractive(largo);
     final b = summarizeExtractive(largo);
     expect(a, b);
-    expect(a.length, lessThanOrEqualTo(12));
+    expect(a.length, lessThanOrEqualTo(30));
     expect(sw.elapsedMilliseconds, lessThan(5000));
   });
 }

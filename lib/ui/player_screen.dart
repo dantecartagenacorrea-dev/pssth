@@ -71,7 +71,7 @@ class PlayerScreen extends StatelessWidget {
                 case 'marcadores':
                   showBookmarksSheet(context, handler, bookmarkStore, entry);
                 case 'resumen':
-                  showSummarySheet(context, handler);
+                  showSummarySheet(context, handler, entry);
                 case 'exportar':
                   exportText(context, handler, entry);
                 case 'compartir':

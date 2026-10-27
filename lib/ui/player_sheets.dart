@@ -228,8 +228,12 @@ Future<void> exportText(
 
 List<String> _summarize(String text) => summarizeExtractive(text);
 
-/// Resumen extractivo local del documento; se puede escuchar.
-Future<void> showSummarySheet(BuildContext context, TtsAudioHandler handler) async {
+/// Resumen extractivo local del documento; se puede escuchar y descargar.
+Future<void> showSummarySheet(
+  BuildContext context,
+  TtsAudioHandler handler,
+  LibraryEntry entry,
+) async {
   final source = handler.pages.isNotEmpty
       ? handler.pages.join('\n\n')
       : handler.chunks.map((c) => c.text).join(' ');
@@ -238,6 +242,7 @@ Future<void> showSummarySheet(BuildContext context, TtsAudioHandler handler) asy
     return;
   }
   final future = compute(_summarize, source);
+  var leyendo = false;
   await showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -269,7 +274,7 @@ Future<void> showSummarySheet(BuildContext context, TtsAudioHandler handler) asy
                   Text('Resumen', style: Theme.of(ctx).textTheme.titleLarge),
                   const SizedBox(height: 4),
                   Text(
-                    'Frases clave del propio texto, en su orden original.',
+                    '${frases.length} frases clave del propio texto, en su orden original.',
                     style: Theme.of(ctx).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 12),
@@ -285,19 +290,39 @@ Future<void> showSummarySheet(BuildContext context, TtsAudioHandler handler) asy
                       ],
                     ),
                   ),
-                  Row(
-                    children: [
-                      FilledButton.icon(
-                        onPressed: () => handler.speakAside(frases.join(' ')),
-                        icon: const Icon(Icons.volume_up),
-                        label: const Text('Escuchar resumen'),
-                      ),
-                      const SizedBox(width: 12),
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('Cerrar'),
-                      ),
-                    ],
+                  StatefulBuilder(
+                    builder: (ctx, setState) => Wrap(
+                      spacing: 12,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: () async {
+                            if (leyendo) {
+                              setState(() => leyendo = false);
+                              await handler.stopAside();
+                              return;
+                            }
+                            setState(() => leyendo = true);
+                            final error = await handler.speakAside(frases);
+                            if (!ctx.mounted) return;
+                            setState(() => leyendo = false);
+                            if (error != null) _snack(ctx, error);
+                          },
+                          icon: Icon(leyendo ? Icons.stop : Icons.volume_up),
+                          label: Text(leyendo ? 'Detener' : 'Escuchar resumen'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => _downloadSummary(ctx, handler, entry, frases),
+                          icon: const Icon(Icons.download),
+                          label: const Text('Descargar'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Cerrar'),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -308,6 +333,84 @@ Future<void> showSummarySheet(BuildContext context, TtsAudioHandler handler) asy
     ),
   );
   await handler.stopAside();
+}
+
+/// Descarga el resumen como texto (.txt) o como audio con la voz activa.
+Future<void> _downloadSummary(
+  BuildContext context,
+  TtsAudioHandler handler,
+  LibraryEntry entry,
+  List<String> frases,
+) async {
+  final comoAudio = await showModalBottomSheet<bool>(
+    context: context,
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ListTile(title: Text('Descargar resumen')),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Como texto (.txt)'),
+            onTap: () => Navigator.pop(ctx, false),
+          ),
+          ListTile(
+            leading: const Icon(Icons.audiotrack),
+            title: const Text('Como audio, con la voz actual'),
+            onTap: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
+    ),
+  );
+  if (comoAudio == null || !context.mounted) return;
+  final dot = entry.name.lastIndexOf('.');
+  final titulo = dot > 0 ? entry.name.substring(0, dot) : entry.name;
+  if (!comoAudio) {
+    try {
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Descargar resumen',
+        fileName: 'Resumen - $titulo.txt',
+        bytes: utf8.encode('Resumen de "$titulo"\n\n${frases.join('\n\n')}\n'),
+      );
+      if (context.mounted && path != null) _snack(context, 'Resumen descargado.');
+    } catch (_) {
+      if (context.mounted) _snack(context, 'No se pudo descargar el resumen.');
+    }
+    return;
+  }
+  _snack(context, 'Preparando el audio del resumen…');
+  String? path;
+  String? original;
+  try {
+    final dir = await getTemporaryDirectory();
+    final base = '${dir.path}/Resumen_${DateTime.now().millisecondsSinceEpoch}';
+    path = await handler.renderTextAudio(frases.join(' '), '$base.wav');
+    if (path == null) throw AppException('Esta voz no permite guardar audio. Elige otra voz e inténtalo de nuevo.');
+    if (Platform.isIOS) {
+      final m4a = await const MethodChannel('lector/audio_export')
+          .invokeMethod<String>('toM4a', {'path': path, 'out': '$base.m4a'});
+      if (m4a != null && m4a.isNotEmpty) {
+        original = path;
+        path = m4a;
+      }
+    }
+    if (!context.mounted) return;
+    // La hoja Compartir ofrece "Guardar en Archivos", WhatsApp, etc.
+    await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {
+      'path': path,
+      'text': 'Resumen de "$titulo" leído con PSSTH!',
+    });
+  } catch (error) {
+    if (context.mounted) _snack(context, '$error');
+  } finally {
+    for (final p in [path, original]) {
+      if (p == null) continue;
+      try {
+        await File(p).delete();
+      } catch (_) {}
+    }
+  }
 }
 
 /// "Compartir fragmento en audio": sintetiza la frase o la página actual con

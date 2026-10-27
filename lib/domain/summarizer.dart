@@ -7,9 +7,9 @@ import 'chunker.dart' show splitSentences;
 /// original. Determinista y apto para documentos largos.
 List<String> summarizeExtractive(
   String text, {
-  double ratio = 0.1,
-  int minSentences = 3,
-  int maxSentences = 12,
+  double ratio = 0.2,
+  int minSentences = 5,
+  int maxSentences = 30,
 }) {
   final flat = text.replaceAll(RegExp(r'\s+'), ' ').trim();
   if (flat.isEmpty) return const [];

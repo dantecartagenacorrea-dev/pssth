@@ -497,19 +497,41 @@ class TtsAudioHandler extends BaseAudioHandler {
     _refresh();
   }
 
-  /// Lee un texto suelto (p. ej. el resumen) sin cambiar la posición del documento.
-  Future<void> speakAside(String text) async {
+  int _asideGen = 0;
+
+  /// Lee frases sueltas (p. ej. el resumen) una a una, sin cambiar la posición
+  /// del documento. Frase a frase para que la voz natural empiece pronto en
+  /// vez de sintetizar todo de golpe. Devuelve un mensaje si no pudo leer.
+  Future<String?> speakAside(List<String> parts) async {
+    final my = ++_asideGen;
     await pause();
     try {
       await _tts.stop();
-      await _tts.speak(text);
-    } catch (_) {}
+      for (var i = 0; i < parts.length; i++) {
+        if (my != _asideGen) return null;
+        if (parts[i].trim().isEmpty) continue;
+        _tts.prefetch([if (i + 1 < parts.length) parts[i + 1]]);
+        await _tts.speak(parts[i]);
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[lector] speakAside falló: $e');
+      return 'No se pudo leer el resumen en voz alta. Prueba con otra voz.';
+    }
   }
 
   Future<void> stopAside() async {
+    _asideGen++;
     try {
       await _tts.stop();
     } catch (_) {}
+  }
+
+  /// Sintetiza un texto suelto a un archivo de audio (p. ej. el resumen).
+  Future<String?> renderTextAudio(String text, String path) async {
+    if (text.trim().isEmpty) return null;
+    if (_speaking) await pause();
+    return _tts.renderToFile(text, path);
   }
 
   /// Texto original por página (para exportar y buscar), sin normalizar.

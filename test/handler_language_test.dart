@@ -118,4 +118,27 @@ void main() {
     expect(h.shareText(wholePage: true), 'Uno. Dos.');
     tmp.deleteSync(recursive: true);
   });
+
+  test('el resumen se lee frase a frase y avisa si el motor falla', () async {
+    SharedPreferences.setMockInitialValues({});
+    final tmp = Directory.systemTemp.createTempSync('lib');
+    final store = LibraryStore();
+    await store.initAt(tmp);
+    final engine = RecEngine();
+    final h = TtsAudioHandler(libraryStore: store, settingsStore: SettingsStore(), engine: engine);
+    await h.setup();
+    expect(await h.speakAside([es1, en, es2]), isNull);
+    expect(engine.spoken, [es1, en, es2]);
+    expect(engine.prefetched.first, [en]);
+
+    final h2 = TtsAudioHandler(libraryStore: store, settingsStore: SettingsStore(), engine: FailEngine());
+    await h2.setup();
+    expect(await h2.speakAside([es1]), isNotNull);
+    tmp.deleteSync(recursive: true);
+  });
+}
+
+class FailEngine extends RecEngine {
+  @override
+  Future<void> speak(String text) async => throw StateError('sin voz');
 }

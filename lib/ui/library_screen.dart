@@ -15,6 +15,7 @@ import '../data/library_store.dart';
 import '../data/model_store.dart';
 import '../data/pronunciation_store.dart';
 import '../data/settings_store.dart';
+import '../data/url_import.dart';
 import '../domain/chapter_detector.dart';
 import '../domain/chunk_builder.dart';
 import '../domain/language_detector.dart';
@@ -324,6 +325,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   label: const Text('Grabar clase o conversación'),
                 ),
                 const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : _openUrl,
+                  icon: const Icon(Icons.link),
+                  label: const Text('Pegar enlace'),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
@@ -506,6 +513,80 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (mounted) {
         setState(() => _busy = false);
       }
+    }
+  }
+
+  /// Enlace pegado por el usuario: una página web se lee como texto; un PDF o
+  /// EPUB se importa como archivo; un audio se transcribe.
+  Future<void> _openUrl() async {
+    // Sin leer el portapapeles por código: en iOS eso pide permiso cada vez.
+    // El usuario pega en el campo (mantener pulsado → Pegar).
+    final controller = TextEditingController();
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pegar enlace'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.url,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            hintText: 'https://…',
+            helperText: 'Artículo, noticia, PDF o audio',
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('Abrir')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (raw == null || !mounted) return;
+    final uri = parseUserUrl(raw);
+    if (uri == null) {
+      showSafeMessage(context, AppException('Eso no parece un enlace. Copia la dirección completa de la página.'));
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _busyLabel = 'Descargando…';
+    });
+    try {
+      final content = await downloadUrl(
+        uri,
+        tempDir: Directory.systemTemp,
+        onProgress: (got, total) {
+          if (!mounted) return;
+          final mb = (got / (1024 * 1024)).toStringAsFixed(1);
+          setState(() => _busyLabel = total == null
+              ? 'Descargando… $mb MB'
+              : 'Descargando… ${(got * 100 / total).round()}%');
+        },
+      );
+      if (!mounted) return;
+      if (content is UrlAudio) {
+        setState(() => _busy = false);
+        await _transcribeAndOpen(content.path, content.title, deleteSource: true);
+        return;
+      }
+      final entry = switch (content) {
+        UrlText(:final title, :final text) => await widget.libraryStore.importFile(
+            originalName: '${title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}.txt',
+            bytes: utf8.encode('$title\n\n$text\n\nFuente: $uri\n'),
+          ),
+        UrlDocument(:final fileName, :final bytes) =>
+          await widget.libraryStore.importFile(originalName: fileName, bytes: bytes),
+        UrlAudio() => throw StateError('audio ya tratado'),
+      };
+      await widget.settingsStore.saveLastDocumentId(entry.id);
+      await _openEntry(entry, recienImportado: true);
+    } catch (error) {
+      if (mounted) showSafeMessage(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
