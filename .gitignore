@@ -70,3 +70,6 @@ modelos/
 # Registros sueltos y salidas de Claude (no son parte de la app)
 kokoro_full.txt
 Claude outputs/
+
+# Datos de cuentas: se guardan fuera del repo (C:\PSSTH-privado)
+CUENTAS.md
