@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/perf_log.dart';
 import '../data/library_store.dart';
 import '../data/settings_store.dart';
 import '../domain/chapter_detector.dart';
@@ -119,7 +120,13 @@ class TtsAudioHandler extends BaseAudioHandler {
   String? _voiceLocale;
   double _speed = 1;
 
-  Future<void> setup() async {
+  /// Prepara el motor de voz una sola vez. Se lanza al abrir la app sin
+  /// esperarla (en Android tarda segundos y retrasaba la primera imagen); todo
+  /// lo que necesita la voz la espera.
+  Future<void>? _setup;
+  Future<void> setup() => _setup ??= _doSetup();
+
+  Future<void> _doSetup() async {
     if (_ready) {
       return;
     }
@@ -133,20 +140,27 @@ class TtsAudioHandler extends BaseAudioHandler {
       if (kDebugMode) debugPrint('[lector] error del motor de voz: $message');
       _chunkFailed = true;
     };
+    final sw = Stopwatch()..start();
+    void mark(String what) => perfLog('voz: $what ${sw.elapsedMilliseconds} ms');
     await _tts.init();
+    mark('motor');
     try {
       await _tts.setVolume(1.0); // máximo del motor; más alto solo con el volumen del sistema
     } catch (_) {}
     try {
       await _tts.setLanguage('es-ES');
     } catch (_) {}
+    mark('idioma');
     await _loadVoices();
+    mark('lista de voces (${_voices.length})');
     final prefs = await settingsStore.load();
     _speed = _nearestSpeed(prefs.speed);
     _voiceName = prefs.voiceName;
     _voiceLocale = prefs.voiceLocale;
     await _applyVoice();
+    mark('voz elegida');
     await _applySpeed();
+    mark('velocidad');
     _ready = true;
     _refresh();
   }
@@ -157,6 +171,7 @@ class TtsAudioHandler extends BaseAudioHandler {
     String? noTextMessage,
     String? notice,
   }) async {
+    await setup();
     await stop();
     _entry = entry;
     _chunks = chunks;
@@ -260,6 +275,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   /// [detected] es lo que reconoció el detector; [manual], lo elegido por el
   /// usuario (manda sobre el detector). No modifica las preferencias guardadas.
   Future<void> applyDocumentLanguage(String? detected, {String? manual}) async {
+    await setup();
     _detectedLang = detected;
     _manualLang = manual;
     final lang = manual ?? chooseDocumentLanguage(detected, available: availableLanguages);
@@ -273,6 +289,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   /// Se guarda con el documento y, si está leyendo, retoma el fragmento actual
   /// con la voz nueva.
   Future<void> setManualLanguage(String? lang) async {
+    await setup();
     final entry = _entry;
     if (entry != null) {
       entry.language = lang;
@@ -324,6 +341,7 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   /// Vuelve a leer las voces del motor (p. ej. tras instalar la voz natural).
   Future<void> reloadVoices() async {
+    await setup();
     await _loadVoices();
     await _applyVoice();
     _refresh();
@@ -374,6 +392,7 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> play() async {
+    await setup();
     if (kDebugMode) debugPrint('[lector] play() idx=$_index speaking=$_speaking chunks=${_chunks.length}');
     if (_chunks.isEmpty) {
       _refresh(playing: false);
@@ -505,6 +524,7 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   @override
   Future<void> setSpeed(double speed) async {
+    await setup();
     if (kDebugMode) debugPrint('[lector] setSpeed($speed)');
     _speed = _nearestSpeed(speed);
     await _applySpeed();
@@ -513,6 +533,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   }
 
   Future<void> setVoice(VoiceOption? voice) async {
+    await setup();
     _voiceName = voice?.name;
     _voiceLocale = voice?.locale;
     _activeVoice = null;
@@ -527,6 +548,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   /// del documento. Frase a frase para que la voz natural empiece pronto en
   /// vez de sintetizar todo de golpe. Devuelve un mensaje si no pudo leer.
   Future<String?> speakAside(List<String> parts) async {
+    await setup();
     final my = ++_asideGen;
     await pause();
     try {

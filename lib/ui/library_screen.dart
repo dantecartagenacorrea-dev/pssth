@@ -4,10 +4,12 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../core/app_exception.dart';
+import '../core/perf_log.dart';
 import '../data/batch_import.dart';
 import '../data/bookmark_store.dart';
 import '../data/corrected_pages_store.dart';
@@ -23,14 +25,18 @@ import '../domain/chunk_builder.dart';
 import '../domain/language_detector.dart';
 import '../domain/library_entry.dart';
 import '../domain/link_finder.dart';
+import '../domain/scanned_pdf.dart';
 import '../domain/text_chunk.dart';
 import '../domain/text_normalizer.dart';
 import '../ocr/ocr_engine.dart';
+import '../platform/document_scanner.dart';
 import '../platform/native_text.dart';
 import '../platform/open_file_bridge.dart';
 import '../platform/speech_transcriber.dart';
 import '../platform/whisper_transcriber.dart';
-import 'voice_background.dart';
+import 'scan_review_screen.dart';
+import 'swarm.dart';
+import 'swarm_transition.dart';
 import '../playback/tts_audio_handler.dart';
 import '../services/llm_cleaner.dart';
 import 'player_screen.dart';
@@ -218,10 +224,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   static const _audioExt = audioExtensions;
 
-  List<LibraryEntry> get _entries => widget.libraryStore.data.entries;
+  /// Pestaña de la lista: documentos normales o los creados con el escáner.
+  bool _showScans = false;
+
+  List<LibraryEntry> get _entries =>
+      [for (final e in widget.libraryStore.data.entries) if (e.scanned == _showScans) e];
+
+  int get _scanCount => widget.libraryStore.data.entries.where((e) => e.scanned).length;
 
   LibraryEntry? get _continueEntry {
-    for (final e in _entries) {
+    for (final e in widget.libraryStore.data.entries) {
       if (!e.finished && e.pageCount > 0) return e;
     }
     return null;
@@ -306,8 +318,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ),
         ],
       ),
-      // La esfera de partículas gira solo en la pantalla principal.
-      body: Stack(children: [Positioned.fill(child: VoiceBackground(handler: widget.handler)), Center(
+      // La esfera del enjambre de letras gira solo en la pantalla principal.
+      body: Stack(children: [const Positioned.fill(child: SwarmView(background: true)), Center(
         child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
         child: Column(
@@ -355,6 +367,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : _scanToPdf,
+                  icon: const Icon(Icons.document_scanner_outlined),
+                  label: const Text('Escanear a PDF'),
+                ),
               ],
             ),
           ),
@@ -363,7 +381,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Card(
                 child: ListTile(
-                  leading: const Icon(Icons.play_circle, size: 40),
+                  leading: const Icon(Icons.play_circle_outline, size: 40),
                   title: const Text('Continuar escuchando'),
                   subtitle: Text(
                     '${_continueEntry!.name} · página ${_continueEntry!.pageIndex + 1}',
@@ -374,15 +392,28 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              'Documentos recientes',
-              style: Theme.of(context).textTheme.titleMedium,
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('Documentos recientes'),
+                  selected: !_showScans,
+                  onSelected: (_) => setState(() => _showScans = false),
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: Text('Escaneados ($_scanCount)'),
+                  selected: _showScans,
+                  onSelected: (_) => setState(() => _showScans = true),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 8),
           Expanded(
             child: _entries.isEmpty
-                ? const Center(child: Text('Todavía no hay documentos.'))
+                ? Center(
+                    child: Text(_showScans ? 'Todavía no escaneaste documentos.' : 'Todavía no hay documentos.'),
+                  )
                 : ListView.separated(
                     itemCount: _entries.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
@@ -569,6 +600,102 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// Enlace pegado por el usuario: una página web se lee como texto; un PDF o
   /// EPUB se importa como archivo; un audio se transcribe.
+  /// Escanea varias páginas, reconoce su texto y arma un PDF buscable que se
+  /// entrega solo por la hoja Compartir del sistema (nada se sube solo).
+  Future<void> _scanToPdf() async {
+    final List<String> paths;
+    try {
+      paths = await DocumentScanner().scan();
+    } catch (error) {
+      if (mounted) showSafeMessage(context, error);
+      return;
+    }
+    if (paths.isEmpty || !mounted) return;
+    final now = DateTime.now();
+    try {
+      // Elegir cómo limpiar las páginas (B&N, Mejorar…) viendo cómo quedan.
+      final clean = await Navigator.of(context).push<List<CleanPage>>(
+        MaterialPageRoute(builder: (_) => ScanReviewScreen(paths: paths)),
+      );
+      if (clean == null || clean.isEmpty || !mounted) return;
+      final pages = <ScannedPage>[];
+      for (var i = 0; i < clean.length; i++) {
+        setState(() {
+          _busy = true;
+          _busyLabel = 'Reconociendo texto… página ${i + 1} de ${clean.length}';
+        });
+        var lines = const <ScannedLine>[];
+        try {
+          // El texto se lee en la foto original (más detalle); la posición es
+          // la misma en la página limpia porque se mide en fracciones.
+          lines = (await _native.recognizeLines(paths[i])).lines;
+        } catch (_) {
+          // Sin texto reconocido, la página va igual (solo la imagen).
+        }
+        pages.add((jpeg: clean[i].jpeg, width: clean[i].width, height: clean[i].height, lines: lines));
+      }
+      if (!mounted) return;
+      setState(() => _busy = false);
+      final name = await _askScanName(defaultScanName(now));
+      if (name == null || !mounted) return;
+      setState(() {
+        _busy = true;
+        _busyLabel = 'Armando el PDF…';
+      });
+      final fileName = safePdfFileName(name, now);
+      final bytes = await buildScannedPdf(pages, title: fileName.substring(0, fileName.length - 4));
+      final dir = Directory('${(await getTemporaryDirectory()).path}/escaneos');
+      await dir.create(recursive: true);
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(bytes, flush: true);
+      // Queda también en PSSTH!, en «Escaneados»: se puede abrir, escuchar y
+      // volver a compartir.
+      await widget.libraryStore.importFile(originalName: fileName, bytes: bytes, scanned: true);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _showScans = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('«$fileName» quedó en Escaneados.')),
+      );
+      await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {'path': file.path});
+    } catch (error) {
+      if (mounted) showSafeMessage(context, error);
+    } finally {
+      for (final path in paths) {
+        try {
+          File(path).deleteSync();
+        } catch (_) {}
+      }
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Nombre del PDF antes de compartirlo (sugerido con fecha y hora).
+  Future<String?> _askScanName(String suggested) async {
+    final controller = TextEditingController(text: suggested)
+      ..selection = TextSelection(baseOffset: 0, extentOffset: suggested.length);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nombre del PDF'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(suffixText: '.pdf'),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('Compartir')),
+        ],
+      ),
+    );
+    Future.delayed(const Duration(seconds: 1), controller.dispose);
+    return name;
+  }
+
   Future<void> _openUrl() async {
     // Sin leer el portapapeles por código: en iOS eso pide permiso cada vez.
     // El usuario pega en el campo (mantener pulsado → Pegar).
@@ -688,6 +815,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _busyLabel = 'Abriendo…';
     });
     final job = ++_ocrJob;
+    final sw = Stopwatch()..start();
     try {
       _normalizer = TextNormalizer(
         dictionary: await widget.pronunciationStore.load(),
@@ -697,6 +825,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         throw AppException('El archivo local ya no existe. Vuelve a abrirlo desde el teléfono.');
       }
       final doc = await _loader.load(entry);
+      perfLog('tiempo: cargar ${doc.pageCount} pág. ${sw.elapsedMilliseconds} ms');
       await widget.libraryStore.updateExtraction(
         id: entry.id,
         pageCount: doc.pageCount,
@@ -712,7 +841,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       for (final e in corrected.entries) {
         if (e.key < doc.pages.length) doc.pages[e.key] = e.value;
       }
-      var chunks = _chunksFor(updated, doc, _normalizer);
+      // En segundo plano: con documentos largos no traba la pantalla.
+      var chunks = await buildChunksInBackground(documentId: updated.id, pages: doc.pages, normalizer: _normalizer);
+      perfLog('tiempo: ${chunks.length} fragmentos ${sw.elapsedMilliseconds} ms');
       String? notice;
       final firstOcr = Completer<void>();
       var noTextMessage = noSelectableTextMessage;
@@ -750,6 +881,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
       widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));
       widget.handler.pages = List.of(doc.pages);
       unawaited(_applyLanguage(chunks, manual: updated.language));
+      // PDF largo abierto por primera vez: se empezó a leer con las primeras
+      // páginas; al terminar de extraerse el resto, se suma sin perder el lugar.
+      final more = doc.morePages;
+      if (more != null) {
+        unawaited(more.then((all) async {
+          if (job != _ocrJob || !mounted) return;
+          final full = await buildChunksInBackground(documentId: updated.id, pages: all, normalizer: _normalizer);
+          await widget.libraryStore.updateExtraction(id: updated.id, pageCount: all.length, totalChunks: 0);
+          await widget.handler.replaceChunks(full);
+          widget.handler.chapters = detectChapters(all);
+          widget.handler.pages = List.of(all);
+        }).catchError((Object _) {}));
+      }
       if (llm.ready) unawaited(_runLlm(updated, doc, job, corrected));
       if (!mounted) {
         return;
@@ -757,6 +901,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       setState(() {});
       await Navigator.of(context).push(
         MaterialPageRoute(
+          settings: const RouteSettings(name: SwarmTransitionsBuilder.solidBackground),
           builder: (_) => PlayerScreen(
             handler: widget.handler,
             entry: updated,

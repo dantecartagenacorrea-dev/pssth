@@ -75,6 +75,8 @@ dependencies {
     // Modelo latino incluido en la app: funciona offline desde la instalación.
     implementation("com.google.mlkit:text-recognition:16.0.1")
     implementation("com.google.mlkit:language-id:17.0.6")
+    // Escáner de documentos (recorta, endereza, varias páginas) vía Google Play Services.
+    implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
     // FileProvider para compartir el audio generado (AndroidX, gratuito).
     implementation("androidx.core:core-ktx:1.13.1")
 }

@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import '../domain/word_timing.dart';
 import '../playback/tts_audio_handler.dart';
 import 'glyph_dust.dart';
+import 'swarm.dart';
 
 /// Texto "en el éter": al llegar un fragmento sus letras aparecen dispersas y
 /// se ordenan; las palabras que faltan flotan más cuanto más lejos están de la
@@ -46,6 +47,9 @@ class _ReadingClock {
   /// Palabras por delante de la voz que ya deben estar escribiéndose.
   static int get ahead => ((lead + forming) * wordsPerSecond).round();
 }
+
+/// Palabras pasadas el adelanto que ya se dibujan como polvo.
+const _nearWords = 6;
 
 class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMixin {
   late final Ticker _ticker = createTicker(_tick);
@@ -177,6 +181,7 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
       // vuelve sólida y así queda.
       final solidTarget = c.chaos < 0.04 && (dist == null || dist <= ahead) ? 1.0 : 0.0;
       c.solid += (solidTarget - c.solid) * (1 - math.exp(-(solidTarget > 0 ? 6 : 2) * dt));
+      c.near = dist != null && dist <= ahead + _nearWords && c.solid < 0.98;
     }
     _scene.notify();
   }
@@ -250,6 +255,9 @@ class _Particle {
   double lit = 0;
   double chaos = 1;
   double solid = 0;
+  /// Cerca de la voz: se dibuja como polvo. Lejos, como letra entera que flota
+  /// (mucho más liviano: un párrafo largo en polvo son decenas de miles de puntos).
+  bool near = true;
 }
 
 class _EtherScene extends ChangeNotifier {
@@ -293,6 +301,7 @@ class _EtherPainter extends CustomPainter {
   static const _levels = 8;
   final _glyphs = <(String, int, bool), TextPainter>{};
   List<Offset?>? _home;
+  List<Offset?>? _center;
 
   TextPainter _glyph(String ch, double alpha, bool glowing) {
     final level = (alpha.clamp(0.0, 1.0) * _levels).round();
@@ -303,7 +312,7 @@ class _EtherPainter extends CustomPainter {
           text: ch,
           style: style.copyWith(
             color: color,
-            shadows: glowing ? [Shadow(color: glow.withValues(alpha: level / _levels), blurRadius: 12)] : null,
+            shadows: glowing ? [Shadow(color: glow.withValues(alpha: level / _levels), blurRadius: 5)] : null,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -313,6 +322,14 @@ class _EtherPainter extends CustomPainter {
   }
 
   /// Lugar de cada letra dentro del párrafo ya ordenado.
+  /// Centro de cada letra en el párrafo ordenado (para estamparla del atlas).
+  List<Offset?> _centers() => _center ??= [
+        for (var i = 0; i < text.length; i++)
+          text[i].trim().isEmpty
+              ? null
+              : layout.getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + 1)).firstOrNull?.toRect().center,
+      ];
+
   List<Offset?> _homes() => _home ??= [
         for (var i = 0; i < text.length; i++)
           text[i].trim().isEmpty
@@ -343,8 +360,7 @@ class _EtherPainter extends CustomPainter {
   // se funden en su forma al leerse.
   Float32List? _dotX;
   late Float32List _dotY, _gx, _gy, _ga, _gb, _gr, _px, _py, _buffer;
-  late Int32List _letterOf, _groupOf, _groupLetter;
-  late Float32List _threads;
+  late Int32List _letterOf, _groupOf;
   late Uint8List _bucket;
 
   // Letras y números rotos: un trozo sólido de un carácter al azar, que gira
@@ -418,8 +434,7 @@ class _EtherPainter extends CustomPainter {
     _ga = Float32List.fromList(ga);
     _gb = Float32List.fromList(gb);
     _gr = Float32List.fromList(gr);
-    _groupLetter = Int32List.fromList(gl);
-    _threads = Float32List(gl.length * 4);
+
     _px = Float32List(n);
     _py = Float32List(n);
     _bucket = Uint8List(n);
@@ -443,6 +458,10 @@ class _EtherPainter extends CustomPainter {
         continue;
       }
       final c = p[i];
+      if (!c.near) {
+        _bucket[d] = _hidden;
+        continue;
+      }
       final k = c.chaos;
       final glowing = c.glow > 0.05;
       var alpha = glowing ? math.min(1.0, 0.6 + c.glow) : (0.35 + 0.6 * c.lit) * (1 - 0.45 * k);
@@ -468,16 +487,10 @@ class _EtherPainter extends CustomPainter {
         final rx = x - cx, ry = y - cy;
         x = cx + rx * cs - ry * sn;
         y = cy + rx * sn + ry * cs;
-        // Imán: cuanto más cerca, más rápido cae en su lugar.
-        final e = kd * kd;
-        // Río: lejos, los trozos corren en vetas de viento hacia los lados.
-        final drift = ((t * (10 + 30 * gb) + gb * 200) % 80) - 40;
-        x += e * (ga * ga * ga * 160 + drift);
-        y += e * (ga * 12 + (gb - 0.5) * 20);
-        // A medio camino la corriente serpentea antes de llegar.
-        final bend = kd * (1 - kd) * 4;
-        x += bend * math.cos(_gx[g] * 0.05 + t * 2.2 + gb * 6.283) * 10;
-        y += bend * math.sin(_gx[g] * 0.04 + t * 1.8 + ga * 6.283) * 16;
+        // Del documento a la letra: sube por su cauce y llega a su lugar.
+        final f = _channel(cx, cy, ga, gb, _progress(kd, gb, t));
+        x += f.dx - cx + math.sin(t * 2 + gb * 6.283) * 3 * kd;
+        y += f.dy - cy;
       }
       _px[d] = x;
       _py[d] = y;
@@ -496,7 +509,7 @@ class _EtherPainter extends CustomPainter {
       _buffer[at + 1] = _py[d];
     }
     final dot = Paint()
-      ..strokeCap = StrokeCap.round
+      ..strokeCap = StrokeCap.square
       ..strokeWidth = 1.4;
     for (var b = 0; b < _buckets; b++) {
       if (counts[b] == 0) continue;
@@ -507,63 +520,74 @@ class _EtherPainter extends CustomPainter {
         canvas.drawRawPoints(
           PointMode.points,
           points,
+          // Halo sin desenfoque (el desenfoque por punto era lo más caro de
+          // dibujar): un punto redondo más grande y tenue detrás.
           Paint()
             ..strokeCap = StrokeCap.round
-            ..strokeWidth = 3
-            ..color = glow.withValues(alpha: 0.35 * level)
-            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+            ..strokeWidth = 4.5
+            ..color = glow.withValues(alpha: 0.22 * level),
         );
       }
       canvas.drawRawPoints(PointMode.points, points, dot..color = (glowing ? glow : base).withValues(alpha: level));
     }
-    _paintThreads(canvas);
+    // Sin líneas: solo se ven las letras en camino a su lugar.
     _paintBits(canvas);
-    // Encima, las letras que ya se solidificaron.
+    // Encima, las letras enteras: las ya solidificadas y las lejanas a la voz,
+    // que flotan desordenadas hasta que les toca volverse polvo.
+    // Las que brillan van con su propio dibujo (llevan halo); las demás se
+    // estampan juntas desde el atlas del enjambre, en una sola llamada.
     final homes = _homes();
+    final centers = _centers();
+    final fontSize = (style.fontSize ?? 16) * scaler.scale(1);
+    final stamped = <({String ch, Offset at, double size, Color color})>[];
     for (var i = 0; i < p.length && i < text.length; i++) {
       final c = p[i];
-      final home = homes[i];
-      if (home == null || c.solid < 0.02) continue;
+      final home = homes[i], center = centers[i];
+      final weight = c.near ? c.solid : 1.0;
+      if (home == null || center == null || weight < 0.02) continue;
       final glowing = c.glow > 0.05;
-      final alpha = glowing ? math.min(1.0, 0.55 + c.glow) : 0.35 + 0.6 * c.lit;
-      _glyph(text[i], alpha * c.solid, glowing).paint(canvas, home + Offset(c.dx * 0.5, c.dy * 0.5 - 3 * c.glow));
+      final alpha = glowing
+          ? math.min(1.0, 0.55 + c.glow)
+          : (0.35 + 0.6 * c.lit) * (c.near ? 1 : 1 - 0.45 * c.chaos);
+      final f = c.near ? 0.5 : 1.0;
+      final shift = Offset(c.dx * f, c.dy * f - 3 * c.glow);
+      if (glowing) {
+        _glyph(text[i], alpha * weight, glowing).paint(canvas, home + shift);
+      } else {
+        stamped.add((ch: text[i], at: center + shift, size: fontSize, color: base.withValues(alpha: (alpha * weight).clamp(0.0, 1.0))));
+      }
+    }
+    if (!Swarm.instance.stampLetters(canvas, stamped)) {
+      for (var j = 0; j < stamped.length; j++) {
+        // Sin atlas todavía (primer cuadro): letra por letra.
+        final l = stamped[j];
+        final tp = _glyph(l.ch, l.color.a, false);
+        tp.paint(canvas, l.at - Offset(tp.width / 2, tp.height / 2));
+      }
     }
   }
 
-  /// Hilos de magnetismo: una línea tenue de cada trozo en camino hasta su
-  /// lugar en la letra, que aparece al acercarse y se corta al llegar.
-  void _paintThreads(Canvas canvas) {
-    final p = scene.particles;
-    final t = scene.time;
-    var n = 0;
-    var anyGlow = false;
-    for (var g = 0; g < _groupLetter.length; g++) {
-      final i = _groupLetter[g];
-      if (i >= p.length) continue;
-      final c = p[i];
-      if (c.solid > 0.5) continue;
-      final gb = _gb[g], ga = _ga[g];
-      final kd = (c.chaos * 1.6 - gb * 0.6).clamp(0.0, 1.0);
-      if (kd < 0.04 || kd > 0.85) continue;
-      final tx = _gx[g] + c.dx * 0.5, ty = _gy[g] + c.dy * 0.5;
-      final e = kd * kd;
-      final drift = ((t * (10 + 30 * gb) + gb * 200) % 80) - 40;
-      final bend = kd * (1 - kd) * 4;
-      final x = tx + e * (ga * ga * ga * 160 + drift) + bend * math.cos(_gx[g] * 0.05 + t * 2.2 + gb * 6.283) * 10;
-      final y = ty + e * (ga * 12 + (gb - 0.5) * 20) + bend * math.sin(_gx[g] * 0.04 + t * 1.8 + ga * 6.283) * 16;
-      _threads[n++] = x;
-      _threads[n++] = y;
-      _threads[n++] = tx;
-      _threads[n++] = ty;
-      anyGlow |= c.glow > 0.05;
-    }
-    if (n == 0) return;
-    canvas.drawRawPoints(
-      PointMode.lines,
-      Float32List.sublistView(_threads, 0, n),
-      Paint()
-        ..strokeWidth = 0.6
-        ..color = (anyGlow ? glow : base).withValues(alpha: 0.22),
+  /// Cuánto lleva recorrido un trozo (0 en el documento, 1 en su letra). Lejos
+  /// de leerse, la corriente no para: los trozos suben un tramo y vuelven a
+  /// salir del documento, como un río que corre.
+  static double _progress(double kd, double gb, double t) {
+    final stream = ((t * 0.07 + gb) % 1) * 0.35;
+    final u = math.max(1 - kd, stream * kd);
+    return u * u * (3 - 2 * u);
+  }
+
+  /// Cauce de un trozo: sale de abajo (el documento), sube casi recto y gira
+  /// hacia su letra; muchos cauces así se juntan como los ríos de un delta al
+  /// revés. [u] 0 = en el documento, 1 = en la letra (tx, ty).
+  Offset _channel(double tx, double ty, double ga, double gb, double u) {
+    final sx = layout.width * (ga + 1) / 2;
+    final sy = ty + 380 + gb * 420;
+    final h = sy - ty;
+    final m = 1 - u;
+    final a = m * m * m, b = 3 * m * m * u, c = 3 * m * u * u, d = u * u * u;
+    return Offset(
+      a * sx + b * sx + c * tx + d * tx,
+      a * sy + b * (sy - h * 0.55) + c * (ty + h * 0.45) + d * ty,
     );
   }
 
@@ -586,6 +610,7 @@ class _EtherPainter extends CustomPainter {
       final home = homes[bit.letter];
       if (home == null) continue;
       final c = p[bit.letter];
+      if (!c.near) continue;
       final k = c.chaos;
       final glowing = c.glow > 0.05;
       // Los que desembocan en la letra siguen visibles hasta casi el final y se
@@ -603,9 +628,10 @@ class _EtherPainter extends CustomPainter {
       var y = home.dy + c.dy * 0.5 + e * (bit.a * 12 + (bit.b - 0.5) * 20) +
           bend * math.sin(home.dx * 0.04 + t * 1.8 + bit.a * 6.283) * 16;
       if (bit.absorb) {
-        // Desemboca en su letra: se acerca hasta su lugar exacto.
-        x += bit.ox * k;
-        y += bit.oy * k;
+        // Sale del documento y desemboca en su letra por su cauce.
+        final f = _channel(home.dx, home.dy, bit.a, bit.b, _progress(k, bit.b, t));
+        x = f.dx + c.dx * 0.5 + bit.ox * k * 0.3;
+        y = f.dy + c.dy * 0.5;
       } else {
         // El imán no lo atrapa: cuando su letra se forma, sube y se desvanece.
         final rise = 1 - k;

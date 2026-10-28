@@ -78,6 +78,66 @@ class PdfTextExtractor {
     return pages;
   }
 
+  /// Para PDF largos: las primeras [count] páginas al momento, para empezar a
+  /// leer ya, y el texto completo (limpio y en caché) en [rest] cuando termine
+  /// de extraerse lo demás. Si ya está en caché, o es corto, todo de una vez.
+  Future<({List<String> first, Future<List<String>>? rest})> loadPagesProgressive({
+    required String filePath,
+    required String documentId,
+    int count = 12,
+  }) async {
+    final cached = await _readCache(documentId);
+    if (cached != null) return (first: cached, rest: null);
+    await pdfrxFlutterInitialize();
+    final PdfDocument document;
+    try {
+      document = await PdfDocument.openFile(
+        filePath,
+        passwordProvider: () => null,
+        firstAttemptByEmptyPassword: true,
+      );
+    } on PdfPasswordException {
+      throw AppException('Este PDF está protegido con contraseña y no se puede leer.');
+    } on PdfException {
+      throw AppException('No se pudo abrir el PDF. El archivo puede ser inválido o no compatible.');
+    }
+    final total = document.pages.length;
+    if (total <= count * 2) {
+      await document.dispose();
+      final pages = await _extractPages(filePath);
+      await _writeCache(documentId, pages);
+      return (first: pages, rest: null);
+    }
+    final raw = <String>[];
+    try {
+      for (var i = 0; i < count; i++) {
+        raw.add(await _pageText(document.pages[i]));
+      }
+    } catch (_) {
+      await document.dispose();
+      throw AppException('No se pudo extraer el texto del PDF.');
+    }
+    Future<List<String>> rest() async {
+      try {
+        for (var i = count; i < total; i++) {
+          raw.add(await _pageText(document.pages[i]));
+        }
+        final pages = PageCleaner.clean(raw);
+        await _writeCache(documentId, pages);
+        return pages;
+      } finally {
+        await document.dispose();
+      }
+    }
+
+    return (first: PageCleaner.clean(List.of(raw)), rest: rest());
+  }
+
+  static Future<String> _pageText(PdfPage page) async {
+    final loaded = await page.ensureLoaded();
+    return _pageTextInReadingOrder(loaded, await loaded.loadStructuredText());
+  }
+
   Future<List<String>> _extractPages(String filePath) async {
     await pdfrxFlutterInitialize();
     PdfDocument? document;

@@ -69,6 +69,7 @@ class LibraryStore {
   Future<LibraryEntry> importFile({
     required String originalName,
     required List<int> bytes,
+    bool scanned = false,
   }) async {
     // Mismo nombre y mismo contenido: reutilizar la entrada y su progreso.
     for (final e in _data.entries) {
@@ -101,6 +102,7 @@ class LibraryStore {
       totalChunks: 0,
       lastOpenedIso: DateTime.now().toIso8601String(),
       kind: kind,
+      scanned: scanned,
     );
     _data.entries.removeWhere((e) => e.id == id);
     _data.entries.insert(0, entry);

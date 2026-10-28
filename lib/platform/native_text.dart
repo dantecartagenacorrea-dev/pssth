@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 
+import '../domain/scanned_pdf.dart';
 import '../ocr/ocr_engine.dart';
 
 /// Puente con las capacidades nativas de iOS (Vision y NaturalLanguage).
@@ -48,6 +49,30 @@ class NativeText implements OcrEngine {
     } on PlatformException {
       return const [];
     }
+  }
+
+  /// Líneas reconocidas con su lugar en la imagen (fracciones 0–1, desde
+  /// arriba a la izquierda) y el tamaño de la imagen, para armar un PDF con el
+  /// texto buscable encima de la foto.
+  Future<({int width, int height, List<ScannedLine> lines})> recognizeLines(String imagePath) async {
+    final Map<Object?, Object?>? raw;
+    try {
+      raw = await _channel.invokeMethod<Map<Object?, Object?>>('recognizeLines', {'path': imagePath});
+    } on MissingPluginException {
+      throw OcrUnavailable();
+    }
+    double n(Object? v) => (v as num?)?.toDouble() ?? 0;
+    final lines = <ScannedLine>[
+      for (final l in (raw?['lines'] as List<Object?>? ?? const []).whereType<Map<Object?, Object?>>())
+        (
+          text: '${l['text'] ?? ''}',
+          left: n(l['left']),
+          top: n(l['top']),
+          width: n(l['width']),
+          height: n(l['height']),
+        ),
+    ];
+    return (width: (raw?['width'] as num?)?.toInt() ?? 0, height: (raw?['height'] as num?)?.toInt() ?? 0, lines: lines);
   }
 
   /// Idioma dominante ('es', 'en', ...) o null.

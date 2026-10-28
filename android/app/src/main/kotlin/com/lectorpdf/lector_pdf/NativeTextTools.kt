@@ -49,6 +49,37 @@ object NativeTextTools {
                         result.error("ocr_failed", e.message, null)
                     }
                 }
+                "recognizeLines" -> {
+                    // Cada línea con su lugar en la foto (fracciones 0–1), para
+                    // poner el texto buscable encima de la imagen en un PDF.
+                    val path = call.argument<String>("path")
+                    if (path.isNullOrEmpty()) {
+                        result.error("bad_args", "Falta path", null); return@setMethodCallHandler
+                    }
+                    try {
+                        val image = InputImage.fromFilePath(context, Uri.fromFile(File(path)))
+                        val w = image.width.toDouble()
+                        val h = image.height.toDouble()
+                        recognizer.process(image)
+                            .addOnSuccessListener { visionText ->
+                                val lines = mutableListOf<Map<String, Any>>()
+                                for (block in visionText.textBlocks) {
+                                    for (line in block.lines) {
+                                        val box = line.boundingBox ?: continue
+                                        lines.add(mapOf(
+                                            "text" to line.text,
+                                            "left" to box.left / w, "top" to box.top / h,
+                                            "width" to box.width() / w, "height" to box.height() / h,
+                                        ))
+                                    }
+                                }
+                                result.success(mapOf("width" to image.width, "height" to image.height, "lines" to lines))
+                            }
+                            .addOnFailureListener { e -> result.error("ocr_failed", e.message, null) }
+                    } catch (e: Exception) {
+                        result.error("ocr_failed", e.message, null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

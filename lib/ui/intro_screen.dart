@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
+import 'swarm.dart';
+import 'swarm_transition.dart';
+
 /// Entrada de la app: fondo negro, puntos en caos que se juntan como atraídos
 /// por un imán y forman el ícono de PSSTH!, que luego se desintegra para dar
 /// paso a la biblioteca. Un toque la salta; con "Reducir movimiento" es breve.
@@ -49,7 +52,8 @@ class _IntroScreenState extends State<IntroScreen> with SingleTickerProviderStat
     final t = d.inMicroseconds / 1e6;
     // Al tocar, salta directo a la desintegración.
     _time.value = t >= _skipFrom ? _hold + (t - _skipFrom) : t;
-    if (_time.value >= _end - 0.35) _leave();
+    // Con el ícono ya formado, se dispersa en el enjambre de letras.
+    if (_time.value >= _hold + 0.2) _leave();
   }
 
   void _skip() {
@@ -60,7 +64,12 @@ class _IntroScreenState extends State<IntroScreen> with SingleTickerProviderStat
   void _leave() {
     if (_left || !mounted) return;
     _left = true;
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: widget.next));
+    // El logo se dispersa en el enjambre de letras, que vuela a la biblioteca.
+    final dots = _dots;
+    if (dots != null) Swarm.instance.scatterFrom(dots.lastPoints);
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: widget.next, settings: const RouteSettings(name: SwarmTransitionsBuilder.home)),
+    );
   }
 
   @override
@@ -95,6 +104,9 @@ class _Dots {
   final Int32List color;
   final double aspect; // alto / ancho
   final Float32List seedA, seedB;
+
+  /// Dónde quedó cada punto en el último cuadro: de ahí sale el enjambre.
+  List<Offset> lastPoints = const [];
 
   static const _maxDots = 5000;
 
@@ -155,6 +167,7 @@ class _IntroPainter extends CustomPainter {
     final nx = (size.width - noiseW) / 2, ny = (size.height - noiseH) / 2;
     final frame = (t * 24).floor(); // la estática cambia 24 veces por segundo
     final groups = <int, List<double>>{};
+    final last = <Offset>[];
     var fade = 1.0;
     if (t > _IntroScreenState._hold) {
       fade = 1 - ((t - _IntroScreenState._hold) / (_IntroScreenState._end - _IntroScreenState._hold)).clamp(0.0, 1.0);
@@ -187,11 +200,13 @@ class _IntroPainter extends CustomPainter {
         x = hx + e * (180 + 260 * a) + math.sin(t * 6 + b * 9) * 6 * k;
         y = hy - e * (120 + 200 * b);
       }
+      if (i % 5 == 0) last.add(Offset(x, y));
       final bucket = t < _IntroScreenState._chaos ? -1 : _bucket(dots.color[i]);
       (groups[bucket] ??= <double>[])
         ..add(x)
         ..add(y);
     }
+    dots.lastPoints = last;
     final paint = Paint()
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 2.2;

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'dart:ui' show PointMode;
 
 import 'package:flutter/material.dart';
@@ -10,6 +11,18 @@ import 'package:flutter/scheduler.dart';
 /// "Reducir movimiento" queda quieto.
 class DotField extends StatefulWidget {
   const DotField({super.key});
+
+  /// Programa de GPU que dibuja el fondo; se carga una vez al iniciar. Sin él
+  /// (no cargó), se dibuja en el procesador como antes.
+  static ui.FragmentProgram? program;
+
+  static Future<void> load() async {
+    try {
+      program = await ui.FragmentProgram.fromAsset('shaders/dot_field.frag');
+    } catch (_) {
+      program = null;
+    }
+  }
 
   @override
   State<DotField> createState() => _DotFieldState();
@@ -31,13 +44,42 @@ class _DotFieldState extends State<DotField> with SingleTickerProviderStateMixin
   void dispose() {
     _ticker.dispose();
     _time.dispose();
+    _shader?.dispose();
     super.dispose();
   }
 
+  late final ui.FragmentShader? _shader = DotField.program?.fragmentShader();
+
   @override
-  Widget build(BuildContext context) => RepaintBoundary(
-        child: CustomPaint(painter: _DotFieldPainter(_time), size: Size.infinite),
-      );
+  Widget build(BuildContext context) {
+    final shader = _shader;
+    return RepaintBoundary(
+      child: CustomPaint(
+        painter: shader != null ? _GpuDotFieldPainter(_time, shader) : _DotFieldPainter(_time),
+        size: Size.infinite,
+      ),
+    );
+  }
+}
+
+/// El mismo fondo, calculado por la tarjeta gráfica: un solo rectángulo.
+class _GpuDotFieldPainter extends CustomPainter {
+  _GpuDotFieldPainter(this.time, this.shader) : super(repaint: time);
+
+  final ValueNotifier<double> time;
+  final ui.FragmentShader shader;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    shader
+      ..setFloat(0, size.width)
+      ..setFloat(1, size.height)
+      ..setFloat(2, time.value);
+    canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
+  }
+
+  @override
+  bool shouldRepaint(_GpuDotFieldPainter old) => false;
 }
 
 class _DotFieldPainter extends CustomPainter {
@@ -88,7 +130,7 @@ class _DotFieldPainter extends CustomPainter {
       ordered[at + 1] = _buffer[i * 2 + 1];
     }
     final dot = Paint()
-      ..strokeCap = StrokeCap.round
+      ..strokeCap = StrokeCap.square
       ..strokeWidth = 1.6;
     for (var l = 0; l < _levels; l++) {
       if (counts[l] == 0) continue;
@@ -110,7 +152,7 @@ class _DotFieldPainter extends CustomPainter {
       PointMode.points,
       threads,
       Paint()
-        ..strokeCap = StrokeCap.round
+        ..strokeCap = StrokeCap.square
         ..strokeWidth = 1.8
         ..color = Colors.white.withValues(alpha: 0.35)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5),

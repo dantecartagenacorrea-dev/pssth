@@ -12,7 +12,11 @@ import 'pdf_page_renderer.dart';
 import 'pdf_text_extractor.dart';
 
 class LoadedDocument {
-  LoadedDocument({required this.pages, required this.pendingOcr, this.chapters});
+  LoadedDocument({required this.pages, required this.pendingOcr, this.chapters, this.morePages});
+
+  /// PDF largo abierto la primera vez: el texto completo, cuando termine de
+  /// extraerse (mientras tanto [pages] tiene solo las primeras páginas).
+  final Future<List<String>>? morePages;
 
   /// Capítulos explícitos (EPUB). Si es null, se detectan desde el texto.
   final List<Chapter>? chapters;
@@ -47,6 +51,7 @@ class DocumentLoader {
   Future<LoadedDocument> load(LibraryEntry entry) async {
     final List<String> pages;
     List<Chapter>? chapters;
+    Future<List<String>>? morePages;
     switch (entry.kind) {
       case 'epub':
         final book = readEpub(await File(entry.storedPath).readAsBytes());
@@ -60,9 +65,12 @@ class DocumentLoader {
       case 'image':
         pages = [''];
       default:
-        pages = List<String>.of(
-          await _pdf.loadPages(filePath: entry.storedPath, documentId: entry.id),
-        );
+        final loaded = await _pdf.loadPagesProgressive(filePath: entry.storedPath, documentId: entry.id);
+        // Escaneado (primeras páginas sin texto): se espera el texto completo,
+        // así el OCR conoce todas las páginas que le faltan.
+        final scanned = loaded.rest != null && loaded.first.any(pageNeedsOcr);
+        pages = List<String>.of(scanned ? await loaded.rest! : loaded.first);
+        morePages = scanned ? null : loaded.rest;
     }
     final cache = await OcrCache.open(_ocrFile(entry.id));
     final pending = <int>[];
@@ -74,7 +82,7 @@ class DocumentLoader {
         pending.add(i);
       }
     }
-    return LoadedDocument(pages: pages, pendingOcr: pending, chapters: chapters);
+    return LoadedDocument(pages: pages, pendingOcr: pending, chapters: chapters, morePages: morePages);
   }
 
   /// OCR progresivo: emite cada página al terminarla y la guarda en caché.

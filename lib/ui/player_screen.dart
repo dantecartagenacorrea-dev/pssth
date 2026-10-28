@@ -11,6 +11,7 @@ import '../domain/voice_groups.dart';
 import '../playback/tts_audio_handler.dart';
 import '../theme/app_theme.dart';
 import 'player_sheets.dart';
+import 'read_scroll.dart';
 import 'ether_text.dart';
 
 /// Ancho máximo del contenido (iPad/macOS); en iPhone no interviene.
@@ -31,7 +32,7 @@ class PlayerScreen extends StatelessWidget {
   // El reproductor va siempre en oscuro: las letras "en el éter" lucen sobre
   // fondo nocturno, sin importar el tema del sistema.
   @override
-  Widget build(BuildContext context) => Theme(data: AppTheme.dark(), child: _ChromeVisibility(handler: handler, child: Builder(builder: _scaffold)));
+  Widget build(BuildContext context) => Theme(data: AppTheme.ether(), child: _ChromeVisibility(handler: handler, child: Builder(builder: _scaffold)));
 
   Widget _scaffold(BuildContext context) {
     return Scaffold(
@@ -52,6 +53,11 @@ class PlayerScreen extends StatelessWidget {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Lo que ya leíste',
+            icon: const Icon(Icons.history_edu_outlined),
+            onPressed: () => showReadScroll(context, handler),
+          ),
           IconButton(
             tooltip: 'Agregar marcador',
             icon: const Icon(Icons.bookmark_add_outlined),
@@ -535,12 +541,19 @@ class _ReadingViewState extends State<_ReadingView> {
           Padding(
             key: _keys.putIfAbsent(i, GlobalKey.new),
             padding: const EdgeInsets.fromLTRB(8, 6, 8, 16),
-            child: EtherText(
-              handler: widget.handler,
-              text: chunks[i].text,
-              style: i < widget.index ? dim : base,
-              relation: i - widget.index,
-            ),
+            // Solo el fragmento que suena y el siguiente se animan: lo ya leído
+            // es texto quieto y lo que falta sigue en el documento (su río sube
+            // desde abajo con los dos animados). Así la lectura va fluida.
+            child: switch (i - widget.index) {
+              < 0 => Text(chunks[i].text, style: dim),
+              > 1 => Text(chunks[i].text, style: base?.copyWith(color: Colors.transparent)),
+              _ => EtherText(
+                  handler: widget.handler,
+                  text: chunks[i].text,
+                  style: base,
+                  relation: i - widget.index,
+                ),
+            },
           ),
       ],
     );
@@ -555,8 +568,8 @@ class _PlayButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = Theme.of(context).colorScheme.surface;
-    final bg = Theme.of(context).colorScheme.onSurface;
+    // Transparente: solo el ícono, sobre el éter.
+    const fg = Colors.white;
     return Semantics(
       button: true,
       label: playing ? 'Pausa' : 'Play',
@@ -564,10 +577,8 @@ class _PlayButton extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         opacity: enabled ? 1 : 0.35,
         child: Material(
-          color: bg,
+          color: Colors.transparent,
           shape: const CircleBorder(),
-          elevation: 6,
-          shadowColor: Colors.black26,
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: enabled ? onTap : null,

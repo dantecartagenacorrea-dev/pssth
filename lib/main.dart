@@ -1,12 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
+import 'core/perf_log.dart';
 import 'services/llm_cleaner.dart';
 import 'theme/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdfrx/pdfrx.dart';
 
 import 'data/bookmark_store.dart';
 import 'data/library_store.dart';
@@ -18,24 +20,37 @@ import 'playback/engines/apple_tts_engine.dart';
 import 'playback/engines/fallback_tts_engine.dart';
 import 'playback/engines/kokoro_engine.dart';
 import 'playback/tts_audio_handler.dart';
-import 'ui/disintegrate_transition.dart';
+import 'ui/dot_field.dart';
+import 'ui/swarm.dart';
+import 'ui/swarm_transition.dart';
 import 'ui/intro_screen.dart';
 import 'ui/library_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await LlmCleaner.instance.load();
-  await pdfrxFlutterInitialize();
-
+  // Medición de fluidez en un equipo real: solo con --dart-define=MEDIR=true.
+  if (kMedir) _logFrameTimings();
+  final boot = Stopwatch()..start();
+  void mark(String what) {
+    perfLog('arranque: $what ${boot.elapsedMilliseconds} ms');
+  }
+  // Lo que no depende entre sí arranca a la vez. El lector de PDF ya no se
+  // prepara aquí: lo hace la primera vez que se abre un PDF.
   final libraryStore = LibraryStore();
-  await libraryStore.init();
+  final dirs = await Future.wait([
+    getApplicationDocumentsDirectory(),
+    getTemporaryDirectory(),
+    LlmCleaner.instance.load().then((_) { mark('ajustes IA'); }),
+    libraryStore.init().then((_) { mark('biblioteca'); }),
+    DotField.load().then((_) { mark('fondo GPU'); }),
+  ]);
+  mark('en paralelo');
+  final docs = dirs[0]!, cacheDir = dirs[1]!;
   final settingsStore = SettingsStore();
   final pronunciationStore = PronunciationStore(File('${libraryStore.root.path}/pronunciation.json'));
   final bookmarkStore = BookmarkStore(File('${libraryStore.root.path}/bookmarks.json'));
 
   // Voz natural (opcional): modelo en <documentos>/models/kokoro; sin él solo hay voces del sistema.
-  final docs = await getApplicationDocumentsDirectory();
-  final cacheDir = await getTemporaryDirectory();
   final modelStore = ModelStore(Directory('${docs.path}/models'));
   final engine = FallbackTtsEngine(
     primary: KokoroEngine(
@@ -46,6 +61,7 @@ Future<void> main() async {
     startWithPrimary: false,
   );
 
+  mark('motores');
   final handler = await AudioService.init(
     builder: () => TtsAudioHandler(
       libraryStore: libraryStore,
@@ -60,9 +76,17 @@ Future<void> main() async {
     ),
   );
 
-  await handler.setup();
-  await DisintegrateTransitionsBuilder.load();
+  mark('servicio de audio');
+  // La voz se prepara mientras ya se ve la entrada (no frena la primera imagen).
+  unawaited(handler.setup().then((_) => mark('voz lista')));
+  Swarm.instance.handler = handler;
 
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    mark('primer cuadro');
+    // Las letras del enjambre se dibujan después de la primera imagen: la
+    // entrada no las necesita y prepararlas tomaba más de un segundo.
+    unawaited(Swarm.instance.init().then((_) => mark('enjambre')));
+  });
   runApp(
     LectorPdfApp(
       handler: handler,
@@ -99,13 +123,12 @@ class LectorPdfApp extends StatelessWidget {
   final ModelStore modelStore;
   final Future<void> Function() onModelsChanged;
 
-  static final _ether = AppTheme.dark().copyWith(
-    scaffoldBackgroundColor: Colors.transparent,
+  static final _ether = AppTheme.ether().copyWith(
     pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
-        TargetPlatform.android: DisintegrateTransitionsBuilder(),
-        TargetPlatform.iOS: DisintegrateTransitionsBuilder(),
-        TargetPlatform.macOS: DisintegrateTransitionsBuilder(),
+        TargetPlatform.android: SwarmTransitionsBuilder(),
+        TargetPlatform.iOS: SwarmTransitionsBuilder(),
+        TargetPlatform.macOS: SwarmTransitionsBuilder(),
       },
     ),
   );
@@ -119,6 +142,13 @@ class LectorPdfApp extends StatelessWidget {
       theme: _ether,
       darkTheme: _ether,
       themeMode: ThemeMode.dark,
+      // El enjambre de letras vuela por encima de todas las pantallas.
+      builder: (context, child) => Stack(
+        children: [
+          ?child,
+          const Positioned.fill(child: SwarmView()),
+        ],
+      ),
       home: IntroScreen(
         next: (_) => LibraryScreen(
           handler: handler,
@@ -132,4 +162,25 @@ class LectorPdfApp extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Cada 120 cuadros escribe en el registro cuánto tardó cada cuadro en
+/// prepararse (hilo de la interfaz) y en dibujarse (GPU).
+void _logFrameTimings() {
+  final build = <int>[], raster = <int>[];
+  SchedulerBinding.instance.addTimingsCallback((timings) {
+    for (final t in timings) {
+      build.add(t.buildDuration.inMicroseconds);
+      raster.add(t.rasterDuration.inMicroseconds);
+    }
+    if (build.length < 120) return;
+    String stats(List<int> v) {
+      v.sort();
+      return 'p50 ${(v[v.length ~/ 2] / 1000).toStringAsFixed(1)} ms, p90 ${(v[(v.length * 0.9).floor()] / 1000).toStringAsFixed(1)} ms';
+    }
+    // ignore: avoid_print
+    print('[medir] interfaz ${stats(build)} | dibujo ${stats(raster)}');
+    build.clear();
+    raster.clear();
+  });
 }

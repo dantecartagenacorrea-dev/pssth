@@ -88,6 +88,24 @@ class TranscriptCleaner {
         unicode: true,
       );
 
+  /// Prepara la limpieza de muchos trozos de un mismo documento: el tema se
+  /// detecta y el patrón se arma una sola vez con [context], no en cada trozo
+  /// (con un documento largo, repetirlo por página tardaba minutos).
+  String Function(String) cleanerFor(String context) {
+    if (!_loaded) load();
+    final dict = _dictFor(context);
+    if (dict.isEmpty) return (text) => text;
+    final pattern = _patternFor(dict);
+    return (text) => text.replaceAllMapped(pattern, (m) {
+          final orig = m.group(0)!;
+          final rep = dict[orig.toLowerCase()] ?? orig;
+          if (orig[0] == orig[0].toUpperCase() && rep[0] == rep[0].toLowerCase()) {
+            return rep[0].toUpperCase() + rep.substring(1);
+          }
+          return rep;
+        });
+  }
+
   /// Limpia [text]. [context] opcional: texto mayor para detectar el tema
   /// (p. ej. el documento completo cuando se limpia por bloques).
   String clean(String text, {String? context}) {

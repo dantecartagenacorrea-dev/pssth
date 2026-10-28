@@ -18,6 +18,7 @@ PSSTH! convierte documentos (PDF, imágenes, texto, EPUB) en lectura en voz alta
 
 ## Permisos
 - Cámara y Fotos: solo si eliges capturar o importar una imagen para leerla. Las imágenes se procesan en el dispositivo.
+- Escanear a PDF: las páginas que fotografías se convierten en un PDF en el dispositivo (con el texto reconocido localmente para poder buscarlo). PSSTH! no lo sube a ningún lado: solo sale si tú lo compartes o lo guardas desde la hoja Compartir del sistema. En Android, el escáner lo provee Google Play Services en el propio equipo.
 - Micrófono: solo cuando pulsas grabar. Si grabas a otras personas, obtén su consentimiento cuando la ley lo exija.
 - Reconocimiento de voz: solo para transcribir tus grabaciones, en el dispositivo.
 - Red local: solo si activas la corrección avanzada con Ollama, para conectarse a la dirección que tú indiques.

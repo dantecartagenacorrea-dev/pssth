@@ -4,6 +4,7 @@ import Vision
 import NaturalLanguage
 import Speech
 import AVFoundation
+import VisionKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -30,6 +31,9 @@ import AVFoundation
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ShareBridge") {
       ShareBridge.register(with: registrar)
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "DocumentScanBridge") {
+      DocumentScanBridge.register(with: registrar)
     }
   }
 
@@ -144,6 +148,24 @@ final class NativeTextTools: NSObject, FlutterPlugin {
           }
         }
       }
+    case "recognizeLines":
+      // Cada línea con su lugar en la foto (fracciones 0–1, origen arriba a la
+      // izquierda), para poner el texto buscable encima de la imagen en un PDF.
+      guard let args = call.arguments as? [String: Any],
+            let path = args["path"] as? String else {
+        result(FlutterError(code: "bad_args", message: "Falta path", details: nil))
+        return
+      }
+      DispatchQueue.global(qos: .userInitiated).async {
+        do {
+          let lines = try NativeTextTools.recognizeLines(path: path)
+          DispatchQueue.main.async { result(lines) }
+        } catch {
+          DispatchQueue.main.async {
+            result(FlutterError(code: "ocr_failed", message: error.localizedDescription, details: nil))
+          }
+        }
+      }
     case "barcodes":
       guard let args = call.arguments as? [String: Any],
             let path = args["path"] as? String else {
@@ -197,6 +219,29 @@ final class NativeTextTools: NSObject, FlutterPlugin {
     return observations
       .compactMap { $0.topCandidates(1).first?.string }
       .joined(separator: "\n")
+  }
+
+  private static func recognizeLines(path: String) throws -> [String: Any] {
+    guard let image = UIImage(contentsOfFile: path), let cg = image.cgImage else {
+      throw NSError(domain: "lector", code: 1, userInfo: [NSLocalizedDescriptionKey: "Imagen no válida"])
+    }
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.usesLanguageCorrection = true
+    if #available(iOS 16.0, *) { request.automaticallyDetectsLanguage = true }
+    let handler = VNImageRequestHandler(
+      cgImage: cg,
+      orientation: orientation(image.imageOrientation),
+      options: [:]
+    )
+    try handler.perform([request])
+    // Vision mide desde abajo a la izquierda; el PDF se arma desde arriba.
+    let lines: [[String: Any]] = (request.results ?? []).compactMap { obs in
+      guard let text = obs.topCandidates(1).first?.string else { return nil }
+      let b = obs.boundingBox
+      return ["text": text, "left": b.minX, "top": 1 - b.maxY, "width": b.width, "height": b.height]
+    }
+    return ["width": Int(image.size.width), "height": Int(image.size.height), "lines": lines]
   }
 
   private static func orientation(_ o: UIImage.Orientation) -> CGImagePropertyOrientation {
@@ -330,5 +375,68 @@ final class ShareBridge: NSObject, FlutterPlugin {
       vc.completionWithItemsHandler = { _, _, _, _ in result(true) }
       root.present(vc, animated: true)
     }
+  }
+}
+
+/// Escáner de documentos del sistema (VisionKit, el mismo de Notas): detecta los
+/// bordes, endereza y permite varias páginas. Canal "lector/scan", método
+/// "scan": devuelve las rutas de las páginas en JPEG (vacío si se cancela).
+final class DocumentScanBridge: NSObject, FlutterPlugin, VNDocumentCameraViewControllerDelegate {
+  private var pending: FlutterResult?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "lector/scan", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(DocumentScanBridge(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard call.method == "scan" else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    guard VNDocumentCameraViewController.isSupported else {
+      result(FlutterError(code: "unsupported", message: "Este equipo no puede escanear documentos.", details: nil))
+      return
+    }
+    DispatchQueue.main.async {
+      guard let root = UIApplication.shared.connectedScenes
+        .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+        .first?.rootViewController else {
+        result(FlutterError(code: "no_view", message: "No se pudo abrir la cámara.", details: nil))
+        return
+      }
+      self.pending = result
+      let scanner = VNDocumentCameraViewController()
+      scanner.delegate = self
+      root.present(scanner, animated: true)
+    }
+  }
+
+  private func finish(_ value: Any?, _ controller: VNDocumentCameraViewController) {
+    controller.dismiss(animated: true)
+    pending?(value)
+    pending = nil
+  }
+
+  func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("escaneo", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let stamp = Int(Date().timeIntervalSince1970 * 1000)
+    var paths: [String] = []
+    for i in 0..<scan.pageCount {
+      let url = dir.appendingPathComponent("pagina_\(stamp)_\(i).jpg")
+      if let data = scan.imageOfPage(at: i).jpegData(compressionQuality: 0.8), (try? data.write(to: url)) != nil {
+        paths.append(url.path)
+      }
+    }
+    finish(paths, controller)
+  }
+
+  func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
+    finish([String](), controller)
+  }
+
+  func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
+    finish(FlutterError(code: "scan_failed", message: error.localizedDescription, details: nil), controller)
   }
 }

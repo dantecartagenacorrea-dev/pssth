@@ -12,12 +12,16 @@ class LibraryEntry {
     this.favorite = false,
     this.finished = false,
     this.language,
+    this.scanned = false,
   });
 
   final String id;
 
   /// 'pdf' | 'image' | 'txt'
   final String kind;
+
+  /// Creado con «Escanear a PDF»: se lista aparte, en «Escaneados».
+  final bool scanned;
   String name;
   String storedPath;
   int pageCount;
@@ -55,6 +59,7 @@ class LibraryEntry {
     'favorite': favorite,
     'finished': finished,
     'language': language,
+    if (scanned) 'scanned': true,
   };
 
   factory LibraryEntry.fromJson(Map<String, dynamic> json) {
@@ -71,6 +76,7 @@ class LibraryEntry {
       favorite: json['favorite'] as bool? ?? false,
       finished: json['finished'] as bool? ?? false,
       language: json['language'] as String?,
+      scanned: json['scanned'] as bool? ?? false,
     );
   }
 }

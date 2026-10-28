@@ -24,6 +24,55 @@ class AppTheme {
         accent: blueDark,
       );
 
+  /// Toda la app sobre el éter: fondo negro de puntos y botones, tarjetas e
+  /// íconos transparentes, sin contorno, con el texto en blanco.
+  static ThemeData ether() {
+    final d = dark();
+    const white = Colors.white;
+    // Sin contornos: botones y tarjetas son solo su texto e ícono.
+    const line = BorderSide.none;
+    final buttonShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(14));
+    return d.copyWith(
+      scaffoldBackgroundColor: Colors.transparent,
+      colorScheme: d.colorScheme.copyWith(primary: white, onPrimary: Colors.black),
+      appBarTheme: d.appBarTheme.copyWith(
+        backgroundColor: Colors.transparent,
+        foregroundColor: white,
+        shape: const Border(),
+      ),
+      cardTheme: d.cardTheme.copyWith(
+        color: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: line),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: white,
+          side: line,
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          shape: buttonShape,
+          textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(foregroundColor: white, side: line, shape: buttonShape),
+      ),
+      textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(foregroundColor: white)),
+      iconTheme: const IconThemeData(color: white),
+      // Todo en negro, sin separadores ni superficies grises.
+      canvasColor: Colors.black,
+      dividerTheme: const DividerThemeData(color: Colors.transparent, thickness: 0, space: 0),
+      bottomSheetTheme: d.bottomSheetTheme.copyWith(backgroundColor: Colors.black, modalBackgroundColor: Colors.black),
+      dialogTheme: d.dialogTheme.copyWith(backgroundColor: Colors.black),
+      popupMenuTheme: d.popupMenuTheme.copyWith(color: Colors.black),
+      snackBarTheme: d.snackBarTheme.copyWith(
+        backgroundColor: Colors.black,
+        contentTextStyle: const TextStyle(color: white),
+      ),
+    );
+  }
+
   static ThemeData _base({
     required Brightness brightness,
     required Color bg,

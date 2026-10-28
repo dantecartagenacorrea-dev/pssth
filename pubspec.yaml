@@ -42,6 +42,8 @@ dependencies:
   sherpa_onnx: ^2.0.1
   just_audio: ^0.10.5
   crypto: ^3.0.6
+  pdf: ^3.13.1
+  image: ^4.10.1
 
 dev_dependencies:
   flutter_test:
@@ -70,7 +72,8 @@ flutter:
     - assets/branding/
 
   shaders:
-    - shaders/dissolve.frag
+    - shaders/dot_field.frag
+
 
   # To add assets to your application, add an assets section, like this:
   # assets:
