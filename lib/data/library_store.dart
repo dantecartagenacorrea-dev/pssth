@@ -41,15 +41,31 @@ class LibraryStore {
       if (raw is Map<String, dynamic>) {
         _data = LibraryData.fromJson(raw);
       } else {
+        await _keepDamaged();
         _data = LibraryData();
       }
     } catch (_) {
+      await _keepDamaged();
       _data = LibraryData();
     }
   }
 
+  /// Si la lista no se puede leer, se guarda aparte en vez de pisarla con una
+  /// vacía: así los documentos se pueden recuperar.
+  Future<void> _keepDamaged() async {
+    try {
+      if (await _indexFile.exists()) {
+        await _indexFile.rename('${_root.path}/library.dañada.${DateTime.now().millisecondsSinceEpoch}.json');
+      }
+    } catch (_) {}
+  }
+
+  /// Se escribe en un archivo aparte y se cambia de una vez: si la app se
+  /// cierra a mitad de camino, la lista anterior queda entera.
   Future<void> _save() async {
-    await _indexFile.writeAsString(const JsonEncoder.withIndent('  ').convert(_data.toJson()));
+    final tmp = File('${_indexFile.path}.tmp');
+    await tmp.writeAsString(const JsonEncoder.withIndent('  ').convert(_data.toJson()), flush: true);
+    await tmp.rename(_indexFile.path);
   }
 
   static const _imageExt = {'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'bmp', 'tif', 'tiff'};

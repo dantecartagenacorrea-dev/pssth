@@ -34,6 +34,7 @@ import '../platform/native_text.dart';
 import '../platform/open_file_bridge.dart';
 import '../platform/speech_transcriber.dart';
 import '../platform/whisper_transcriber.dart';
+import 'math_screen.dart';
 import 'scan_review_screen.dart';
 import 'swarm.dart';
 import 'swarm_transition.dart';
@@ -161,6 +162,35 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// Graba una clase o conversación, la transcribe en el dispositivo y la abre
   /// como un documento más (se puede escuchar, buscar y resumir).
   Future<void> _record() async {
+    if (!await _speech.isAvailable()) {
+      if (!mounted) return;
+      // Sin transcripción la grabación queda solo como audio: se avisa antes.
+      final choice = await showSwarmDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Falta la transcripción'),
+          content: Text(
+            'Para convertir la grabación en texto hay que descargar una vez el modelo de '
+            'transcripción sin conexión (${whisperBaseModel.sizeLabel}) en Voces y modelos. '
+            'Sin él, la grabación se guarda solo como audio.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, 'grabar'), child: const Text('Grabar igual')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, 'descargar'), child: const Text('Descargar')),
+          ],
+        ),
+      );
+      if (!mounted || choice == null) return;
+      if (choice == 'descargar') {
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => VoicesScreen(modelStore: widget.modelStore, onModelsChanged: widget.onModelsChanged, native: _native),
+          ),
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
     final rec = await Navigator.of(context).push<RecordingResult>(
       MaterialPageRoute(builder: (_) => const RecorderScreen()),
     );
@@ -240,7 +270,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _confirmDelete(LibraryEntry entry) async {
-    final ok = await showDialog<bool>(
+    final ok = await showSwarmDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar de la biblioteca'),
@@ -330,49 +360,35 @@ class _LibraryScreenState extends State<LibraryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                FilledButton.icon(
-                  onPressed: _busy ? null : _openFile,
-                  icon: const Icon(Icons.folder_open),
-                  label: Text(_busy ? _busyLabel : 'Abrir documento'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : _record,
-                  icon: const Icon(Icons.mic),
-                  label: const Text('Grabar clase o conversación'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : _openUrl,
-                  icon: const Icon(Icons.link),
-                  label: const Text('Pegar enlace'),
-                ),
-                const SizedBox(height: 8),
-                Row(
+                // Solo objetos: el nombre aparece al mantener presionado (y lo
+                // lee el lector de pantalla). El enjambre los forma como letras.
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 12,
+                  runSpacing: 12,
                   children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _busy ? null : () => _pickPhoto(ImageSource.camera),
-                        icon: const Icon(Icons.photo_camera),
-                        label: const Text('Cámara'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _busy ? null : () => _pickPhoto(ImageSource.gallery),
-                        icon: const Icon(Icons.photo_library),
-                        label: const Text('Fotos'),
-                      ),
+                    _MenuObject(icon: Icons.folder_open, label: 'Abrir documento', onTap: _busy ? null : _openFile),
+                    _MenuObject(icon: Icons.mic, label: 'Grabar clase o conversación', onTap: _busy ? null : _record),
+                    _MenuObject(icon: Icons.link, label: 'Pegar enlace', onTap: _busy ? null : _openUrl),
+                    _MenuObject(icon: Icons.photo_camera, label: 'Cámara', onTap: _busy ? null : () => _pickPhoto(ImageSource.camera)),
+                    _MenuObject(icon: Icons.photo_library, label: 'Fotos', onTap: _busy ? null : () => _pickPhoto(ImageSource.gallery)),
+                    _MenuObject(icon: Icons.document_scanner_outlined, label: 'Escanear a PDF', onTap: _busy ? null : _scanToPdf),
+                    _MenuObject(
+                      icon: Icons.calculate_outlined,
+                      label: 'Resolver ejercicio de matemáticas',
+                      onTap: _busy
+                          ? null
+                          : () => Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => MathScreen(handler: widget.handler)),
+                              ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : _scanToPdf,
-                  icon: const Icon(Icons.document_scanner_outlined),
-                  label: const Text('Escanear a PDF'),
-                ),
+                if (_busy)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(_busyLabel, textAlign: TextAlign.center),
+                  ),
               ],
             ),
           ),
@@ -524,7 +540,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Future<bool> _askOpenLink(Uri link) async {
     final video = youtubeVideoId(link) != null;
-    final open = await showDialog<bool>(
+    final open = await showSwarmDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(video ? 'Video de YouTube en la foto' : 'Enlace en la foto'),
@@ -676,7 +692,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Future<String?> _askScanName(String suggested) async {
     final controller = TextEditingController(text: suggested)
       ..selection = TextSelection(baseOffset: 0, extentOffset: suggested.length);
-    final name = await showDialog<String>(
+    final name = await showSwarmDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nombre del PDF'),
@@ -700,7 +716,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     // Sin leer el portapapeles por código: en iOS eso pide permiso cada vez.
     // El usuario pega en el campo (mantener pulsado → Pegar).
     final controller = TextEditingController();
-    final raw = await showDialog<String>(
+    final raw = await showSwarmDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Pegar enlace'),
@@ -998,7 +1014,7 @@ Future<void> _showLlmSettings(BuildContext context) async {
   var on = llm.enabled;
   String? status;
   if (!context.mounted) return;
-  await showDialog<void>(
+  await showSwarmDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setS) => AlertDialog(
@@ -1047,4 +1063,22 @@ Future<void> _showLlmSettings(BuildContext context) async {
       ),
     ),
   );
+}
+
+/// Un objeto del menú principal: solo el ícono, grande. El nombre se ve al
+/// mantenerlo presionado y es lo que dice el lector de pantalla.
+class _MenuObject extends StatelessWidget {
+  const _MenuObject({required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => IconButton(
+        tooltip: label,
+        iconSize: 44,
+        padding: const EdgeInsets.all(14),
+        onPressed: onTap,
+        icon: Icon(icon),
+      );
 }

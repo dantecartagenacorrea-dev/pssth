@@ -27,12 +27,32 @@ class _RecorderScreenState extends State<RecorderScreen> {
   String? _path;
   final _watch = Stopwatch();
   Timer? _ticker;
+  StreamSubscription<Amplitude>? _levels;
+
+  /// Volumen del micrófono, 0 (silencio) a 1 (fuerte), para que se vea que graba.
+  double _level = 0;
+
+  /// Un rato en silencio total: avisar por si el micrófono no capta.
+  int _quietTicks = 0;
 
   @override
   void dispose() {
     _ticker?.cancel();
+    _levels?.cancel();
     _recorder.dispose();
     super.dispose();
+  }
+
+  void _listenLevels() {
+    _levels = _recorder.onAmplitudeChanged(const Duration(milliseconds: 80)).listen((a) {
+      // dBFS: −60 o menos es silencio, 0 es el máximo.
+      final v = ((a.current + 60) / 60).clamp(0.0, 1.0);
+      if (!mounted) return;
+      setState(() {
+        _level = _level * 0.5 + v * 0.5;
+        _quietTicks = v < 0.08 ? _quietTicks + 1 : 0;
+      });
+    });
   }
 
   String get _clock {
@@ -58,6 +78,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
         ..reset()
         ..start();
       _ticker = Timer.periodic(const Duration(seconds: 1), (_) => setState(() {}));
+      _listenLevels();
       setState(() {
         _recording = true;
         _error = null;
@@ -69,6 +90,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
 
   Future<void> _stop() async {
     _ticker?.cancel();
+    await _levels?.cancel();
     _watch.stop();
     String? path;
     try {
@@ -123,23 +145,58 @@ class _RecorderScreenState extends State<RecorderScreen> {
                 ),
                 const SizedBox(height: 32),
                 SizedBox(
-                  width: 160,
-                  height: 160,
-                  child: Semantics(
-                    button: true,
-                    label: _recording ? 'Detener grabación' : 'Empezar a grabar',
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        shape: const CircleBorder(),
-                        backgroundColor: _recording ? cs.error : cs.primary,
+                  width: 240,
+                  height: 240,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Anillo que crece con la voz: se ve que el micrófono capta.
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 80),
+                        width: 160 + (_recording ? 80 * _level : 0),
+                        height: 160 + (_recording ? 80 * _level : 0),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: cs.error.withValues(alpha: _recording ? 0.12 + 0.3 * _level : 0),
+                        ),
                       ),
-                      onPressed: _recording ? _stop : _start,
-                      child: Icon(_recording ? Icons.stop : Icons.mic, size: 72),
-                    ),
+                      SizedBox(
+                        width: 160,
+                        height: 160,
+                        child: Semantics(
+                          button: true,
+                          label: _recording ? 'Detener grabación' : 'Empezar a grabar',
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                              shape: const CircleBorder(),
+                              backgroundColor: _recording ? cs.error : cs.primary,
+                            ),
+                            onPressed: _recording ? _stop : _start,
+                            child: Icon(_recording ? Icons.stop : Icons.mic, size: 72),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text(_recording ? 'Grabando… toca para detener' : 'Toca para grabar'),
+                if (_recording)
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    // Punto rojo que parpadea cada segundo, como en una grabadora.
+                    AnimatedOpacity(
+                      opacity: _watch.elapsed.inSeconds.isEven ? 1 : 0.2,
+                      duration: const Duration(milliseconds: 300),
+                      child: Icon(Icons.circle, size: 14, color: cs.error),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('GRABANDO · toca para detener'),
+                  ])
+                else
+                  const Text('Toca para grabar'),
+                if (_recording && _quietTicks > 60) ...[
+                  const SizedBox(height: 8),
+                  Text('No se escucha nada: acércate al micrófono.', style: TextStyle(color: cs.error)),
+                ],
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(_error!, style: TextStyle(color: cs.error)),

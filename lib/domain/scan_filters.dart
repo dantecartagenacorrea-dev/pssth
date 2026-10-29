@@ -22,9 +22,9 @@ enum ScanFilter {
   final String label;
 }
 
-/// Lado mayor de la página limpia, en píxeles: unos 240 ppp en una hoja A4,
-/// nítido para leer e imprimir sin que el PDF pese de más.
-const _maxSide = 2400;
+/// Lado mayor de la página limpia, en píxeles: 4K (unos 330 ppp en una hoja
+/// A4), nítido para ampliar e imprimir; fotos más chicas no se agrandan.
+const _maxSide = 3840;
 
 /// Aplica [filter] a la foto (JPEG) en segundo plano y devuelve el JPEG limpio
 /// con su tamaño. Con [ScanFilter.original] devuelve la foto sin tocar.
@@ -46,7 +46,7 @@ Future<({Uint8List jpeg, int width, int height})> applyScanFilter(Uint8List jpeg
   final rgb = image.getBytes(order: img.ChannelOrder.rgb);
   final out = cleanPage(rgb, w, h, filter);
   final result = img.Image.fromBytes(width: w, height: h, bytes: out.buffer, numChannels: 3);
-  return (jpeg: img.encodeJpg(result, quality: filter == ScanFilter.byn ? 80 : 85), width: w, height: h);
+  return (jpeg: img.encodeJpg(result, quality: filter == ScanFilter.byn ? 85 : 90), width: w, height: h);
 }
 
 /// Limpia una página en RGB (3 bytes por píxel). El brillo del papel se mide

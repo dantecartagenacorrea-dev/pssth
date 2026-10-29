@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 
 import '../data/model_store.dart';
 import '../platform/native_text.dart';
+import 'swarm_transition.dart';
 
 /// Voces y modelos opcionales. Todo se descarga una vez y funciona sin conexión.
 class VoicesScreen extends StatefulWidget {
@@ -33,7 +35,28 @@ class _VoicesScreenState extends State<VoicesScreen> {
   @override
   void initState() {
     super.initState();
+    widget.modelStore.addListener(_onStore);
     _refreshSizes();
+    _resumePending();
+  }
+
+  @override
+  void dispose() {
+    widget.modelStore.removeListener(_onStore);
+    super.dispose();
+  }
+
+  void _onStore() {
+    if (mounted) setState(() {});
+  }
+
+  /// Una descarga que siguió con la app cerrada (gestor de descargas del
+  /// sistema): se retoma para verificarla e instalarla.
+  Future<void> _resumePending() async {
+    for (final m in [kokoroEsModel, whisperBaseModel]) {
+      if (widget.modelStore.isInstalled(m) || widget.modelStore.isInstalling(m)) continue;
+      if (await widget.modelStore.hasPendingDownload(m) && mounted) unawaited(_install(m));
+    }
   }
 
   Future<void> _refreshSizes() async {
@@ -64,7 +87,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
   }
 
   Future<void> _remove(ModelSpec m) async {
-    final ok = await showDialog<bool>(
+    final ok = await showSwarmDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('¿Eliminar "${m.title}"?'),
@@ -93,7 +116,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
 
   Widget _modelTile(ModelSpec m, String description) {
     final installed = widget.modelStore.isInstalled(m);
-    final p = _progress[m.id];
+    final p = _progress[m.id] ?? widget.modelStore.progressOf(m);
     final err = _errors[m.id];
     final size = _sizes[m.id] ?? 0;
     return Card(

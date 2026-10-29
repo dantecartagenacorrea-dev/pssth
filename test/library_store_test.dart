@@ -22,6 +22,22 @@ void main() {
     await dir.delete(recursive: true);
   });
 
+  test('una lista dañada se guarda aparte en vez de perderse', () async {
+    final dir = await Directory.systemTemp.createTemp('lector_lib');
+    await File('${dir.path}/library.json').writeAsString('{"entries": [{"id": "1", "na'); // cortada
+    final store = LibraryStore();
+    await store.initAt(dir);
+    expect(store.data.entries, isEmpty);
+    final kept = dir.listSync().whereType<File>().where((f) => f.path.contains('library.dañada.')).toList();
+    expect(kept, hasLength(1));
+    expect(await kept.single.readAsString(), contains('"na'));
+    // Guardar después no pisa la copia y deja una lista válida.
+    await store.importFile(originalName: 'nuevo.txt', bytes: [1]);
+    expect(File('${dir.path}/library.json').existsSync(), isTrue);
+    expect(File('${dir.path}/library.json.tmp').existsSync(), isFalse);
+    await dir.delete(recursive: true);
+  });
+
   test('importar varios archivos en el mismo milisegundo no repite el identificador', () async {
     final dir = await Directory.systemTemp.createTemp('lector_lib');
     final fixed = DateTime(2026, 10, 26, 12);

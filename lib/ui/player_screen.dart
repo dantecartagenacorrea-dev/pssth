@@ -11,8 +11,10 @@ import '../domain/voice_groups.dart';
 import '../playback/tts_audio_handler.dart';
 import '../theme/app_theme.dart';
 import 'player_sheets.dart';
+import 'quiz_screen.dart';
 import 'read_scroll.dart';
 import 'ether_text.dart';
+import 'swarm_transition.dart';
 
 /// Ancho máximo del contenido (iPad/macOS); en iPhone no interviene.
 const double kMaxContentWidth = 720;
@@ -92,6 +94,10 @@ class PlayerScreen extends StatelessWidget {
                   showBookmarksSheet(context, handler, bookmarkStore, entry);
                 case 'resumen':
                   showSummarySheet(context, handler, entry);
+                case 'preguntas':
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => QuizScreen(handler: handler, entry: entry)),
+                  );
                 case 'exportar':
                   exportText(context, handler, entry);
                 case 'compartir':
@@ -103,6 +109,7 @@ class PlayerScreen extends StatelessWidget {
               PopupMenuItem(value: 'capitulos', child: Text('Capítulos')),
               PopupMenuItem(value: 'marcadores', child: Text('Marcadores')),
               PopupMenuItem(value: 'resumen', child: Text('Resumen del texto')),
+              PopupMenuItem(value: 'preguntas', child: Text('Preguntas de estudio')),
               PopupMenuItem(value: 'exportar', child: Text('Exportar texto')),
               PopupMenuItem(value: 'compartir', child: Text('Compartir fragmento en audio')),
             ],
@@ -287,7 +294,7 @@ class PlayerScreen extends StatelessWidget {
   }
 
   Future<void> _pickSpeed(BuildContext context, PlayerSnapshot state) async {
-    final v = await showModalBottomSheet<double>(
+    final v = await showSwarmSheet<double>(
       context: context,
       showDragHandle: true,
       builder: (ctx) => SafeArea(
@@ -311,7 +318,7 @@ class PlayerScreen extends StatelessWidget {
   Future<void> _pickLanguage(BuildContext context) async {
     final manual = handler.manualLanguage;
     final langs = handler.availableLanguages.toList()..sort((a, b) => languageName(a).compareTo(languageName(b)));
-    final v = await showModalBottomSheet<String>(
+    final v = await showSwarmSheet<String>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -349,7 +356,7 @@ class PlayerScreen extends StatelessWidget {
     final uses = await store.loadVoiceUses();
     if (!context.mounted) return;
     final hasNatural = state.voices.any((v) => v.quality == 'natural');
-    final v = await showModalBottomSheet<String>(
+    final v = await showSwarmSheet<String>(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
@@ -460,7 +467,7 @@ class PlayerScreen extends StatelessWidget {
         : 'Ajustes → Sistema (o Accesibilidad) → Salida de texto a voz → '
             'Motor de Google → Instalar datos de voz → Español → descarga una voz de alta calidad (gratis). '
             'Después elígela aquí en "Voz".';
-    showDialog<void>(
+    showSwarmDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Mejorar la voz'),
@@ -533,9 +540,9 @@ class _ReadingViewState extends State<_ReadingView> {
     final (start, end) = readingWindow(total: chunks.length, index: widget.index);
     final base = theme.textTheme.bodyLarge?.copyWith(fontSize: 19, height: 1.45);
     final dim = base?.copyWith(color: theme.colorScheme.secondary);
-    // Lo que viene, tenue y quieto: se puede leer por adelantado mientras sus
-    // letras salen del polvo encima.
-    final ghost = base?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.28));
+    // Lo que viene no se ve: sus letras suben desde abajo y se arman (si se
+    // viera tenue, taparía la reconstrucción).
+    final hidden = base?.copyWith(color: Colors.transparent);
     _keys.removeWhere((i, _) => i < start || i >= end);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -545,16 +552,16 @@ class _ReadingViewState extends State<_ReadingView> {
             key: _keys.putIfAbsent(i, GlobalKey.new),
             padding: const EdgeInsets.fromLTRB(8, 6, 8, 16),
             // Solo el fragmento que suena y el siguiente se animan: lo ya leído
-            // es texto quieto y lo que falta se ve tenue (su río sube desde
-            // abajo con los dos animados). Así la lectura va fluida.
+            // es texto quieto y lo que falta sigue en el documento (su río sube
+            // desde abajo con los dos animados). Así la lectura va fluida.
             child: switch (i - widget.index) {
               < 0 => Text(chunks[i].text, style: dim),
-              > 1 => Text(chunks[i].text, style: ghost),
+              > 1 => Text(chunks[i].text, style: hidden),
               // Misma estructura para el siguiente y el que suena: al pasar a
               // sonar, el fragmento conserva sus letras.
               final rel => Stack(
                   children: [
-                    Text(chunks[i].text, style: rel == 1 ? ghost : base?.copyWith(color: Colors.transparent)),
+                    Text(chunks[i].text, style: hidden),
                     EtherText(
                       handler: widget.handler,
                       text: chunks[i].text,

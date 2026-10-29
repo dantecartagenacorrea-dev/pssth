@@ -1,1 +1,5 @@
 #include "Generated.xcconfig"
+
+// La IA de Apple (FoundationModels) solo existe desde iOS 26: enlace débil
+// para que la app siga abriendo en versiones anteriores.
+OTHER_LDFLAGS = $(inherited) -weak_framework FoundationModels

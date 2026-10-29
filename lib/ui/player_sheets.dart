@@ -12,14 +12,17 @@ import '../data/bookmark_store.dart';
 import '../domain/library_entry.dart';
 import '../domain/search.dart';
 import '../domain/summarizer.dart';
+import '../platform/study_ai.dart';
 import '../playback/tts_audio_handler.dart';
+import 'study_sheets.dart';
+import 'swarm_transition.dart';
 
 void _snack(BuildContext c, String m) =>
     ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));
 
 Future<void> showChaptersSheet(BuildContext context, TtsAudioHandler handler) {
   final chapters = handler.chapters;
-  return showModalBottomSheet(
+  return showSwarmSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
@@ -47,7 +50,7 @@ Future<void> showChaptersSheet(BuildContext context, TtsAudioHandler handler) {
 }
 
 Future<void> showSearchSheet(BuildContext context, TtsAudioHandler handler) {
-  return showModalBottomSheet(
+  return showSwarmSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => _SearchSheet(handler: handler),
@@ -143,7 +146,7 @@ Future<void> showBookmarksSheet(
 ) async {
   final list = await store.forDocument(entry.id);
   if (!context.mounted) return;
-  await showModalBottomSheet(
+  await showSwarmSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
@@ -228,7 +231,9 @@ Future<void> exportText(
 
 List<String> _summarize(String text) => summarizeExtractive(text);
 
-/// Resumen extractivo local del documento; se puede escuchar y descargar.
+/// Resumen del documento: con la IA del equipo si está disponible (conceptos,
+/// ideas y resumen breve); si no, el extractivo local. Se puede escuchar y
+/// descargar.
 Future<void> showSummarySheet(
   BuildContext context,
   TtsAudioHandler handler,
@@ -241,9 +246,12 @@ Future<void> showSummarySheet(
     _snack(context, 'No hay texto para resumir.');
     return;
   }
+  final aiMissing = await StudyAi().unavailableReason();
+  if (!context.mounted) return;
+  if (aiMissing == null) return showStudySummarySheet(context, handler, entry);
   final future = compute(_summarize, source);
   var leyendo = false;
-  await showModalBottomSheet<void>(
+  await showSwarmSheet<void>(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
@@ -274,7 +282,8 @@ Future<void> showSummarySheet(
                   Text('Resumen', style: Theme.of(ctx).textTheme.titleLarge),
                   const SizedBox(height: 4),
                   Text(
-                    '${frases.length} frases clave del propio texto, en su orden original.',
+                    '${frases.length} frases clave del propio texto, en su orden original. '
+                    'Para un resumen con conceptos: $aiMissing',
                     style: Theme.of(ctx).textTheme.bodySmall,
                   ),
                   const SizedBox(height: 12),
@@ -313,7 +322,7 @@ Future<void> showSummarySheet(
                           label: Text(leyendo ? 'Detener' : 'Escuchar resumen'),
                         ),
                         OutlinedButton.icon(
-                          onPressed: () => _downloadSummary(ctx, handler, entry, frases),
+                          onPressed: () => downloadSummary(ctx, handler, entry, frases),
                           icon: const Icon(Icons.download),
                           label: const Text('Descargar'),
                         ),
@@ -336,13 +345,13 @@ Future<void> showSummarySheet(
 }
 
 /// Descarga el resumen como texto (.txt) o como audio con la voz activa.
-Future<void> _downloadSummary(
+Future<void> downloadSummary(
   BuildContext context,
   TtsAudioHandler handler,
   LibraryEntry entry,
   List<String> frases,
 ) async {
-  final comoAudio = await showModalBottomSheet<bool>(
+  final comoAudio = await showSwarmSheet<bool>(
     context: context,
     builder: (ctx) => SafeArea(
       child: Column(
@@ -425,7 +434,7 @@ Future<void> showShareAudioSheet(
     _snack(context, 'No hay texto para compartir.');
     return;
   }
-  final wholePage = await showModalBottomSheet<bool>(
+  final wholePage = await showSwarmSheet<bool>(
     context: context,
     builder: (ctx) => SafeArea(
       child: Column(

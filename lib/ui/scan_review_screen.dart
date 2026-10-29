@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../domain/scan_filters.dart';
+import 'fragment_image.dart';
 
 /// Página limpia lista para el PDF.
 typedef CleanPage = ({Uint8List jpeg, int width, int height});
@@ -76,12 +77,10 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
                     if (page == null) {
                       return snap.hasError
                           ? Center(child: Text('No se pudo mostrar la página: ${snap.error}'))
-                          : const Center(child: CircularProgressIndicator());
+                          : const SizedBox.expand();
                     }
-                    return InteractiveViewer(
-                      maxScale: 5,
-                      child: Center(child: Image.memory(page.jpeg, gaplessPlayback: true)),
-                    );
+                    // La hoja se arma desde la dispersión, como las letras.
+                    return InteractiveViewer(maxScale: 5, child: FragmentImage(jpeg: page.jpeg));
                   },
                 ),
               ),

@@ -3,13 +3,14 @@ import 'package:flutter/services.dart';
 
 import '../domain/text_chunk.dart';
 import '../playback/tts_audio_handler.dart';
+import 'swarm_transition.dart';
 
 /// Rollo de lo ya leído: todo el texto desde el comienzo hasta la frase que
 /// suena, en orden y por página, para repasarlo, seleccionar y copiar.
 /// Se abre mostrando lo último leído.
 Future<void> showReadScroll(BuildContext context, TtsAudioHandler handler) {
   final read = readSoFar(handler.chunks, handler.chunkIndex);
-  return showModalBottomSheet<void>(
+  return showSwarmSheet<void>(
     context: context,
     isScrollControlled: true,
     showDragHandle: true,

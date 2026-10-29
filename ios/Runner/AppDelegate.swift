@@ -5,6 +5,9 @@ import NaturalLanguage
 import Speech
 import AVFoundation
 import VisionKit
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -34,6 +37,9 @@ import VisionKit
     }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "DocumentScanBridge") {
       DocumentScanBridge.register(with: registrar)
+    }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "StudyAIBridge") {
+      StudyAIBridge.register(with: registrar)
     }
   }
 
@@ -425,7 +431,7 @@ final class DocumentScanBridge: NSObject, FlutterPlugin, VNDocumentCameraViewCon
     var paths: [String] = []
     for i in 0..<scan.pageCount {
       let url = dir.appendingPathComponent("pagina_\(stamp)_\(i).jpg")
-      if let data = scan.imageOfPage(at: i).jpegData(compressionQuality: 0.8), (try? data.write(to: url)) != nil {
+      if let data = scan.imageOfPage(at: i).jpegData(compressionQuality: 0.92), (try? data.write(to: url)) != nil {
         paths.append(url.path)
       }
     }
@@ -440,3 +446,174 @@ final class DocumentScanBridge: NSObject, FlutterPlugin, VNDocumentCameraViewCon
     finish(FlutterError(code: "scan_failed", message: error.localizedDescription, details: nil), controller)
   }
 }
+
+/// IA de Apple en el propio iPhone (iOS 26 con Apple Intelligence) para
+/// resúmenes y preguntas de estudio. Canal "lector/ai": "status", "summarize"
+/// (texto → conceptos, ideas y resumen breve) y "quiz" (texto, cantidad,
+/// nivel → preguntas de opción múltiple). Sin red: el texto no sale del equipo.
+final class StudyAIBridge: NSObject, FlutterPlugin {
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "lector/ai", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(StudyAIBridge(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    #if canImport(FoundationModels)
+    if #available(iOS 26.0, *) {
+      StudyAI.handle(call, result: result)
+      return
+    }
+    #endif
+    if call.method == "status" {
+      result("unsupported")
+    } else {
+      result(FlutterError(code: "unsupported", message: "Esta función necesita iOS 26 con Apple Intelligence.", details: nil))
+    }
+  }
+}
+
+#if canImport(FoundationModels)
+@available(iOS 26.0, *)
+@Generable
+struct StudyConcept {
+  @Guide(description: "Concepto o término clave, tal como aparece en el texto")
+  var term: String
+  @Guide(description: "Qué significa según el texto, en una frase clara y breve")
+  var meaning: String
+}
+
+@available(iOS 26.0, *)
+@Generable
+struct StudySummary {
+  @Guide(description: "Entre tres y seis conceptos clave que un estudiante debe dominar")
+  var concepts: [StudyConcept]
+  @Guide(description: "Entre tres y seis ideas principales, una frase cada una, en el orden del texto")
+  var ideas: [String]
+  @Guide(description: "Resumen breve de dos a cuatro frases que explique de qué trata el texto")
+  var brief: String
+}
+
+@available(iOS 26.0, *)
+@Generable
+struct StudyQuestion {
+  @Guide(description: "Pregunta clara sobre el contenido del texto")
+  var question: String
+  @Guide(description: "Exactamente cuatro respuestas posibles, una sola correcta, todas creíbles")
+  var options: [String]
+  @Guide(description: "Posición de la respuesta correcta dentro de options: 0, 1, 2 o 3")
+  var answer: Int
+  @Guide(description: "Por qué esa respuesta es la correcta, apoyándose en el texto")
+  var explanation: String
+}
+
+@available(iOS 26.0, *)
+@Generable
+struct StudyQuiz {
+  @Guide(description: "Las preguntas pedidas, sin repetir")
+  var questions: [StudyQuestion]
+}
+
+@available(iOS 26.0, *)
+enum StudyAI {
+  static let tutor = """
+    Eres un tutor que ayuda a estudiantes a comprender lo que leen. Respondes en el \
+    mismo idioma del texto, con frases claras y precisas. Usas solo lo que dice el \
+    texto: nunca inventas datos, nombres ni cifras.
+    """
+
+  static func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let args = call.arguments as? [String: Any] ?? [:]
+    switch call.method {
+    case "status":
+      result(status())
+    case "summarize":
+      guard let text = args["text"] as? String else {
+        result(FlutterError(code: "bad_args", message: "Falta el texto.", details: nil))
+        return
+      }
+      run(result) { try await summarize(text) }
+    case "quiz":
+      guard let text = args["text"] as? String else {
+        result(FlutterError(code: "bad_args", message: "Falta el texto.", details: nil))
+        return
+      }
+      let count = args["count"] as? Int ?? 5
+      let level = args["level"] as? String ?? "basico"
+      run(result) { try await quiz(text, count: count, level: level) }
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  static func status() -> String {
+    switch SystemLanguageModel.default.availability {
+    case .available:
+      return "available"
+    case .unavailable(.deviceNotEligible):
+      return "deviceNotEligible"
+    case .unavailable(.appleIntelligenceNotEnabled):
+      return "appleIntelligenceNotEnabled"
+    case .unavailable(.modelNotReady):
+      return "modelNotReady"
+    default:
+      return "unavailable"
+    }
+  }
+
+  private static func run(_ result: @escaping FlutterResult, _ work: @escaping () async throws -> Any) {
+    Task {
+      do {
+        let value = try await work()
+        DispatchQueue.main.async { result(value) }
+      } catch {
+        let message = "\(error)"
+        DispatchQueue.main.async {
+          result(FlutterError(code: "ai_failed", message: message, details: nil))
+        }
+      }
+    }
+  }
+
+  static func summarize(_ text: String) async throws -> [String: Any] {
+    let session = LanguageModelSession(instructions: tutor)
+    let prompt = """
+      Resume este texto para estudiarlo: identifica los conceptos clave con su \
+      significado, las ideas principales y escribe un resumen breve.
+
+      TEXTO:
+      \(text)
+      """
+    let s = try await session.respond(to: prompt, generating: StudySummary.self).content
+    return [
+      "concepts": s.concepts.map { ["term": $0.term, "meaning": $0.meaning] },
+      "ideas": s.ideas,
+      "brief": s.brief,
+    ]
+  }
+
+  static func quiz(_ text: String, count: Int, level: String) async throws -> [[String: Any]] {
+    let kind: String
+    switch level {
+    case "experto":
+      kind = "de nivel experto: que exijan inferir, comparar, aplicar o evaluar ideas del texto"
+    case "medio":
+      kind = "de nivel medio: sobre relaciones, causas, consecuencias y el sentido de las ideas"
+    default:
+      kind = "de nivel básico: sobre datos, definiciones y hechos que el texto dice explícitamente"
+    }
+    let session = LanguageModelSession(instructions: tutor)
+    let prompt = """
+      Escribe \(count) preguntas de opción múltiple \(kind). Cada una con cuatro \
+      respuestas y una sola correcta; las incorrectas deben ser creíbles. Cubre \
+      partes distintas del texto y no repitas preguntas.
+
+      TEXTO:
+      \(text)
+      """
+    let q = try await session.respond(to: prompt, generating: StudyQuiz.self).content
+    return q.questions.map { item -> [String: Any] in
+      ["question": item.question, "options": item.options, "answer": item.answer, "explanation": item.explanation]
+    }
+  }
+}
+#endif

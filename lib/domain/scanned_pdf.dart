@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:pdf/pdf.dart';
@@ -11,34 +12,39 @@ typedef ScannedLine = ({String text, double left, double top, double width, doub
 typedef ScannedPage = ({Uint8List jpeg, int width, int height, List<ScannedLine> lines});
 
 /// Ancho de cada página del PDF, en puntos (el de una hoja A4).
-const _pageWidth = 595.0;
+/// Hoja carta (21,6 × 27,9 cm), en puntos: cada página escaneada va entera y
+/// centrada en una, sin deformarse, lista para imprimir en carta.
+const _letter = PdfPageFormat.letter;
 
-/// Arma un PDF con cada foto a página completa y, encima, el texto reconocido
+/// Arma un PDF con cada foto en una hoja carta y, encima, el texto reconocido
 /// invisible en el mismo lugar: se ve la foto, pero el texto se puede buscar,
 /// seleccionar y copiar en cualquier visor. [compress] en false solo para
 /// pruebas (deja el texto legible en el archivo).
 Future<Uint8List> buildScannedPdf(List<ScannedPage> pages, {String? title, bool compress = true}) {
   final doc = pw.Document(title: title, creator: 'PSSTH!', compress: compress);
   for (final page in pages) {
-    final pageHeight = _pageWidth * page.height / page.width;
+    // Lo más grande que entra en la hoja sin cambiar la proporción.
+    final fit = math.min(_letter.width / page.width, _letter.height / page.height);
+    final w = page.width * fit, h = page.height * fit;
+    final left = (_letter.width - w) / 2, top = (_letter.height - h) / 2;
     final image = pw.MemoryImage(page.jpeg);
     doc.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat(_pageWidth, pageHeight),
+        pageFormat: _letter,
         margin: pw.EdgeInsets.zero,
         build: (_) => pw.Stack(
           children: [
-            pw.Positioned.fill(child: pw.Image(image, fit: pw.BoxFit.fill)),
+            pw.Positioned(left: left, top: top, child: pw.Image(image, width: w, height: h, fit: pw.BoxFit.fill)),
             for (final line in page.lines)
               if (line.text.trim().isNotEmpty && line.width > 0 && line.height > 0)
                 pw.Positioned(
-                  left: line.left * _pageWidth,
-                  top: line.top * pageHeight,
+                  left: left + line.left * w,
+                  top: top + line.top * h,
                   // El texto se estira para cubrir la línea de la foto: al
                   // seleccionarlo, el resaltado coincide con lo que se ve.
                   child: pw.SizedBox(
-                    width: line.width * _pageWidth,
-                    height: line.height * pageHeight,
+                    width: line.width * w,
+                    height: line.height * h,
                     child: pw.FittedBox(
                       fit: pw.BoxFit.fill,
                       child: pw.Text(

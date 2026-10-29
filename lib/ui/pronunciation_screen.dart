@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/pronunciation_store.dart';
+import 'swarm_transition.dart';
 
 class PronunciationScreen extends StatefulWidget {
   const PronunciationScreen({super.key, required this.store});
@@ -24,7 +25,7 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
   Future<void> _add() async {
     final written = TextEditingController();
     final spoken = TextEditingController();
-    final ok = await showDialog<bool>(
+    final ok = await showSwarmDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nueva pronunciación'),
