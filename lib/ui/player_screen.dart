@@ -533,6 +533,9 @@ class _ReadingViewState extends State<_ReadingView> {
     final (start, end) = readingWindow(total: chunks.length, index: widget.index);
     final base = theme.textTheme.bodyLarge?.copyWith(fontSize: 19, height: 1.45);
     final dim = base?.copyWith(color: theme.colorScheme.secondary);
+    // Lo que viene, tenue y quieto: se puede leer por adelantado mientras sus
+    // letras salen del polvo encima.
+    final ghost = base?.copyWith(color: theme.colorScheme.onSurface.withValues(alpha: 0.28));
     _keys.removeWhere((i, _) => i < start || i >= end);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -542,16 +545,23 @@ class _ReadingViewState extends State<_ReadingView> {
             key: _keys.putIfAbsent(i, GlobalKey.new),
             padding: const EdgeInsets.fromLTRB(8, 6, 8, 16),
             // Solo el fragmento que suena y el siguiente se animan: lo ya leído
-            // es texto quieto y lo que falta sigue en el documento (su río sube
-            // desde abajo con los dos animados). Así la lectura va fluida.
+            // es texto quieto y lo que falta se ve tenue (su río sube desde
+            // abajo con los dos animados). Así la lectura va fluida.
             child: switch (i - widget.index) {
               < 0 => Text(chunks[i].text, style: dim),
-              > 1 => Text(chunks[i].text, style: base?.copyWith(color: Colors.transparent)),
-              _ => EtherText(
-                  handler: widget.handler,
-                  text: chunks[i].text,
-                  style: base,
-                  relation: i - widget.index,
+              > 1 => Text(chunks[i].text, style: ghost),
+              // Misma estructura para el siguiente y el que suena: al pasar a
+              // sonar, el fragmento conserva sus letras.
+              final rel => Stack(
+                  children: [
+                    Text(chunks[i].text, style: rel == 1 ? ghost : base?.copyWith(color: Colors.transparent)),
+                    EtherText(
+                      handler: widget.handler,
+                      text: chunks[i].text,
+                      style: base,
+                      relation: rel,
+                    ),
+                  ],
                 ),
             },
           ),

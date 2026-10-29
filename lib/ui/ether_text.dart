@@ -138,10 +138,11 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
         < 0 => -1,
         1 => w < 0 ? null : _ReadingClock.remaining + w,
         > 1 => w < 0 ? null : 1 << 20,
-        _ => cur == null || w < 0 ? null : w - cur,
+        _ => w < 0 ? null : w - (cur ?? -1),
       };
-      // Escrita por adelantado: ya formada, esperando a la voz.
-      final written = dist != null && dist > 0 && dist <= ahead;
+      // Escrita por adelantado: ya formada, esperando a la voz. El fragmento que
+      // suena está escrito entero (también en pausa) para poder seguirlo.
+      final written = dist != null && dist > 0 && (widget.relation == 0 || dist <= ahead);
       final far = dist == null ? 0.0 : math.min(1.0, (dist - ahead) / 10);
       double amp;
       double pull;
@@ -179,7 +180,7 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
       c.chaos += (chaosTarget - c.chaos) * (1 - math.exp(-(chaosTarget < c.chaos ? 2.5 : 1.2) * dt));
       // Ya formada (escrita por adelantado, sonando o leída), la letra se
       // vuelve sólida y así queda.
-      final solidTarget = c.chaos < 0.04 && (dist == null || dist <= ahead) ? 1.0 : 0.0;
+      final solidTarget = c.chaos < 0.04 && (dist == null || dist <= ahead || written) ? 1.0 : 0.0;
       c.solid += (solidTarget - c.solid) * (1 - math.exp(-(solidTarget > 0 ? 6 : 2) * dt));
       c.near = dist != null && dist <= ahead + _nearWords && c.solid < 0.98;
     }
