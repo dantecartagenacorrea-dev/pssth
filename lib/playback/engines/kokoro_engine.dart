@@ -89,8 +89,19 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   @override
   Future<void> setVolume(double volume) => _player.setVolume(volume);
 
+  // El worker sintetiza de a uno: se encolan aquí para medir solo lo que tarda
+  // cada síntesis, no la espera detrás de las adelantadas (si no, un archivo
+  // largo terminaba marcando el equipo como lento y apagando la voz natural).
+  Future<void> _queue = Future.value();
+
   @override
-  Future<Uint8List> synthesize(String text) async {
+  Future<Uint8List> synthesize(String text) {
+    final job = _queue.then((_) => _synthesizeNow(text));
+    _queue = job.then((_) {}, onError: (_) {});
+    return job;
+  }
+
+  Future<Uint8List> _synthesizeNow(String text) async {
     final w = _worker;
     if (w == null) throw StateError('Kokoro no iniciado.');
     final sw = Stopwatch()..start();
