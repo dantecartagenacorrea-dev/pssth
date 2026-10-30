@@ -17,6 +17,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          # Misma versión que en el PC: una más nueva trae reglas del analizador
+          # que aquí no se ven y la compilación falla.
+          flutter-version: 3.47.9
       - run: flutter pub get
       - run: dart run flutter_launcher_icons
       - run: flutter analyze
