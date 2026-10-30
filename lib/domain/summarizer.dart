@@ -168,9 +168,26 @@ Iterable<String> _proseSentences(String flat) sync* {
     final letters = RegExp(r'\p{L}', unicode: true).allMatches(s).length;
     final upper = RegExp(r'\p{Lu}', unicode: true).allMatches(s).length;
     if (letters == 0 || upper / letters > _maxCaps) continue;
+    // "Ése era uno de los pilares…", "Era la posición…": fuera del texto no se
+    // sabe de quién hablan.
+    if (_leansOnPrevious.hasMatch(s)) continue;
     yield s;
   }
 }
+
+/// Frase que empieza apoyándose en la anterior: pronombre o verbo sin sujeto.
+final _leansOnPrevious = RegExp(
+  r'^(?:[ÉE]se|[ÉE]sa|[ÉE]sos|[ÉE]sas|Éste|Ésta|Éstos|Éstas|Esto|Eso|Aquello|Ello|Él|Ella|Ellos|Ellas|'
+  r'Era|Eran|Fue|Fueron|Estaba|Estaban|Había|Habían|Se|Lo|Le|Les|Tampoco)\s+(?:era|eran|fue|fueron|\p{Ll})',
+  unicode: true,
+);
+
+/// Rótulos de sección de libros de estudio pegados a la frase que sigue
+/// ("Interpretación César Borgia era…").
+final _sectionLabel = RegExp(
+  r'^(?:Interpretación|Inversión|Criterio|Comentario|Ejemplo|Nota)\s+(?=\p{Lu})',
+  unicode: true,
+);
 
 /// Un título en mayúsculas (dos palabras o más) pegado al comienzo de la
 /// frase, porque el PDF no los separa: "LEY N° 43 página 449 TRABAJE SOBRE
@@ -178,7 +195,7 @@ Iterable<String> _proseSentences(String flat) sync* {
 final _heading = RegExp(r'^.*\p{Lu}{2,}[^\p{Ll}]*\s\p{Lu}{2,}[^\p{Ll}]*\s(?=\p{Lu}\p{Ll})', unicode: true);
 
 /// [sentence] sin el título en mayúsculas que la precede.
-String withoutHeading(String sentence) => sentence.replaceFirst(_heading, '').trim();
+String withoutHeading(String sentence) => sentence.replaceFirst(_heading, '').trim().replaceFirst(_sectionLabel, '');
 
 int _wordCount(String s) => RegExp(r'\p{L}+', unicode: true).allMatches(s).length;
 
@@ -208,6 +225,10 @@ const _stop = {
   'quien', 'quienes', 'alguien', 'nadie', 'menos', 'mejor', 'parte', 'forma', 'manera', 'tanto',
   'tanta', 'sería', 'podría', 'debe', 'deben', 'debería', 'página', 'capítulo', 'otras', 'cosas',
   'tenía', 'tenían', 'estaba', 'estaban', 'hacia', 'mientras', 'menudo', 'vez', 'veces', 'durante', 'demás',
+  'contra', 'ella', 'ellos', 'ellas', 'embargo', 'aquel', 'aquella', 'aquellos', 'aquellas', 'cual', 'cuales',
+  'cuyo', 'cuya', 'algo', 'nada', 'sino', 'pues', 'luego', 'además', 'tal', 'tales', 'sólo', 'solo', 'aún',
+  'todavía', 'cualquier', 'cualquiera', 'ningún', 'ninguna', 'algún', 'alguna', 'algunos', 'algunas',
+  'demasiado', 'demasiada', 'demasiados', 'demasiadas',
   // inglés
   'the', 'and', 'that', 'for', 'with', 'was', 'are', 'this', 'from', 'have',
   'not', 'but', 'they', 'which', 'you', 'were', 'has', 'their', 'been', 'will',

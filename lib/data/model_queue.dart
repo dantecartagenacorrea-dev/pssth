@@ -20,7 +20,7 @@ class ModelQueue extends ChangeNotifier {
 
   final ModelStore store;
 
-  /// Avisa al resto de la app (voz, transcripción) que hay un modelo nuevo.
+  /// Avisa a la voz que hay un modelo de voz nuevo.
   final Future<void> Function() onInstalled;
 
   /// null: todavía no se preguntó. true: bajar solos. false: solo a mano.
@@ -90,7 +90,7 @@ class ModelQueue extends ChangeNotifier {
   Future<bool> _install(ModelSpec m) async {
     try {
       await store.install(m);
-      await onInstalled();
+      if (isVoiceModel(m)) await onInstalled();
       perfLog('modelo instalado en segundo plano: ${m.id}');
       return true;
     } on ModelInstallException catch (e) {

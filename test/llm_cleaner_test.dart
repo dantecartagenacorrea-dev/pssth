@@ -74,4 +74,46 @@ void main() {
     expect(chats, 2);
     await server.close(force: true);
   });
+
+  test('el estudio pasa adelante: corta la página en curso y la retoma después', () async {
+    final pedidas = <String>[];
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    server.listen((req) async {
+      try {
+        if (req.uri.path == '/api/tags') {
+          req.response.write('{"models":[]}');
+        } else {
+          final body = jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, dynamic>;
+          final texto = ((body['messages'] as List).last as Map)['content'] as String;
+          pedidas.add(texto);
+          if (body.containsKey('format')) {
+            req.response.write(jsonEncode({
+              'message': {'content': '{"ok":true}'},
+            }));
+          } else {
+            await Future<void>.delayed(const Duration(seconds: 3)); // página lenta
+            req.response.write(jsonEncode({
+              'message': {'content': '$texto (ok)'},
+            }));
+          }
+        }
+        await req.response.close();
+      } on Exception {
+        // el cliente cortó el pedido
+      }
+    });
+    llm.enabled = true;
+    llm.url = 'http://127.0.0.1:${server.port}';
+    final pages = ['Página cero.', 'Página uno.'];
+    final cleaning = llm.cleanInBackground(pages, startPage: 0).toList();
+    while (pedidas.isEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    final sw = Stopwatch()..start();
+    expect(await llm.generateJson('s', 'estudio', {}), {'ok': true});
+    expect(sw.elapsed, lessThan(const Duration(seconds: 2)));
+    expect(await cleaning, [(0, 'Página cero. (ok)'), (1, 'Página uno. (ok)')]);
+    expect(pedidas, ['Página cero.', 'estudio', 'Página cero.', 'Página uno.']);
+    await server.close(force: true);
+  });
 }

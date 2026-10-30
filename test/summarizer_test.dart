@@ -88,4 +88,30 @@ Las herramientas de la construcción sirven como lenguaje simbólico para transm
       expect(part, isNot(contains('NUNCA LE HAGA')), reason: part);
     }
   });
+
+  test('quita el rótulo de sección pegado a la frase', () {
+    expect(withoutHeading('Interpretación César Borgia era un maestro.'), 'César Borgia era un maestro.');
+    expect(withoutHeading('Interpretación de los hechos.'), 'Interpretación de los hechos.');
+  });
+
+  test('no usa frases que solo se entienden con la anterior ni rótulos pegados', () {
+    const text =
+        'Fouquet ofreció una fiesta enorme para impresionar al rey en su castillo nuevo. '
+        'Ése era uno de los pilares del prestigio del ministro ante la corte. '
+        'Era la posición de menor seguridad que existía en toda la corte francesa. '
+        'Se había recreado en un hombre de prestigio dentro de la corte francesa. '
+        'Interpretación Fouquet no entendió que el rey quería brillar más que su ministro. '
+        'El rey encarceló al ministro poco después de la fiesta del castillo nuevo. '
+        'Luis construyó Versailles para superar el castillo nuevo y la fiesta del ministro. '
+        'La corte francesa aprendió contra su voluntad que el prestigio del rey no se discute.';
+    final s = studySummaryExtractive(text);
+    for (final part in [s.brief, ...s.ideas, for (final c in s.concepts) c.meaning]) {
+      expect(part, isNot(startsWith('Ése')), reason: part);
+      expect(part, isNot(startsWith('Era ')), reason: part);
+      expect(part, isNot(startsWith('Se había')), reason: part);
+      expect(part, isNot(startsWith('Interpretación')), reason: part);
+    }
+    expect(s.ideas, isNotEmpty);
+    expect([for (final c in s.concepts) c.term.toLowerCase()], isNot(contains('contra')));
+  });
 }

@@ -78,6 +78,10 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
 
   @override
   Future<void> init() async {
+    // Se vuelve a medir: una lentitud pasajera (otra tarea pesada al mismo
+    // tiempo) no debe apagar la voz natural para siempre.
+    _slow = 0;
+    _tooSlow = false;
     final kokoro = isInstalled(modelDir);
     if (!kokoro && !piper.any(_piperInstalled)) {
       throw StateError('Modelo de voz natural no instalado.');

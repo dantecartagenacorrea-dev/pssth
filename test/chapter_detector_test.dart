@@ -25,4 +25,20 @@ void main() {
     expect(detectChapters(['Capítulo 1\nTexto', 'Capítulo 2\nTexto']), hasLength(2));
     expect(detectChapters(['Texto sin títulos.']), isEmpty);
   });
+
+  test('la primera de la serie sin número visible es la 1 (el número quedó al pie)', () {
+    final pages = [
+      'LEY N°\nNUNCA LE HAGA\nSOMBRA A SU AMO\nCRITERIO\nTexto.',
+      'Historia de la primera ley.',
+      'LEY N°\nNUNCA CONFÍE DEMASIADO\nEN SUS AMIGOS\nCRITERIO\nTexto.',
+      'LEY N°\nPELIGRO DE CONTAGIO\nCRITERIO\nTexto.',
+    ];
+    expect(detectChapters(pages).map((c) => c.title), [
+      'Ley 1 · Nunca le haga sombra a su amo',
+      'Ley 2 · Nunca confíe demasiado en sus amigos',
+      'Ley 3 · Peligro de contagio',
+    ]);
+    // Una palabra suelta sin "N°" ni título no abre una serie.
+    expect(detectChapters(['Tema\nTexto.', 'Tema\nOtro texto.']), isEmpty);
+  });
 }

@@ -8,7 +8,7 @@ import '../core/app_exception.dart';
 import '../domain/column_order.dart';
 import '../domain/page_cleaner.dart';
 
-const int kExtractionVersion = 2; // 2: orden en columnas
+const int kExtractionVersion = 3; // 2: orden en columnas; 3: pies de página de libros escaneados
 
 class PdfTextExtractor {
   PdfTextExtractor({required this.cacheDir});

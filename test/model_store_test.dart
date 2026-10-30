@@ -60,4 +60,10 @@ void main() {
     await expectLater(store.install(bad), throwsA(isA<ModelInstallException>()));
     expect(tmp.listSync().where((e) => e.path.contains('.tmp_')), isEmpty);
   });
+
+  test('solo los modelos de voz obligan a releer las voces', () {
+    expect(isVoiceModel(kokoroEsModel), isTrue);
+    expect(piperVoiceModels.every(isVoiceModel), isTrue);
+    expect(isVoiceModel(whisperBaseModel), isFalse);
+  });
 }

@@ -159,6 +159,10 @@ final piperVoiceModels = [piperAldModel, piperClaudeModel];
 /// Todos los modelos que se pueden instalar en este equipo, en el orden de
 /// Voces y modelos. La cola de descargas automáticas usa solo algunos
 /// ([ModelQueue.all]); retomar descargas pendientes, todos.
+/// Los que traen voces: al instalarlos o quitarlos hay que releer las voces
+/// (releerlas corta la frase que se está preparando; con Whisper no hace falta).
+bool isVoiceModel(ModelSpec m) => m.id != whisperBaseModel.id;
+
 List<ModelSpec> get optionalModels => [kokoroEsModel, ...piperVoiceModels, whisperBaseModel];
 
 enum ModelPhase { downloading, verifying, extracting, done }

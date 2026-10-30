@@ -2,6 +2,7 @@
 // por defecto). Sin paquetes externos; falla en silencio y devuelve el texto
 // original si el servidor no responde.
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -54,16 +55,39 @@ class LlmCleaner {
   /// va a leer primero), sigue hasta el final y luego las anteriores. Salta
   /// páginas vacías y las de [skip] (ya corregidas). Si el servidor no
   /// responde no se intenta página por página; si falla a mitad, se detiene.
-  Stream<(int, String)> cleanInBackground(List<String> pages, {required int startPage, Set<int> skip = const {}}) async* {
+  Stream<(int, String)> cleanInBackground(
+    List<String> pages, {
+    required int startPage,
+    Set<int> skip = const {},
+  }) async* {
     if (!ready || pages.isEmpty) return;
     if (await ping() != null) return;
     final start = startPage.clamp(0, pages.length - 1);
     final order = [for (var i = start; i < pages.length; i++) i, for (var i = 0; i < start; i++) i];
     for (final i in order) {
       if (skip.contains(i) || pages[i].trim().isEmpty) continue;
-      final fixed = await _cleanOne(pages[i]);
+      String? fixed;
+      do {
+        await _studyFinished();
+        _interrupted = false;
+        fixed = await _cleanOne(pages[i]);
+      } while (fixed == null && _interrupted);
       if (fixed == null) return;
       yield (i, fixed);
+    }
+  }
+
+  // Ollama atiende de a un pedido: un resumen o unas preguntas esperaban
+  // detrás de la página que se estaba corrigiendo (hasta 2 minutos). El
+  // estudio corta esa página, pasa adelante y la corrección la retoma después.
+  HttpClient? _cleaning;
+  bool _interrupted = false;
+  int _studying = 0;
+  Completer<void>? _studyDone;
+
+  Future<void> _studyFinished() async {
+    while (_studying > 0) {
+      await (_studyDone ??= Completer<void>()).future;
     }
   }
 
@@ -77,15 +101,20 @@ class LlmCleaner {
         'puntuación evidente. No resumas, no cambies el sentido, no agregues ni quites frases. '
         'Responde únicamente con el texto corregido, sin comentarios.';
     try {
-      final r = await _post('/api/chat', {
-        'model': model,
-        'stream': false,
-        'options': {'temperature': 0},
-        'messages': [
-          {'role': 'system', 'content': system},
-          {'role': 'user', 'content': text},
-        ],
-      }, timeout: const Duration(seconds: 120));
+      final r = await _post(
+        '/api/chat',
+        {
+          'model': model,
+          'stream': false,
+          'options': {'temperature': 0},
+          'messages': [
+            {'role': 'system', 'content': system},
+            {'role': 'user', 'content': text},
+          ],
+        },
+        timeout: const Duration(seconds: 120),
+        background: true,
+      );
       if (r == null) return null;
       final content = (r['message'] as Map?)?['content'] as String?;
       if (content == null || content.trim().isEmpty) return text;
@@ -100,6 +129,22 @@ class LlmCleaner {
   /// Respuesta en JSON con la forma de [schema] (resúmenes y preguntas de
   /// estudio con la IA de la computadora). null si el servidor no respondió.
   Future<Object?> generateJson(String system, String prompt, Map<String, dynamic> schema) async {
+    _studying++;
+    if (_cleaning != null) {
+      _interrupted = true;
+      _cleaning!.close(force: true);
+    }
+    try {
+      return await _generateJson(system, prompt, schema);
+    } finally {
+      if (--_studying == 0) {
+        _studyDone?.complete();
+        _studyDone = null;
+      }
+    }
+  }
+
+  Future<Object?> _generateJson(String system, String prompt, Map<String, dynamic> schema) async {
     final r = await _post('/api/chat', {
       'model': model,
       'stream': false,
@@ -114,11 +159,17 @@ class LlmCleaner {
     return content == null ? null : jsonDecode(content);
   }
 
-  Future<Map<String, dynamic>?> _post(String path, Map<String, dynamic>? body,
-      {required Duration timeout, bool get = false}) async {
+  Future<Map<String, dynamic>?> _post(
+    String path,
+    Map<String, dynamic>? body, {
+    required Duration timeout,
+    bool get = false,
+    bool background = false,
+  }) async {
     final base = url.replaceAll(RegExp(r'/v1/?$'), '').replaceAll(RegExp(r'/$'), '');
     final uri = Uri.parse('$base$path');
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    if (background) _cleaning = client;
     try {
       final req = get ? await client.getUrl(uri) : await client.postUrl(uri);
       if (!get) {
@@ -130,6 +181,7 @@ class LlmCleaner {
       if (res.statusCode >= 300) return null;
       return jsonDecode(s) as Map<String, dynamic>;
     } finally {
+      if (identical(_cleaning, client)) _cleaning = null;
       client.close(force: true);
     }
   }

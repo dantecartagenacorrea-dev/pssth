@@ -73,7 +73,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
           if (mounted) setState(() => _progress[m.id] = p);
         },
       );
-      await widget.onModelsChanged();
+      if (isVoiceModel(m)) await widget.onModelsChanged();
     } on ModelInstallException catch (e) {
       _errors[m.id] = e.message;
     } catch (e) {
@@ -98,7 +98,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
     );
     if (ok != true) return;
     await widget.modelStore.remove(m);
-    await widget.onModelsChanged();
+    if (isVoiceModel(m)) await widget.onModelsChanged();
     await _refreshSizes();
   }
 

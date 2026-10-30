@@ -17,12 +17,7 @@ List<Chapter> detectChapters(List<String> pages) {
   final found = <Chapter>[];
   int? lastNumber;
   for (var i = 0; i < pages.length; i++) {
-    final lines = pages[i]
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .take(8)
-        .toList();
+    final lines = pages[i].split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).take(8).toList();
     for (var k = 0; k < lines.length && k < 5; k++) {
       final line = lines[k];
       if (line.length > 80) continue;
@@ -51,9 +46,13 @@ List<Chapter> detectChapters(List<String> pages) {
 /// "LEY Nº 12", "REGLA 3", "Principio 4"… (el número puede ir en el renglón
 /// siguiente o faltar: entonces es el que sigue al anterior).
 final _numberedWord = RegExp(
-  r'''^(ley|regla|principio|lecci[óo]n|tema|paso|clave|secreto|h[áa]bito|estrategia|mandamiento|norma|unidad|m[óo]dulo)\s*(?:n\s*[º°o"'”]?\.?\s*)?(\d{1,3})?$''',
+  r'''^(ley|regla|principio|lecci[óo]n|tema|paso|clave|secreto|h[áa]bito|estrategia|mandamiento|norma|unidad|m[óo]dulo)\s*(?:(n)\s*[º°o"'”]?\.?\s*)?(\d{1,3})?$''',
   caseSensitive: false,
 );
+
+/// ¿Es [line] un título de capítulo ("Capítulo 3", "LEY N° 12")?
+bool isChapterHeadingLine(String line) =>
+    chapterHeadingPattern.hasMatch(line) || _numberedWord.hasMatch(line.replaceAll('�', 'º'));
 
 /// Palabras que abren el desarrollo después del título (no son título).
 const _afterTitle = {'criterio', 'juicio', 'introducción', 'introduccion', 'resumen', 'objetivo', 'objetivos'};
@@ -63,7 +62,7 @@ const _afterTitle = {'criterio', 'juicio', 'introducción', 'introduccion', 'res
   final m = _numberedWord.firstMatch(lines[k].replaceAll('�', 'º'));
   if (m == null) return null;
   var next = k + 1;
-  var number = int.tryParse(m[2] ?? '');
+  var number = int.tryParse(m[3] ?? '');
   if (number == null && next < lines.length) {
     final raw = lines[next].replaceAll(' ', '');
     number = int.tryParse(raw);
@@ -73,8 +72,6 @@ const _afterTitle = {'criterio', 'juicio', 'introducción', 'introduccion', 'res
       next++; // número mal leído ("s3"): se salta y se deduce del anterior
     }
   }
-  number ??= lastNumber == null ? null : lastNumber + 1;
-  if (number == null) return null;
   // Título: renglones en mayúsculas que siguen (hasta 4).
   final title = <String>[];
   while (next < lines.length && title.length < 4) {
@@ -84,6 +81,10 @@ const _afterTitle = {'criterio', 'juicio', 'introducción', 'introduccion', 'res
     title.add(l);
     next++;
   }
+  // Sin número a la vista: sigue al anterior; si es la primera de la serie
+  // ("LEY N°" con su título, el número quedó al pie de la página), es la 1.
+  number ??= lastNumber != null ? lastNumber + 1 : (m[2] != null && title.isNotEmpty ? 1 : null);
+  if (number == null) return null;
   final word = m[1]!;
   final label = '${word[0].toUpperCase()}${word.substring(1).toLowerCase()} $number';
   if (title.isEmpty) return (label, number);

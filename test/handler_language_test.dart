@@ -5,6 +5,7 @@ import 'package:lector_pdf/data/library_store.dart';
 import 'package:lector_pdf/data/settings_store.dart';
 import 'package:lector_pdf/domain/library_entry.dart';
 import 'package:lector_pdf/domain/text_chunk.dart';
+import 'package:lector_pdf/playback/engines/fallback_tts_engine.dart';
 import 'package:lector_pdf/playback/tts_audio_handler.dart';
 import 'package:lector_pdf/playback/tts_engine.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -136,9 +137,55 @@ void main() {
     expect(await h2.speakAside([es1]), isNotNull);
     tmp.deleteSync(recursive: true);
   });
+
+  naturalVoiceTests();
 }
 
 class FailEngine extends RecEngine {
   @override
   Future<void> speak(String text) async => throw StateError('sin voz');
+}
+
+class SlowNaturalEngine extends RecEngine {
+  bool slow = false;
+  @override
+  String get id => 'natural';
+  @override
+  Future<List<VoiceOption>> voices() async => const [VoiceOption(name: 'Natural', locale: 'es-ES')];
+  @override
+  Future<void> speak(String text) async {
+    if (slow) throw StateError('demasiado lento');
+    await super.speak(text);
+  }
+}
+
+void naturalVoiceTests() {
+  test('si la voz natural se apagó por lenta, el documento siguiente vuelve a usarla', () async {
+    SharedPreferences.setMockInitialValues({});
+    final tmp = Directory.systemTemp.createTempSync('lib');
+    final store = LibraryStore();
+    await store.initAt(tmp);
+    final natural = SlowNaturalEngine(), system = RecEngine();
+    final h = TtsAudioHandler(
+      libraryStore: store,
+      settingsStore: SettingsStore(),
+      engine: FallbackTtsEngine(primary: natural, fallback: system),
+    );
+    await h.setup();
+    await h.setVoice(const VoiceOption(name: 'Natural', locale: 'es-ES'));
+    final entry = LibraryEntry(id: 'd', name: 'd.txt', storedPath: '', pageCount: 1, totalChunks: 1);
+    await store.upsert(entry);
+    final chunks = [TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 0, text: es1)];
+
+    natural.slow = true;
+    await h.loadDocument(entry: entry, chunks: chunks);
+    await h.play();
+    expect(system.spoken, [es1]); // se apagó y siguió con la del sistema
+
+    natural.slow = false;
+    await h.loadDocument(entry: entry, chunks: chunks);
+    await h.play();
+    expect(natural.spoken, [es1]);
+    tmp.deleteSync(recursive: true);
+  });
 }

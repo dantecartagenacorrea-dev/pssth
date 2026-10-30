@@ -17,6 +17,7 @@ import '../domain/text_chunk.dart';
 import '../domain/voice_groups.dart' show voiceDisplayLabel;
 import '../domain/voice_ranking.dart';
 import 'engines/apple_tts_engine.dart';
+import 'engines/fallback_tts_engine.dart';
 import 'tts_engine.dart';
 
 export 'tts_engine.dart' show VoiceOption;
@@ -188,6 +189,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   }) async {
     await setup();
     await stop();
+    await _reviveNaturalVoice();
     _entry = entry;
     _chunks = chunks;
     // "Al terminar el capítulo" era del documento anterior.
@@ -212,6 +214,14 @@ class TtsAudioHandler extends BaseAudioHandler {
     );
     _refresh(hasText: chunks.isNotEmpty, message: chunks.isEmpty ? noTextMessage : notice, playing: false);
     _broadcastState(playing: false);
+  }
+
+  /// Si la voz natural se apagó (p. ej. el equipo iba lento en ese momento),
+  /// con cada documento se le da otra oportunidad y vuelve la voz elegida.
+  Future<void> _reviveNaturalVoice() async {
+    final tts = _tts;
+    if (tts is! FallbackTtsEngine || tts.primaryAvailable) return;
+    if (await tts.retryPrimary()) await reloadVoices();
   }
 
   /// Aviso en la pantalla de lectura mientras el documento no tiene texto

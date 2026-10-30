@@ -88,6 +88,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// Identifica el trabajo de OCR vigente; un documento nuevo cancela el anterior.
   int _ocrJob = 0;
 
+  /// Documento de [_ocrJob]: si se borra, sus trabajos se cancelan.
+  String? _jobDocId;
+
   @override
   void initState() {
     super.initState();
@@ -336,6 +339,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ),
     );
     if (ok != true) return;
+    // El OCR y la corrección en segundo plano de este documento volvían a
+    // guardar sus archivos (y a pedirle páginas a la IA) después de borrarlo.
+    if (_jobDocId == entry.id) _ocrJob++;
     await widget.bookmarkStore.removeAllFor(entry.id);
     await widget.libraryStore.remove(entry.id);
     if (mounted) setState(() {});
@@ -973,6 +979,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       _busyLabel = 'Abriendo…';
     });
     final job = ++_ocrJob;
+    _jobDocId = entry.id;
     final sw = Stopwatch()..start();
     try {
       _normalizer = TextNormalizer(dictionary: await widget.pronunciationStore.load());
