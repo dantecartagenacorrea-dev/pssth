@@ -75,4 +75,11 @@ void main() {
     await Comfort.load();
     expect(Comfort.readingPaper.value, 'sepia');
   });
+
+  test('el modo de la lectura a pantalla completa se recuerda', () async {
+    await Comfort.setReadingMode('text');
+    Comfort.readingMode.value = null;
+    await Comfort.load();
+    expect(Comfort.readingMode.value, 'text');
+  });
 }

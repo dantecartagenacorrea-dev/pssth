@@ -41,7 +41,10 @@ class ImmersiveReader extends StatefulWidget {
 
 class _ImmersiveReaderState extends State<ImmersiveReader> {
   PdfDocument? _doc;
-  late ImmersiveMode _mode = widget.entry.kind == 'pdf' ? ImmersiveMode.original : ImmersiveMode.text;
+  // En un PDF, el último modo elegido aquí (Original si nunca se eligió).
+  late ImmersiveMode _mode = widget.entry.kind == 'pdf'
+      ? ImmersiveMode.values.asNameMap()[Comfort.readingMode.value] ?? ImmersiveMode.original
+      : ImmersiveMode.text;
   // El último fondo elegido aquí; si nunca se eligió, el del tema de la app.
   ReadingPaper _paper =
       ReadingPaper.values.asNameMap()[Comfort.readingPaper.value] ??
@@ -294,7 +297,10 @@ class _ImmersiveReaderState extends State<ImmersiveReader> {
                       _Choice(
                         options: const ['Original', 'Texto'],
                         selected: _mode.index,
-                        onSelect: (v) => _setMode(ImmersiveMode.values[v]),
+                        onSelect: (v) {
+                          _setMode(ImmersiveMode.values[v]);
+                          unawaited(Comfort.setReadingMode(ImmersiveMode.values[v].name));
+                        },
                       ),
                     if (_mode == ImmersiveMode.text) ...[
                       const SizedBox(width: 8),

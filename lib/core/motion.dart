@@ -33,6 +33,7 @@ class Comfort {
   static const _keepControlsKey = 'keep_controls';
   static const _skipCitationsKey = 'skip_citations';
   static const _readingPaperKey = 'reading_paper';
+  static const _readingModeKey = 'reading_mode';
 
   /// Ajuste anterior (Completo, Suave o Quieto): solo para leerlo una vez.
   static const _oldMotionKey = 'motion';
@@ -70,6 +71,10 @@ class Comfort {
   /// por nombre; null si nunca se eligió.
   static final readingPaper = ValueNotifier<String?>(null);
 
+  /// Modo elegido en la lectura a pantalla completa de un PDF (original o
+  /// texto), por nombre; null si nunca se eligió.
+  static final readingMode = ValueNotifier<String?>(null);
+
   static Future<void> load() async {
     final p = await SharedPreferences.getInstance();
     paper.value = Paper.values.asNameMap()[p.getString(_paperKey)] ?? Paper.black;
@@ -82,6 +87,12 @@ class Comfort {
     keepControls.value = p.getBool(_keepControlsKey) ?? false;
     skipCitations.value = p.getBool(_skipCitationsKey) ?? false;
     readingPaper.value = p.getString(_readingPaperKey);
+    readingMode.value = p.getString(_readingModeKey);
+  }
+
+  static Future<void> setReadingMode(String name) async {
+    readingMode.value = name;
+    await (await SharedPreferences.getInstance()).setString(_readingModeKey, name);
   }
 
   static Future<void> setReadingPaper(String name) async {
