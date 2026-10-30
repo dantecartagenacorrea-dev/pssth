@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../core/app_exception.dart';
@@ -13,8 +14,10 @@ import '../domain/reading_window.dart';
 import '../domain/voice_groups.dart';
 import '../playback/tts_audio_handler.dart';
 import 'audio_export_sheet.dart';
+import 'immersive_reader.dart';
 import 'pdf_editor_screen.dart';
 import 'player_sheets.dart';
+import 'premium.dart';
 import 'quiz_screen.dart';
 import 'read_scroll.dart';
 import 'ether_text.dart';
@@ -23,9 +26,6 @@ import 'swarm_transition.dart';
 
 /// La velocidad como se escribe en español: "1,3×".
 String speedLabel(double speed) => '${speed.toStringAsFixed(1).replaceAll('.', ',')}×';
-
-/// Ancho máximo del contenido (iPad/macOS); en iPhone no interviene.
-const double kMaxContentWidth = 720;
 
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key, required this.handler, required this.entry, required this.bookmarkStore});
@@ -45,126 +45,129 @@ class PlayerScreen extends StatelessWidget {
   );
 
   Widget _scaffold(BuildContext context) {
-    return Scaffold(
-      // Sin barras opacas: el éter llega hasta los bordes de la pantalla.
-      extendBodyBehindAppBar: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(kToolbarHeight),
-        child: _Fade(
-          child: AppBar(
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            title: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Image.asset('assets/branding/logo.webp', height: 30),
-                const SizedBox(width: 8),
-                const Text('PSSTH!'),
-              ],
+    return PremiumPage(
+      largeTitle: false,
+      titleWidget: const SizedBox.shrink(),
+      actions: [
+        PageAction(
+          icon: CupertinoIcons.fullscreen,
+          tooltip: 'Pantalla completa',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ImmersiveReader(handler: handler, entry: entry),
             ),
-            actions: [
-              IconButton(
-                tooltip: 'Lo que ya leíste',
-                icon: const Icon(Icons.history_edu_outlined),
-                onPressed: () => showReadScroll(context, handler),
-              ),
-              IconButton(
-                tooltip: 'Subrayar la frase',
-                icon: const Icon(Icons.border_color_outlined),
-                onPressed: () => highlightCurrent(context, handler),
-              ),
-              IconButton(
-                tooltip: 'Agregar marcador',
-                icon: const Icon(Icons.bookmark_add_outlined),
-                onPressed: () => addBookmark(context, handler, bookmarkStore, entry),
-              ),
-              ListenableBuilder(
-                listenable: Listenable.merge([handler.sleepEndsAt, handler.sleepAtChapterEnd]),
-                builder: (context, _) {
-                  final on = handler.sleepEndsAt.value != null || handler.sleepAtChapterEnd.value;
-                  return SwarmMenuButton<int>(
-                    tooltip: 'Temporizador de sueño',
-                    icon: Icon(on ? Icons.bedtime : Icons.bedtime_outlined),
-                    onSelected: (minutes) => switch (minutes) {
-                      0 => handler.setSleepTimer(null),
-                      _chapterEnd => handler.setSleepAtChapterEnd(),
-                      _ => handler.setSleepTimer(Duration(minutes: minutes)),
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 0, child: Text('Sin temporizador')),
-                      PopupMenuItem(value: 10, child: Text('10 minutos')),
-                      PopupMenuItem(value: 20, child: Text('20 minutos')),
-                      PopupMenuItem(value: 30, child: Text('30 minutos')),
-                      PopupMenuItem(value: 60, child: Text('60 minutos')),
-                      PopupMenuItem(value: _chapterEnd, child: Text('Al terminar el capítulo')),
-                    ],
-                  );
-                },
-              ),
-              SwarmMenuButton<String>(
-                tooltip: 'Más opciones',
-                onSelected: (v) {
-                  switch (v) {
-                    case 'buscar':
-                      showSearchSheet(context, handler);
-                    case 'capitulos':
-                      showChaptersSheet(context, handler);
-                    case 'marcadores':
-                      showBookmarksSheet(context, handler, bookmarkStore, entry);
-                    case 'notas':
-                      showHighlightsSheet(context, handler, entry);
-                    case 'resumen':
-                      showSummarySheet(context, handler, entry);
-                    case 'preguntas':
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => QuizScreen(handler: handler, entry: entry),
-                        ),
-                      );
-                    case 'exportar':
-                      exportText(context, handler, entry);
-                    case 'compartir':
-                      showShareAudioSheet(context, handler, entry);
-                    case 'audio':
-                      showAudioExportSheet(context, handler, entry);
-                    case 'editar':
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => PdfEditorScreen(path: entry.storedPath, title: entry.name)),
-                      );
-                    case 'aspecto':
-                      showComfortSheet(context);
-                  }
-                },
-                itemBuilder: (_) => [
-                  const PopupMenuItem(value: 'buscar', child: Text('Buscar en el texto')),
-                  const PopupMenuItem(value: 'capitulos', child: Text('Capítulos')),
-                  const PopupMenuItem(value: 'marcadores', child: Text('Marcadores')),
-                  const PopupMenuItem(value: 'notas', child: Text('Notas y subrayados')),
-                  const PopupMenuItem(value: 'resumen', child: Text('Resumen del texto')),
-                  const PopupMenuItem(value: 'preguntas', child: Text('Preguntas de estudio')),
-                  const PopupMenuItem(value: 'exportar', child: Text('Exportar texto')),
-                  const PopupMenuItem(value: 'compartir', child: Text('Compartir fragmento en audio')),
-                  const PopupMenuItem(value: 'audio', child: Text('Exportar en audio')),
-                  if (entry.kind == 'pdf') const PopupMenuItem(value: 'editar', child: Text('Editar PDF')),
-                  const PopupMenuItem(value: 'aspecto', child: Text('Aspecto y letra')),
-                ],
-              ),
+          ),
+        ),
+        PageAction(
+          icon: CupertinoIcons.pencil_outline,
+          tooltip: 'Subrayar la frase',
+          onTap: () => highlightCurrent(context, handler),
+        ),
+        PageAction(
+          icon: CupertinoIcons.bookmark,
+          tooltip: 'Agregar marcador',
+          onTap: () => addBookmark(context, handler, bookmarkStore, entry),
+        ),
+        PageAction(
+          icon: CupertinoIcons.ellipsis,
+          tooltip: 'Más opciones',
+          primary: true,
+          onTap: () => _showMore(context),
+        ),
+      ],
+      body: _body(),
+    );
+  }
+
+  /// Todo lo que no está a la vista, con su ícono, en una hoja.
+  Future<void> _showMore(BuildContext context) async {
+    final sleepOn = handler.sleepEndsAt.value != null || handler.sleepAtChapterEnd.value;
+    final v = await showSwarmSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.8),
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              for (final (value, icon, label) in [
+                ('capitulos', CupertinoIcons.list_bullet, 'Capítulos'),
+                ('marcadores', CupertinoIcons.bookmark, 'Marcadores'),
+                ('notas', CupertinoIcons.pencil_outline, 'Notas y subrayados'),
+                ('historial', CupertinoIcons.clock, 'Lo que ya leíste'),
+                ('sueno', sleepOn ? CupertinoIcons.moon_fill : CupertinoIcons.moon, 'Temporizador de sueño'),
+                ('exportar', CupertinoIcons.doc_text, 'Exportar texto'),
+                ('compartir', CupertinoIcons.share, 'Compartir fragmento en audio'),
+                ('audio', CupertinoIcons.music_note, 'Exportar en audio'),
+                if (entry.kind == 'pdf') ('editar', CupertinoIcons.pencil, 'Editar PDF'),
+                ('aspecto', CupertinoIcons.paintbrush, 'Aspecto y letra'),
+              ])
+                ListTile(leading: Icon(icon), title: Text(label), onTap: () => Navigator.pop(ctx, value)),
             ],
           ),
         ),
       ),
-      body: Stack(
-        children: [
-          Padding(
-            padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top + kToolbarHeight),
-            child: _body(),
+    );
+    if (v == null || !context.mounted) return;
+    switch (v) {
+      case 'capitulos':
+        showChaptersSheet(context, handler);
+      case 'marcadores':
+        showBookmarksSheet(context, handler, bookmarkStore, entry);
+      case 'notas':
+        showHighlightsSheet(context, handler, entry);
+      case 'historial':
+        showReadScroll(context, handler);
+      case 'sueno':
+        await _showSleep(context);
+      case 'exportar':
+        exportText(context, handler, entry);
+      case 'compartir':
+        showShareAudioSheet(context, handler, entry);
+      case 'audio':
+        showAudioExportSheet(context, handler, entry);
+      case 'editar':
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PdfEditorScreen(path: entry.storedPath, title: entry.name),
           ),
-        ],
+        );
+      case 'aspecto':
+        showComfortSheet(context);
+    }
+  }
+
+  Future<void> _showSleep(BuildContext context) async {
+    final minutes = await showSwarmSheet<int>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (value, label) in const [
+              (0, 'Sin temporizador'),
+              (10, '10 minutos'),
+              (20, '20 minutos'),
+              (30, '30 minutos'),
+              (60, '60 minutos'),
+              (_chapterEnd, 'Al terminar el capítulo'),
+            ])
+              ListTile(title: Text(label), onTap: () => Navigator.pop(ctx, value)),
+          ],
+        ),
       ),
     );
+    switch (minutes) {
+      case null:
+        return;
+      case 0:
+        handler.setSleepTimer(null);
+      case _chapterEnd:
+        handler.setSleepAtChapterEnd();
+      default:
+        handler.setSleepTimer(Duration(minutes: minutes));
+    }
   }
 
   Widget _body() {
@@ -175,16 +178,28 @@ class PlayerScreen extends StatelessWidget {
         final gray = theme.colorScheme.secondary;
         return Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
+            constraints: BoxConstraints(maxWidth: contentWidth(context)),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 _Fade(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 22, 24, 0),
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        Text(
+                          state.pageCount <= 0 ? 'Página —' : 'Página ${state.pageIndex + 1} de ${state.pageCount}',
+                          style: theme.textTheme.bodyMedium?.copyWith(color: gray),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          state.title.isEmpty ? entry.name : state.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.headlineMedium,
+                        ),
+                        const SizedBox(height: 12),
                         // Lo más usado para estudiar, a la vista (antes solo en ⋮).
                         _StudyActions(
                           onSearch: () => showSearchSheet(context, handler),
@@ -194,18 +209,6 @@ class PlayerScreen extends StatelessWidget {
                               builder: (_) => QuizScreen(handler: handler, entry: entry),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          state.title.isEmpty ? entry.name : state.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.headlineSmall,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          state.pageCount <= 0 ? 'Página —' : 'Página ${state.pageIndex + 1} de ${state.pageCount}',
-                          style: TextStyle(fontSize: 15, color: gray),
                         ),
                       ],
                     ),
@@ -217,7 +220,7 @@ class PlayerScreen extends StatelessWidget {
                     children: [
                       Positioned.fill(
                         child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(24, 22, 24, 260),
+                          padding: const EdgeInsets.fromLTRB(20, 18, 20, 300),
                           child: state.message == null && state.currentText.isNotEmpty
                               ? _ReadingView(handler: handler, index: handler.chunkIndex)
                               : Text(
@@ -230,89 +233,81 @@ class PlayerScreen extends StatelessWidget {
                         alignment: Alignment.bottomCenter,
                         child: _Fade(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-                            // Controles sin fondo: flotan sobre la luz y el polvo.
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: Material(
-                                type: MaterialType.transparency,
-                                child: Card(
-                                  color: Colors.transparent,
-                                  child: Padding(
-                                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                            // Los controles en la tarjeta oscura, como un reproductor de Apple.
+                            child: HeroCard(
+                              child: Builder(
+                                builder: (context) => Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(2),
+                                      child: LinearProgressIndicator(
+                                        minHeight: 4,
+                                        value: state.hasText ? state.progress : 0,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
-                                        ClipRRect(
-                                          borderRadius: BorderRadius.circular(2),
-                                          child: LinearProgressIndicator(
-                                            minHeight: 4,
-                                            value: state.hasText ? state.progress : 0,
-                                          ),
+                                        IconButton(
+                                          tooltip: 'Página anterior',
+                                          onPressed: state.hasText ? handler.previousPage : null,
+                                          icon: const Icon(CupertinoIcons.backward_end_fill, size: 26),
                                         ),
-                                        const SizedBox(height: 16),
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            IconButton(
-                                              tooltip: 'Página anterior',
-                                              onPressed: state.hasText ? handler.previousPage : null,
-                                              icon: const Icon(Icons.skip_previous_rounded, size: 26),
-                                            ),
-                                            IconButton(
-                                              tooltip: 'Frase anterior',
-                                              onPressed: state.hasText ? handler.skipToPrevious : null,
-                                              icon: const Icon(Icons.replay_rounded, size: 28),
-                                            ),
-                                            _PlayButton(
-                                              playing: state.playing,
-                                              enabled: state.hasText,
-                                              onTap: () => state.playing ? handler.pause() : handler.play(),
-                                            ),
-                                            IconButton(
-                                              tooltip: 'Frase siguiente',
-                                              onPressed: state.hasText ? handler.skipToNext : null,
-                                              icon: const Icon(Icons.forward_rounded, size: 28),
-                                            ),
-                                            IconButton(
-                                              tooltip: 'Página siguiente',
-                                              onPressed: state.hasText ? handler.nextPage : null,
-                                              icon: const Icon(Icons.skip_next_rounded, size: 26),
-                                            ),
-                                          ],
+                                        IconButton(
+                                          tooltip: 'Frase anterior',
+                                          onPressed: state.hasText ? handler.skipToPrevious : null,
+                                          icon: const Icon(CupertinoIcons.gobackward, size: 28),
                                         ),
-                                        const SizedBox(height: 16),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: _Pill(
-                                                label: 'Velocidad',
-                                                value: speedLabel(state.speed),
-                                                onTap: () => _pickSpeed(context, state),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: _Pill(
-                                                label: 'Idioma',
-                                                value: languageName(handler.documentLanguage ?? 'es'),
-                                                onTap: () => _pickLanguage(context),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: _Pill(
-                                                label: 'Voz',
-                                                value: _voiceLabel(state),
-                                                onTap: () => _pickVoice(context, state),
-                                                onLongPress: () => _showVoiceHelp(context, state),
-                                              ),
-                                            ),
-                                          ],
+                                        _PlayButton(
+                                          playing: state.playing,
+                                          enabled: state.hasText,
+                                          onTap: () => state.playing ? handler.pause() : handler.play(),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Frase siguiente',
+                                          onPressed: state.hasText ? handler.skipToNext : null,
+                                          icon: const Icon(CupertinoIcons.goforward, size: 28),
+                                        ),
+                                        IconButton(
+                                          tooltip: 'Página siguiente',
+                                          onPressed: state.hasText ? handler.nextPage : null,
+                                          icon: const Icon(CupertinoIcons.forward_end_fill, size: 26),
                                         ),
                                       ],
                                     ),
-                                  ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: _Pill(
+                                            label: 'Velocidad',
+                                            value: speedLabel(state.speed),
+                                            onTap: () => _pickSpeed(context, state),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: _Pill(
+                                            label: 'Idioma',
+                                            value: languageName(handler.documentLanguage ?? 'es'),
+                                            onTap: () => _pickLanguage(context),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Expanded(
+                                          child: _Pill(
+                                            label: 'Voz',
+                                            value: _voiceLabel(state),
+                                            onTap: () => _pickVoice(context, state),
+                                            onLongPress: () => _showVoiceHelp(context, state),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
@@ -403,13 +398,13 @@ class PlayerScreen extends StatelessWidget {
               ListTile(
                 title: const Text('Automático'),
                 subtitle: const Text('Lo detecta según el texto'),
-                trailing: manual == null ? const Icon(Icons.check_rounded) : null,
+                trailing: manual == null ? const Icon(CupertinoIcons.checkmark) : null,
                 onTap: () => Navigator.pop(ctx, ''),
               ),
               for (final l in langs)
                 ListTile(
                   title: Text(languageName(l)),
-                  trailing: manual == l ? const Icon(Icons.check_rounded) : null,
+                  trailing: manual == l ? const Icon(CupertinoIcons.checkmark) : null,
                   onTap: () => Navigator.pop(ctx, l),
                 ),
             ],
@@ -456,10 +451,10 @@ class PlayerScreen extends StatelessWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (voice.id == current) const Icon(Icons.check_rounded),
+                  if (voice.id == current) const Icon(CupertinoIcons.checkmark),
                   IconButton(
                     tooltip: fav ? 'Quitar de favoritas' : 'Marcar como favorita',
-                    icon: Icon(fav ? Icons.star_rounded : Icons.star_border_rounded),
+                    icon: Icon(fav ? CupertinoIcons.star_fill : CupertinoIcons.star),
                     onPressed: () {
                       setSheet(() => fav ? favorites.remove(voice.id) : favorites.add(voice.id));
                       store.saveFavoriteVoices(favorites);
@@ -479,13 +474,13 @@ class PlayerScreen extends StatelessWidget {
                 children: [
                   ListTile(
                     title: const Text('Automática (la mejor para el idioma)'),
-                    trailing: current.isEmpty ? const Icon(Icons.check_rounded) : null,
+                    trailing: current.isEmpty ? const Icon(CupertinoIcons.checkmark) : null,
                     onTap: () => Navigator.pop(ctx, ''),
                   ),
                   // Dora y Alex solo aparecen con el modelo instalado: se avisa dónde.
                   if (!hasNatural)
                     const ListTile(
-                      leading: Icon(Icons.auto_awesome_rounded),
+                      leading: Icon(CupertinoIcons.sparkles),
                       title: Text('Dora y Alex (voces naturales)'),
                       subtitle: Text('Instálalas desde la pantalla principal: menú ⋮ → Voces y modelos.'),
                     ),
@@ -502,7 +497,7 @@ class PlayerScreen extends StatelessWidget {
                         children: [for (final voice in g.voices) tile(voice)],
                       ),
                   ListTile(
-                    leading: const Icon(Icons.help_outline_rounded),
+                    leading: const Icon(CupertinoIcons.question_circle),
                     title: const Text('Mejorar la voz'),
                     onTap: () {
                       Navigator.pop(ctx);
@@ -585,7 +580,7 @@ class _ReadingViewState extends State<_ReadingView> {
 
   // Al cambiar el tamaño de la letra o el espacio, el texto se mueve: se
   // vuelve a poner a la vista la frase que suena.
-  final _style = Listenable.merge([Comfort.textSize, Comfort.lineHeight]);
+  final _style = Listenable.merge([Comfort.textSize, Comfort.lineHeight, Comfort.legible]);
 
   @override
   void initState() {
@@ -629,6 +624,7 @@ class _ReadingViewState extends State<_ReadingView> {
     final chunks = widget.handler.chunks;
     final (start, end) = readingWindow(total: chunks.length, index: widget.index);
     final base = theme.textTheme.bodyLarge?.copyWith(
+      fontFamily: Comfort.readingFont,
       fontSize: Comfort.textSize.value,
       height: Comfort.lineHeight.value.height,
     );
@@ -647,7 +643,11 @@ class _ReadingViewState extends State<_ReadingView> {
             key: _keys.putIfAbsent(i, GlobalKey.new),
             padding: const EdgeInsets.fromLTRB(8, 6, 8, 16),
             // Frase subrayada: una barra ámbar a la izquierda.
-            decoration: _marked(chunks[i]) ? BoxDecoration(border: Border(left: BorderSide(color: mark, width: 3))) : null,
+            decoration: _marked(chunks[i])
+                ? BoxDecoration(
+                    border: Border(left: BorderSide(color: mark, width: 3)),
+                  )
+                : null,
             // Solo el fragmento que suena y el siguiente se animan: lo ya leído
             // es texto quieto y lo que falta sigue en el documento (su río sube
             // desde abajo con los dos animados). Así la lectura va fluida.
@@ -677,8 +677,8 @@ class _PlayButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Transparente: solo el ícono, sobre el éter.
-    final fg = Theme.of(context).colorScheme.primary;
+    // Círculo lleno (blanco sobre la tarjeta oscura), como en la música de Apple.
+    final s = Theme.of(context).colorScheme;
     return Semantics(
       button: true,
       label: playing ? 'Pausa' : 'Reproducir',
@@ -686,15 +686,15 @@ class _PlayButton extends StatelessWidget {
         duration: const Duration(milliseconds: 150),
         opacity: enabled ? 1 : 0.35,
         child: Material(
-          color: Colors.transparent,
+          color: s.primary,
           shape: const CircleBorder(),
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: enabled ? onTap : null,
             child: SizedBox(
-              width: 72,
-              height: 72,
-              child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded, size: 34, color: fg),
+              width: 64,
+              height: 64,
+              child: Icon(playing ? CupertinoIcons.pause_fill : CupertinoIcons.play_fill, size: 28, color: s.onPrimary),
             ),
           ),
         ),
@@ -710,25 +710,31 @@ class _StudyActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = TextButton.styleFrom(
-      minimumSize: const Size(0, 44),
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      visualDensity: VisualDensity.compact,
+    final style = OutlinedButton.styleFrom(
+      minimumSize: const Size(0, 40),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 15),
     );
     return Wrap(
-      spacing: 4,
+      spacing: 8,
+      runSpacing: 8,
       children: [
-        TextButton.icon(style: style, onPressed: onSearch, icon: const Icon(Icons.search), label: const Text('Buscar')),
-        TextButton.icon(
+        OutlinedButton.icon(
+          style: style,
+          onPressed: onSearch,
+          icon: const Icon(CupertinoIcons.search, size: 18),
+          label: const Text('Buscar'),
+        ),
+        OutlinedButton.icon(
           style: style,
           onPressed: onSummary,
-          icon: const Icon(Icons.auto_awesome_outlined),
+          icon: const Icon(CupertinoIcons.sparkles, size: 18),
           label: const Text('Resumen'),
         ),
-        TextButton.icon(
+        OutlinedButton.icon(
           style: style,
           onPressed: onQuiz,
-          icon: const Icon(Icons.quiz_outlined),
+          icon: const Icon(CupertinoIcons.question_circle, size: 18),
           label: const Text('Preguntas'),
         ),
       ],
@@ -762,7 +768,9 @@ class _Pill extends StatelessWidget {
       // ("Idioma Es…"): el nombre va arriba y el valor abajo.
       builder: (context, box) => FilledButton(
         style: FilledButton.styleFrom(
-          backgroundColor: Colors.transparent,
+          backgroundColor: scheme.surfaceContainerHighest,
+          foregroundColor: scheme.onSurface,
+          side: BorderSide(color: scheme.outline),
           padding: box.maxWidth < _narrow ? const EdgeInsets.symmetric(horizontal: 6, vertical: 6) : null,
         ),
         onPressed: onTap,

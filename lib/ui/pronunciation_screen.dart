@@ -1,7 +1,9 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../data/pronunciation_store.dart';
 import 'swarm_transition.dart';
+import 'premium.dart';
 
 class PronunciationScreen extends StatefulWidget {
   const PronunciationScreen({super.key, required this.store});
@@ -56,13 +58,9 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
   @override
   Widget build(BuildContext context) {
     final keys = _entries.keys.toList()..sort();
-    return Scaffold(
-      appBar: AppBar(title: const Text('Pronunciación')),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Agregar',
-        onPressed: _add,
-        child: const Icon(Icons.add),
-      ),
+    return PremiumPage(
+      title: 'Pronunciación',
+      actions: [PageAction(icon: CupertinoIcons.plus, tooltip: 'Agregar', onTap: _add, primary: true)],
       body: keys.isEmpty
           ? const Center(
               child: Padding(
@@ -81,7 +79,7 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
                     subtitle: Text(_entries[k]!),
                     trailing: IconButton(
                       tooltip: 'Eliminar',
-                      icon: const Icon(Icons.delete_outline),
+                      icon: const Icon(CupertinoIcons.trash),
                       onPressed: () async {
                         await widget.store.remove(k);
                         if (mounted) setState(() => _entries = Map.of(widget.store.entries));

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../core/app_exception.dart';
@@ -226,7 +227,7 @@ class _StudySummaryState extends State<_StudySummary> {
               const SizedBox(height: 12),
               FilledButton.icon(
                 onPressed: _summarize,
-                icon: const Icon(Icons.auto_awesome),
+                icon: const Icon(CupertinoIcons.sparkles),
                 label: const Text('Resumir'),
               ),
             ],
@@ -250,12 +251,12 @@ class _StudySummaryState extends State<_StudySummary> {
                   children: [
                     FilledButton.icon(
                       onPressed: () => _listen(result.toLines()),
-                      icon: Icon(_reading ? Icons.stop : Icons.volume_up),
+                      icon: Icon(_reading ? CupertinoIcons.stop_fill : CupertinoIcons.speaker_2),
                       label: Text(_reading ? 'Detener' : 'Escuchar'),
                     ),
                     OutlinedButton.icon(
                       onPressed: () => downloadSummary(context, widget.handler, widget.entry, result.toLines()),
-                      icon: const Icon(Icons.download),
+                      icon: const Icon(CupertinoIcons.arrow_down_to_line),
                       label: const Text('Descargar'),
                     ),
                     TextButton(onPressed: () => setState(() => _result = null), child: const Text('Otra parte')),

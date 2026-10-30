@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'premium.dart';
 
 /// Grabación terminada: archivo de audio y duración.
 class RecordingResult {
@@ -121,16 +123,16 @@ class _RecorderScreenState extends State<RecorderScreen> {
     final cs = Theme.of(context).colorScheme;
     return PopScope(
       canPop: !_recording,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Grabar'),
-          leading: IconButton(
-            tooltip: 'Cancelar',
-            icon: const Icon(Icons.close),
-            onPressed: _recording ? _cancel : () => Navigator.pop(context),
-          ),
+      child: PremiumPage(
+        title: 'Grabar',
+        subtitle: 'Clase o conversación',
+        leading: IconButton(
+          tooltip: 'Cancelar',
+          icon: const Icon(CupertinoIcons.xmark),
+          onPressed: _recording ? _cancel : () => Navigator.pop(context),
         ),
         body: SafeArea(
+          top: false,
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
@@ -172,7 +174,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
                               backgroundColor: _recording ? cs.error : cs.primary,
                             ),
                             onPressed: _recording ? _stop : _start,
-                            child: Icon(_recording ? Icons.stop : Icons.mic, size: 72),
+                            child: Icon(_recording ? CupertinoIcons.stop_fill : CupertinoIcons.mic_fill, size: 72),
                           ),
                         ),
                       ),
@@ -186,7 +188,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
                     AnimatedOpacity(
                       opacity: _watch.elapsed.inSeconds.isEven ? 1 : 0.2,
                       duration: const Duration(milliseconds: 300),
-                      child: Icon(Icons.circle, size: 14, color: cs.error),
+                      child: Icon(CupertinoIcons.circle_fill, size: 14, color: cs.error),
                     ),
                     const SizedBox(width: 8),
                     const Text('GRABANDO · toca para detener'),

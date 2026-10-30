@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../data/model_store.dart';
 import '../platform/native_text.dart';
 import 'swarm_transition.dart';
+import 'premium.dart';
 
 /// Voces y modelos opcionales. Todo se descarga una vez y funciona sin conexión.
 class VoicesScreen extends StatefulWidget {
@@ -134,7 +136,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
             ] else if (installed)
               Row(
                 children: [
-                  const Icon(Icons.check_circle, color: Colors.green),
+                  const Icon(CupertinoIcons.checkmark_circle_fill, color: Colors.green),
                   const SizedBox(width: 8),
                   Expanded(child: Text('Instalado · ${(size / (1024 * 1024)).round()} MB en el dispositivo')),
                   TextButton(onPressed: () => _remove(m), child: const Text('Eliminar')),
@@ -143,7 +145,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
             else
               FilledButton.icon(
                 onPressed: () => _install(m),
-                icon: const Icon(Icons.download),
+                icon: const Icon(CupertinoIcons.arrow_down_to_line),
                 label: Text('Instalar (${m.sizeLabel}, una sola vez)'),
               ),
             if (err != null) ...[
@@ -158,14 +160,14 @@ class _VoicesScreenState extends State<VoicesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Voces y modelos')),
+    return PremiumPage(
+      title: 'Voces y modelos',
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           Card(
             child: ListTile(
-              leading: const Icon(Icons.phone_iphone),
+              leading: const Icon(CupertinoIcons.device_phone_portrait),
               title: Text(Platform.isIOS ? 'Voz del iPhone' : 'Voz del sistema'),
               subtitle: Text(
                 Platform.isIOS

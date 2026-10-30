@@ -1,6 +1,8 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/motion.dart';
 import '../domain/text_chunk.dart';
 import '../playback/tts_audio_handler.dart';
 import 'swarm_transition.dart';
@@ -91,7 +93,7 @@ class _ReadScrollState extends State<_ReadScroll> {
               Expanded(child: Text('Lo que ya leíste', style: theme.textTheme.titleMedium)),
               TextButton.icon(
                 onPressed: widget.pages.isEmpty ? null : _copyAll,
-                icon: const Icon(Icons.copy_all_rounded),
+                icon: const Icon(CupertinoIcons.square_on_square),
                 label: const Text('Copiar todo'),
               ),
             ],
@@ -117,7 +119,7 @@ class _ReadScrollState extends State<_ReadScroll> {
                           children: [
                             Text('Página $page', style: theme.textTheme.labelSmall),
                             const SizedBox(height: 6),
-                            Text(text, style: theme.textTheme.bodyLarge?.copyWith(height: 1.55)),
+                            Text(text, style: theme.textTheme.bodyLarge?.copyWith(height: 1.55, fontFamily: Comfort.readingFont)),
                           ],
                         ),
                       );

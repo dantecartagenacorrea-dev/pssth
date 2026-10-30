@@ -49,6 +49,7 @@ dependencies:
   image: ^4.10.1
   flutter_math_fork: ^0.7.4
   camera: ^0.12.2
+  cupertino_icons: ^2.0.0
 
 dev_dependencies:
   flutter_test:
@@ -79,6 +80,15 @@ flutter:
 
   # Letra muy legible opcional (Braille Institute, licencia OFL).
   fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
     - family: AtkinsonHyperlegible
       fonts:
         - asset: assets/fonts/AtkinsonHyperlegible-Regular.ttf

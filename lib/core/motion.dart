@@ -48,6 +48,10 @@ class Comfort {
 
   static const legibleFamily = 'AtkinsonHyperlegible';
 
+  /// Letra del texto que se lee: la muy legible si se eligió; si no, la de
+  /// la interfaz.
+  static String? get readingFont => legible.value ? legibleFamily : null;
+
   /// Tamaño de la letra del texto que se lee (antes fijo en 19).
   static final textSize = ValueNotifier(defaultTextSize);
   static const defaultTextSize = 19.0, minTextSize = 15.0, maxTextSize = 30.0;

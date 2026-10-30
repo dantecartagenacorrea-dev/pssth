@@ -39,6 +39,7 @@ Future<void> main() async {
   CrashLog.install();
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(['Atkinson Hyperlegible'], await rootBundle.loadString('assets/fonts/OFL.txt'));
+    yield LicenseEntryWithLineBreaks(['Inter'], await rootBundle.loadString('assets/fonts/Inter-OFL.txt'));
   });
   // Medición de fluidez en un equipo real: solo con --dart-define=MEDIR=true.
   if (kMedir) _logFrameTimings();
@@ -173,20 +174,22 @@ class LectorPdfApp extends StatelessWidget {
   );
   static final _themes = {
     for (final paper in Paper.values)
-      paper: AppTheme.ether(light: paper == Paper.white).copyWith(pageTransitionsTheme: _transitions),
+      paper: AppTheme.premium(light: paper == Paper.white).copyWith(pageTransitionsTheme: _transitions),
   };
 
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([Comfort.paper, Comfort.scatter, Comfort.legible]),
-      builder: (context, _) => _app(Comfort.paper.value, Comfort.scatter.value, Comfort.legible.value),
+      listenable: Listenable.merge([Comfort.paper, Comfort.scatter]),
+      builder: (context, _) => _app(Comfort.paper.value, Comfort.scatter.value),
     );
   }
 
-  Widget _app(Paper paper, bool scatter, bool legible) {
+  Widget _app(Paper paper, bool scatter) {
     final base = _themes[paper]!;
-    final theme = legible ? AppTheme.withFont(base, Comfort.legibleFamily) : base;
+    // La letra muy legible es solo para el texto que se lee (Comfort.readingFont);
+    // la interfaz conserva la letra de Apple/Inter.
+    final theme = base;
     return MaterialApp(
       title: 'PSSTH!',
       // Toda la app sobre un solo fondo (de puntos, con la dispersión); al

@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
@@ -107,7 +108,7 @@ class _MathCameraScreenState extends State<MathCameraScreen> {
                 onPressed: cam == null || _shooting ? null : _shoot,
                 icon: _shooting
                     ? const SizedBox(width: 40, height: 40, child: CircularProgressIndicator(strokeWidth: 3))
-                    : const Icon(Icons.camera),
+                    : const Icon(CupertinoIcons.camera_fill),
               ),
             ),
           ],

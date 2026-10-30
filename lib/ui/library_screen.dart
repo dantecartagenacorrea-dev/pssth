@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:image_picker/image_picker.dart';
@@ -26,6 +27,7 @@ import '../data/url_import.dart';
 import '../data/youtube_transcript.dart' show youtubeVideoId;
 import '../domain/chapter_detector.dart';
 import '../domain/chunk_builder.dart';
+import '../domain/date_label.dart';
 import '../domain/language_detector.dart';
 import '../domain/library_entry.dart';
 import '../domain/link_finder.dart';
@@ -40,7 +42,6 @@ import '../platform/speech_transcriber.dart';
 import '../platform/whisper_transcriber.dart';
 import 'math_screen.dart';
 import 'scan_review_screen.dart';
-import 'swarm.dart';
 import 'swarm_transition.dart';
 import '../playback/tts_audio_handler.dart';
 import '../services/llm_cleaner.dart';
@@ -49,7 +50,9 @@ import 'player_screen.dart';
 import 'recorder_screen.dart';
 import 'voices_screen.dart';
 import 'pronunciation_screen.dart';
+import 'premium.dart';
 import 'processing_sign.dart';
+import '../theme/app_theme.dart';
 
 /// Versión mostrada en "Acerca de" (mantener igual que pubspec.yaml).
 const String kAppVersion = '1.0.0';
@@ -376,263 +379,102 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('PSSTH!'),
-        actions: [
-          ListenableBuilder(
-            listenable: ModelQueue.instance,
-            builder: (_, _) => ProcessingSign(
-              active: ModelQueue.instance.busy,
-              tooltip: 'Preparando voces y modelos',
-              onTap: _openVoices,
-            ),
-          ),
-          IconButton(
-            tooltip: 'Pronunciación',
-            icon: const Icon(Icons.record_voice_over_outlined),
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => PronunciationScreen(store: widget.pronunciationStore))),
-          ),
-          SwarmMenuButton<String>(
-            tooltip: 'Más',
-            onSelected: (v) {
-              if (v == 'voces') {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => VoicesScreen(
-                      modelStore: widget.modelStore,
-                      onModelsChanged: widget.onModelsChanged,
-                      native: _native,
-                    ),
-                  ),
-                );
-              }
-              if (v == 'ia') {
-                _showLlmSettings(context);
-              }
-              if (v == 'comodidad') {
-                showComfortSheet(context);
-              }
-              if (v == 'errores') {
-                _shareCrashLog();
-              }
-              if (v == 'acerca') {
-                showAboutDialog(
-                  context: context,
-                  applicationName: 'PSSTH!',
-                  applicationVersion: kAppVersion,
-                  applicationLegalese:
-                      'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo. '
-                      'Solo se usa Internet si descargas los modelos opcionales (desde GitHub y Hugging Face), y la red local '
-                      'solo si activas la corrección con Ollama.\n\n'
-                      'El reconocimiento de texto (OCR) y la voz pueden contener errores; '
-                      'consulta siempre el documento original para cualquier uso formal.\n\n'
-                      'Modelos opcionales: voz natural Kokoro-82M (Apache 2.0; entrenada con datos CC BY: '
-                      'Koniwa y SIWIS) y transcripción Whisper (MIT), ejecutados con sherpa-onnx (Apache 2.0); '
-                      'Letra Atkinson Hyperlegible (OFL). '
-                      'Esta versión incluye espeak-ng (GPL-3.0) dentro de sherpa-onnx. '
-                      'El resto de licencias está en «Ver licencias».',
-                );
-              }
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'voces', child: Text('Voces y modelos')),
-              PopupMenuItem(value: 'ia', child: Text('Corrección avanzada (IA local)')),
-              PopupMenuItem(value: 'comodidad', child: Text('Aspecto y letra')),
-              PopupMenuItem(value: 'errores', child: Text('Enviar informe de errores')),
-              PopupMenuItem(value: 'acerca', child: Text('Acerca de PSSTH! y licencias')),
-            ],
-          ),
-        ],
-      ),
-      // La esfera del enjambre de letras gira solo en la pantalla principal.
-      body: Stack(
-        children: [
-          const Positioned.fill(child: SwarmView(background: true)),
-          Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Cada objeto con una palabra debajo (en el teléfono no se
-                        // adivinaba qué hacía cada uno); el nombre completo aparece al
-                        // mantener presionado y lo lee el lector de pantalla.
-                        Wrap(
-                          alignment: WrapAlignment.center,
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            _MenuObject(
-                              icon: Icons.folder_open,
-                              label: 'Abrir documento',
-                              short: 'Abrir',
-                              onTap: _busy ? null : _openFile,
-                            ),
-                            _MenuObject(
-                              icon: Icons.mic,
-                              label: 'Grabar clase o conversación',
-                              short: 'Grabar',
-                              onTap: _busy ? null : _record,
-                            ),
-                            _MenuObject(
-                              icon: Icons.link,
-                              label: 'Pegar enlace',
-                              short: 'Enlace',
-                              onTap: _busy ? null : _openUrl,
-                            ),
-                            _MenuObject(
-                              icon: Icons.photo_camera,
-                              label: 'Sacar una foto para leerla',
-                              short: 'Cámara',
-                              onTap: _busy ? null : () => _pickPhoto(ImageSource.camera),
-                            ),
-                            _MenuObject(
-                              icon: Icons.photo_library,
-                              label: 'Leer una foto de la galería',
-                              short: 'Fotos',
-                              onTap: _busy ? null : () => _pickPhoto(ImageSource.gallery),
-                            ),
-                            _MenuObject(
-                              icon: Icons.document_scanner_outlined,
-                              label: 'Escanear a PDF',
-                              short: 'Escanear',
-                              onTap: _busy ? null : _scanToPdf,
-                            ),
-                            _MenuObject(
-                              icon: Icons.calculate_outlined,
-                              label: 'Resolver ejercicio de matemáticas',
-                              short: 'Matemáticas',
-                              onTap: _busy
-                                  ? null
-                                  : () => Navigator.of(
-                                      context,
-                                    ).push(MaterialPageRoute(builder: (_) => MathScreen(handler: widget.handler))),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_continueEntry != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      child: Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.play_circle_outline, size: 40),
-                          title: const Text('Continuar escuchando'),
-                          subtitle: Text('${_continueEntry!.name} · página ${_continueEntry!.pageIndex + 1}'),
-                          onTap: _busy ? null : () => _openEntry(_continueEntry!),
-                        ),
+    final cont = _continueEntry;
+    final entries = _entries;
+    return Stack(
+      children: [
+        PremiumPage(
+          showBack: false,
+          title: _showScans ? 'Escaneados' : 'Biblioteca',
+          actions: [
+            PageAction.widget(
+              ListenableBuilder(
+                listenable: ModelQueue.instance,
+                // Mientras se preparan voces y modelos, su señal; si no, la
+                // entrada a Voces.
+                builder: (_, _) => ModelQueue.instance.busy
+                    ? ProcessingSign(active: true, tooltip: 'Preparando voces y modelos', onTap: _openVoices)
+                    : IconButton(
+                        tooltip: 'Voces y modelos',
+                        icon: const Icon(CupertinoIcons.waveform),
+                        onPressed: _openVoices,
                       ),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        ChoiceChip(
-                          label: const Text('Documentos recientes'),
-                          selected: !_showScans,
-                          onSelected: (_) => setState(() => _showScans = false),
-                        ),
-                        ChoiceChip(
-                          label: Text('Escaneados ($_scanCount)'),
-                          selected: _showScans,
-                          onSelected: (_) => setState(() => _showScans = true),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: _entries.isEmpty
-                        ? _EmptyLibrary(
-                            scans: _showScans,
-                            onStart: _busy ? null : (_showScans ? _scanToPdf : _openFile),
-                          )
-                        : ListView.separated(
-                            itemCount: _entries.length,
-                            separatorBuilder: (_, _) => const Divider(height: 1),
-                            itemBuilder: (context, index) {
-                              final entry = _entries[index];
-                              final percent = (entry.progress * 100).round();
-                              return ListTile(
-                                leading: Icon(_iconFor(entry.kind)),
-                                title: Text(entry.name),
-                                subtitle: Text(
-                                  entry.finished
-                                      ? 'Terminado'
-                                      : entry.pageCount <= 0
-                                      ? 'Sin páginas leídas aún'
-                                      : 'Última página ${entry.pageIndex + 1} · $percent%',
-                                ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      tooltip: entry.favorite ? 'Quitar de favoritos' : 'Favorito',
-                                      icon: Icon(entry.favorite ? Icons.star : Icons.star_border),
-                                      onPressed: () async {
-                                        await widget.libraryStore.toggleFavorite(entry.id);
-                                        if (mounted) setState(() {});
-                                      },
-                                    ),
-                                    IconButton(
-                                      tooltip: 'Eliminar de la biblioteca',
-                                      icon: const Icon(Icons.delete_outline),
-                                      onPressed: _busy ? null : () => _confirmDelete(entry),
-                                    ),
-                                  ],
-                                ),
-                                onTap: _busy ? null : () => _openEntry(entry),
-                              );
-                            },
-                          ),
-                  ),
-                ],
               ),
             ),
+            PageAction(icon: CupertinoIcons.link, tooltip: 'Pegar enlace', onTap: _busy ? null : _openUrl),
+            PageAction(icon: CupertinoIcons.plus, tooltip: 'Abrir documento', onTap: _busy ? null : _openFile, primary: true),
+          ],
+          hero: _hero(cont),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('Recientes'),
+                      selected: !_showScans,
+                      showCheckmark: false,
+                      onSelected: (_) => setState(() => _showScans = false),
+                    ),
+                    ChoiceChip(
+                      label: Text('Escaneados ($_scanCount)'),
+                      selected: _showScans,
+                      showCheckmark: false,
+                      onSelected: (_) => setState(() => _showScans = true),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: entries.isEmpty
+                    ? _EmptyLibrary(
+                        scans: _showScans,
+                        onStart: _busy ? null : (_showScans ? _scanToPdf : _openFile),
+                      )
+                    : ListView(padding: const EdgeInsets.only(bottom: 16), children: _entryRows(entries)),
+              ),
+            ],
           ),
-          // Mientras carga un documento: un panel flotante en el centro, con el
-          // mismo fondo y forma que el resto (no un texto suelto).
-          if (_busy)
-            Positioned.fill(
-              child: ColoredBox(
-                color: Colors.black54,
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.22)),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _busyLabel,
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              const SizedBox(height: 16),
-                              const LinearProgressIndicator(minHeight: 2),
-                            ],
-                          ),
+          tabs: [
+            const TabItem(icon: CupertinoIcons.house_fill, label: 'Biblioteca', onTap: null, selected: true),
+            TabItem(
+              icon: CupertinoIcons.number,
+              label: 'Matemáticas',
+              onTap: _busy
+                  ? null
+                  : () => Navigator.of(
+                      context,
+                    ).push(MaterialPageRoute(builder: (_) => MathScreen(handler: widget.handler))),
+            ),
+            TabItem(icon: CupertinoIcons.waveform, label: 'Voces', onTap: _openVoices),
+            TabItem(icon: CupertinoIcons.gear, label: 'Ajustes', onTap: _showSettings),
+          ],
+        ),
+        // Mientras carga un documento: un panel flotante en el centro.
+        if (_busy)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Colors.black54,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Material(
+                      color: Theme.of(context).colorScheme.surface,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Premium.radiusSheet)),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(_busyLabel, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 16),
+                            const LinearProgressIndicator(minHeight: 3),
+                          ],
                         ),
                       ),
                     ),
@@ -640,17 +482,215 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
               ),
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
+  /// Lo de arriba, sobre el negro: lo que se está escuchando con su avance en
+  /// grande (como el saldo) y las formas de traer un documento en píldoras.
+  Widget _hero(LibraryEntry? cont) {
+    final t = Theme.of(context).textTheme;
+    final percent = cont == null ? 0 : (cont.progress * 100).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          cont == null ? 'Escucha cualquier documento' : 'Continuar escuchando',
+          style: t.bodyMedium?.copyWith(color: Premium.heroMuted),
+        ),
+        const SizedBox(height: 4),
+        if (cont != null) ...[
+          Text('$percent%', style: t.displaySmall?.copyWith(color: Premium.heroText)),
+          const SizedBox(height: 4),
+          Text(
+            '${cont.name} · página ${cont.pageIndex + 1}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: t.bodyMedium?.copyWith(color: const Color(0xFFBDBDBD)),
+          ),
+        ] else
+          Text('PSSTH!', style: t.displaySmall?.copyWith(color: Premium.heroText)),
+        const SizedBox(height: 16),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (final pill in [
+                if (cont != null)
+                  HeroPill(icon: CupertinoIcons.play_fill, label: 'Seguir', onTap: _busy ? null : () => _openEntry(cont)),
+                HeroPill(
+                  icon: CupertinoIcons.doc_text_viewfinder,
+                  label: 'Escanear',
+                  tooltip: 'Escanear a PDF',
+                  onTap: _busy ? null : _scanToPdf,
+                ),
+                HeroPill(icon: CupertinoIcons.mic, label: 'Grabar', tooltip: 'Grabar clase o conversación', onTap: _busy ? null : _record),
+                HeroPill(
+                  icon: CupertinoIcons.camera,
+                  label: 'Cámara',
+                  tooltip: 'Sacar una foto para leerla',
+                  onTap: _busy ? null : () => _pickPhoto(ImageSource.camera),
+                ),
+                HeroPill(
+                  icon: CupertinoIcons.photo_on_rectangle,
+                  label: 'Fotos',
+                  tooltip: 'Leer una foto de la galería',
+                  onTap: _busy ? null : () => _pickPhoto(ImageSource.gallery),
+                ),
+              ])
+                Padding(padding: const EdgeInsets.only(right: 8), child: pill),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Los documentos agrupados por el día en que se abrieron («Hoy», «Ayer»…).
+  List<Widget> _entryRows(List<LibraryEntry> entries) {
+    final now = DateTime.now();
+    final rows = <Widget>[];
+    String? last;
+    for (final entry in entries) {
+      final label = dayLabel(DateTime.tryParse(entry.lastOpenedIso ?? ''), now);
+      if (label != last) {
+        rows.add(SectionCaption(label));
+        last = label;
+      }
+      rows.add(_entryRow(entry));
+    }
+    return rows;
+  }
+
+  Widget _entryRow(LibraryEntry entry) {
+    final s = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final percent = (entry.progress * 100).round();
+    final fresh = entry.pageCount <= 0;
+    return ListTile(
+      leading: IconAvatar(_iconFor(entry.kind)),
+      title: Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text(
+        entry.finished
+            ? 'Terminado'
+            : fresh
+            ? 'Sin escuchar todavía'
+            : 'Página ${entry.pageIndex + 1}${entry.favorite ? ' · favorito' : ''}',
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            fresh ? 'Nuevo' : '$percent%',
+            style: t.titleSmall?.copyWith(color: fresh ? Premium.positive : s.onSurface),
+          ),
+          IconButton(
+            tooltip: 'Opciones de ${entry.name}',
+            icon: Icon(CupertinoIcons.ellipsis, color: s.onSurfaceVariant),
+            onPressed: _busy ? null : () => _entryOptions(entry),
+          ),
+        ],
+      ),
+      onTap: _busy ? null : () => _openEntry(entry),
+    );
+  }
+
+  /// Favorito y eliminar, en una hoja (en la lista solo se ve el avance).
+  Future<void> _entryOptions(LibraryEntry entry) async {
+    final choice = await showSwarmSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: IconAvatar(_iconFor(entry.kind)),
+              title: Text(entry.name, maxLines: 2, overflow: TextOverflow.ellipsis),
+            ),
+            ListTile(
+              leading: Icon(entry.favorite ? CupertinoIcons.star_fill : CupertinoIcons.star),
+              title: Text(entry.favorite ? 'Quitar de favoritos' : 'Marcar como favorito'),
+              onTap: () => Navigator.pop(ctx, 'favorito'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.trash),
+              title: const Text('Eliminar de la biblioteca'),
+              onTap: () => Navigator.pop(ctx, 'eliminar'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'favorito') {
+      await widget.libraryStore.toggleFavorite(entry.id);
+      if (mounted) setState(() {});
+    }
+    if (choice == 'eliminar') await _confirmDelete(entry);
+  }
+
+  /// Ajustes: todo lo que antes estaba en el menú de arriba.
+  Future<void> _showSettings() async {
+    final v = await showSwarmSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (value, icon, label) in const [
+              ('voces', CupertinoIcons.waveform, 'Voces y modelos'),
+              ('pronunciacion', CupertinoIcons.ear, 'Pronunciación'),
+              ('ia', CupertinoIcons.sparkles, 'Corrección avanzada (IA local)'),
+              ('comodidad', CupertinoIcons.paintbrush, 'Aspecto y letra'),
+              ('errores', CupertinoIcons.ant, 'Enviar informe de errores'),
+              ('acerca', CupertinoIcons.info_circle, 'Acerca de PSSTH! y licencias'),
+            ])
+              ListTile(leading: Icon(icon), title: Text(label), onTap: () => Navigator.pop(ctx, value)),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || v == null) return;
+    switch (v) {
+      case 'voces':
+        _openVoices();
+      case 'pronunciacion':
+        await Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => PronunciationScreen(store: widget.pronunciationStore)));
+      case 'ia':
+        _showLlmSettings(context);
+      case 'comodidad':
+        showComfortSheet(context);
+      case 'errores':
+        await _shareCrashLog();
+      case 'acerca':
+        showAboutDialog(
+          context: context,
+          applicationName: 'PSSTH!',
+          applicationVersion: kAppVersion,
+          applicationLegalese:
+              'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo. '
+              'Solo se usa Internet si descargas los modelos opcionales (desde GitHub y Hugging Face), y la red local '
+              'solo si activas la corrección con Ollama.\n\n'
+              'El reconocimiento de texto (OCR) y la voz pueden contener errores; '
+              'consulta siempre el documento original para cualquier uso formal.\n\n'
+              'Modelos opcionales: voz natural Kokoro-82M (Apache 2.0; entrenada con datos CC BY: '
+              'Koniwa y SIWIS) y transcripción Whisper (MIT), ejecutados con sherpa-onnx (Apache 2.0); '
+              'Letras Inter y Atkinson Hyperlegible (OFL). '
+              'Esta versión incluye espeak-ng (GPL-3.0) dentro de sherpa-onnx. '
+              'El resto de licencias está en «Ver licencias».',
+        );
+    }
+  }
+
   IconData _iconFor(String kind) => switch (kind) {
-    'image' => Icons.image,
-    'epub' => Icons.menu_book,
-    'txt' => Icons.article,
-    'html' => Icons.language,
-    _ => Icons.picture_as_pdf,
+    'image' => CupertinoIcons.photo,
+    'epub' => CupertinoIcons.book,
+    'txt' => CupertinoIcons.doc_text,
+    'html' => CupertinoIcons.globe,
+    _ => CupertinoIcons.doc_richtext,
   };
 
   Future<void> _pickPhoto(ImageSource source) async {
@@ -1279,7 +1319,7 @@ class _EmptyLibrary extends StatelessWidget {
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: onStart,
-              icon: Icon(scans ? Icons.document_scanner_outlined : Icons.folder_open),
+              icon: Icon(scans ? CupertinoIcons.doc_text_viewfinder : CupertinoIcons.folder),
               label: Text(scans ? 'Escanear a PDF' : 'Abrir documento'),
             ),
           ],
@@ -1287,59 +1327,6 @@ class _EmptyLibrary extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Un objeto del menú principal: el ícono grande con una palabra debajo
-/// ([short]). El nombre completo ([label]) se ve al mantenerlo presionado y
-/// es lo que dice el lector de pantalla.
-class _MenuObject extends StatelessWidget {
-  const _MenuObject({required this.icon, required this.label, required this.short, required this.onTap});
-  final IconData icon;
-  final String label;
-  final String short;
-  final VoidCallback? onTap;
-
-  static const _width = 84.0;
-
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: label,
-    excludeFromSemantics: true,
-    child: Semantics(
-      button: true,
-      enabled: onTap != null,
-      label: label,
-      excludeSemantics: true,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Opacity(
-          // Mientras carga otra cosa no se puede tocar: se ve apagado.
-          opacity: onTap == null ? 0.38 : 1,
-          child: SizedBox(
-            width: _width,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 44),
-                  const SizedBox(height: 4),
-                  Text(
-                    short,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
 }
 
 /// Fondo (negro o blanco), dispersión de letras y letra muy legible.
@@ -1402,7 +1389,7 @@ Future<void> showComfortSheet(BuildContext context) => showSwarmSheet<void>(
                 value: Comfort.legible.value,
                 onChanged: Comfort.setLegible,
                 title: const Text('Letra muy legible'),
-                subtitle: const Text('Letras más abiertas y fáciles de distinguir.'),
+                subtitle: const Text('Para el texto que se lee: letras más abiertas y fáciles de distinguir.'),
               ),
               const Divider(),
               const SizedBox(height: 8),

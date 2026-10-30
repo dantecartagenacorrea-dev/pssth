@@ -1,6 +1,7 @@
 import 'dart:io' show File;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:path_provider/path_provider.dart';
@@ -8,17 +9,18 @@ import 'package:pdfrx/pdfrx.dart';
 
 import '../data/pdf_editor.dart';
 import 'swarm_transition.dart';
+import 'premium.dart';
 
 void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: SwarmText(m)));
 
 /// Herramientas para marcar la página.
 enum _Tool {
-  highlight('Resaltar', Icons.highlight),
-  pen('Lápiz', Icons.gesture),
-  note('Nota', Icons.sticky_note_2_outlined),
-  text('Texto', Icons.title),
-  correct('Corregir', Icons.edit_note),
-  sign('Firma', Icons.draw_outlined);
+  highlight('Resaltar', CupertinoIcons.paintbrush),
+  pen('Lápiz', CupertinoIcons.scribble),
+  note('Nota', CupertinoIcons.doc_plaintext),
+  text('Texto', CupertinoIcons.textformat),
+  correct('Corregir', CupertinoIcons.square_pencil),
+  sign('Firma', CupertinoIcons.signature);
 
   const _Tool(this.label, this.icon);
   final String label;
@@ -107,12 +109,12 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
           children: [
             const ListTile(title: Text('Guardar el PDF editado'), subtitle: Text('Es una copia: el original no cambia.')),
             ListTile(
-              leading: const Icon(Icons.save_alt),
+              leading: const Icon(CupertinoIcons.arrow_down_doc),
               title: const Text('Guardar en el dispositivo'),
               onTap: () => Navigator.pop(ctx, false),
             ),
             ListTile(
-              leading: const Icon(Icons.share_outlined),
+              leading: const Icon(CupertinoIcons.share),
               title: const Text('Compartir'),
               onTap: () => Navigator.pop(ctx, true),
             ),
@@ -170,24 +172,29 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
         if (didPop) return;
         if (await _confirmLeave() && context.mounted) Navigator.pop(context);
       },
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Editar PDF'),
-          actions: [
-            IconButton(
-              tooltip: 'Deshacer',
-              icon: const Icon(Icons.undo),
-              onPressed: ed == null || !ed.canUndo || _busy ? null : () => _do((e) => e.undo()),
-            ),
-            IconButton(
-              tooltip: 'Guardar copia',
-              icon: const Icon(Icons.save_outlined),
-              onPressed: ed == null || _busy ? null : _save,
-            ),
+      child: PremiumPage(
+        title: 'Editar PDF',
+        subtitle: widget.title,
+        actions: [
+          PageAction(
+            icon: CupertinoIcons.arrow_uturn_left,
+            tooltip: 'Deshacer',
+            onTap: ed == null || !ed.canUndo || _busy ? null : () => _do((e) => e.undo()),
+          ),
+          PageAction(
+            icon: CupertinoIcons.floppy_disk,
+            tooltip: 'Guardar copia',
+            onTap: ed == null || _busy ? null : _save,
+            primary: true,
+          ),
+        ],
+        body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (_busy) const LinearProgressIndicator(minHeight: 2),
+            Expanded(child: SafeArea(top: false, child: _body(context, ed))),
           ],
-          bottom: _busy ? const PreferredSize(preferredSize: Size.fromHeight(4), child: LinearProgressIndicator()) : null,
         ),
-        body: SafeArea(child: _body(context, ed)),
       ),
     );
   }
@@ -206,8 +213,8 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
           padding: const EdgeInsets.all(8),
           child: SegmentedButton<bool>(
             segments: const [
-              ButtonSegment(value: true, label: Text('Páginas'), icon: Icon(Icons.grid_view)),
-              ButtonSegment(value: false, label: Text('Anotar y corregir'), icon: Icon(Icons.edit)),
+              ButtonSegment(value: true, label: Text('Páginas'), icon: Icon(CupertinoIcons.square_grid_2x2)),
+              ButtonSegment(value: false, label: Text('Anotar y corregir'), icon: Icon(CupertinoIcons.pencil)),
             ],
             selected: {_pagesMode},
             onSelectionChanged: (v) => setState(() => _pagesMode = v.first),
@@ -227,7 +234,7 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
         Align(
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
-            icon: const Icon(Icons.library_add_outlined),
+            icon: const Icon(CupertinoIcons.plus_square_on_square),
             label: const Text('Agregar páginas de otro PDF'),
             onPressed: _busy ? null : _appendPdf,
           ),
@@ -264,10 +271,10 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _mini('Girar', Icons.rotate_right, () => _do((e) => e.rotate(i))),
-                      _mini('Antes', Icons.chevron_left, i == 0 ? null : () => _do((e) => e.movePage(i, i - 1))),
-                      _mini('Después', Icons.chevron_right, i == n - 1 ? null : () => _do((e) => e.movePage(i, i + 1))),
-                      _mini('Quitar', Icons.delete_outline, n <= 1 ? null : () => _do((e) => e.removePage(i))),
+                      _mini('Girar', CupertinoIcons.rotate_right, () => _do((e) => e.rotate(i))),
+                      _mini('Antes', CupertinoIcons.chevron_left, i == 0 ? null : () => _do((e) => e.movePage(i, i - 1))),
+                      _mini('Después', CupertinoIcons.chevron_right, i == n - 1 ? null : () => _do((e) => e.movePage(i, i + 1))),
+                      _mini('Quitar', CupertinoIcons.trash, n <= 1 ? null : () => _do((e) => e.removePage(i))),
                     ],
                   ),
                 ],
@@ -347,13 +354,13 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
           children: [
             IconButton(
               tooltip: 'Página anterior',
-              icon: const Icon(Icons.chevron_left),
+              icon: const Icon(CupertinoIcons.chevron_left),
               onPressed: _page == 0 ? null : () => setState(() => _page--),
             ),
             Text('Página ${_page + 1} de ${ed.pageCount}'),
             IconButton(
               tooltip: 'Página siguiente',
-              icon: const Icon(Icons.chevron_right),
+              icon: const Icon(CupertinoIcons.chevron_right),
               onPressed: _page >= ed.pageCount - 1 ? null : () => setState(() => _page++),
             ),
           ],

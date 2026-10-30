@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io' show File, Platform;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:path_provider/path_provider.dart';
@@ -82,7 +83,7 @@ class _SearchSheetState extends State<_SearchSheet> {
                 padding: const EdgeInsets.all(12),
                 child: TextField(
                   autofocus: true,
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar en el texto'),
+                  decoration: const InputDecoration(prefixIcon: Icon(CupertinoIcons.search), hintText: 'Buscar en el texto'),
                   onChanged: (v) => setState(() {
                     _query = v;
                     _hits = searchChunks(chunks, v);
@@ -170,7 +171,7 @@ Future<void> showBookmarksSheet(
                         subtitle: Text('Página ${b.pageIndex + 1}'),
                         trailing: IconButton(
                           tooltip: 'Eliminar marcador',
-                          icon: const Icon(Icons.delete_outline),
+                          icon: const Icon(CupertinoIcons.trash),
                           onPressed: () async {
                             await store.remove(b.id);
                             setSheet(() => gone.add(b.id));
@@ -275,7 +276,7 @@ Future<void> showHighlightsSheet(BuildContext context, TtsAudioHandler handler, 
                 ListTile(
                   title: Text('Notas y subrayados (${list.length})'),
                   trailing: TextButton.icon(
-                    icon: const Icon(Icons.file_download_outlined),
+                    icon: const Icon(CupertinoIcons.arrow_down_doc),
                     label: const Text('Exportar'),
                     onPressed: () => _exportHighlights(ctx, entry, list),
                   ),
@@ -290,7 +291,7 @@ Future<void> showHighlightsSheet(BuildContext context, TtsAudioHandler handler, 
                     ),
                     trailing: IconButton(
                       tooltip: 'Editar nota',
-                      icon: const Icon(Icons.edit_note),
+                      icon: const Icon(CupertinoIcons.square_pencil),
                       onPressed: () => editHighlightNote(ctx, h),
                     ),
                     onTap: () {
@@ -393,12 +394,12 @@ Future<void> downloadSummary(
         children: [
           const ListTile(title: Text('Descargar resumen')),
           ListTile(
-            leading: const Icon(Icons.description_outlined),
+            leading: const Icon(CupertinoIcons.doc_text),
             title: const Text('Como texto (.txt)'),
             onTap: () => Navigator.pop(ctx, false),
           ),
           ListTile(
-            leading: const Icon(Icons.audiotrack),
+            leading: const Icon(CupertinoIcons.music_note),
             title: const Text('Como audio, con la voz actual'),
             onTap: () => Navigator.pop(ctx, true),
           ),
@@ -472,12 +473,12 @@ Future<void> showShareAudioSheet(BuildContext context, TtsAudioHandler handler, 
         children: [
           const ListTile(title: Text('Compartir como nota de voz')),
           ListTile(
-            leading: const Icon(Icons.short_text),
+            leading: const Icon(CupertinoIcons.text_alignleft),
             title: const Text('La frase actual'),
             onTap: () => Navigator.pop(ctx, false),
           ),
           ListTile(
-            leading: const Icon(Icons.article_outlined),
+            leading: const Icon(CupertinoIcons.doc_text),
             title: const Text('La página actual'),
             onTap: () => Navigator.pop(ctx, true),
           ),

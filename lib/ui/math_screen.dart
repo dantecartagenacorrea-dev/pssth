@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter/services.dart' show PlatformException;
@@ -11,6 +12,7 @@ import '../ocr/ocr_engine.dart' show OcrUnavailable;
 import '../platform/native_text.dart';
 import '../playback/tts_audio_handler.dart';
 import 'swarm_transition.dart';
+import 'premium.dart';
 
 /// Resolver ejercicios de matemáticas del colegio con un motor exacto (no con
 /// la IA, que se equivoca en las cuentas): cuentas, ecuaciones de 1.º y 2.º
@@ -139,9 +141,11 @@ class _MathScreenState extends State<MathScreen> {
     final t = Theme.of(context).textTheme;
     final scheme = Theme.of(context).colorScheme;
     final solution = _solution;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Resolver ejercicio')),
+    return PremiumPage(
+      title: 'Matemáticas',
+      subtitle: 'Resolver ejercicio',
       body: SafeArea(
+        top: false,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -162,7 +166,7 @@ class _MathScreenState extends State<MathScreen> {
                 hintText: '2x + 3 = 11',
                 suffixIcon: IconButton(
                   tooltip: 'Borrar',
-                  icon: const Icon(Icons.clear),
+                  icon: const Icon(CupertinoIcons.xmark_circle),
                   onPressed: () => setState(() {
                     _text.clear();
                     _solution = null;
@@ -183,7 +187,7 @@ class _MathScreenState extends State<MathScreen> {
                 for (final k in _keys)
                   ActionChip(
                     label: k == 'nueva línea'
-                        ? const Icon(Icons.keyboard_return, size: 18)
+                        ? const Icon(CupertinoIcons.arrow_turn_down_left, size: 18)
                         : Text(k, style: t.titleMedium),
                     tooltip: k == 'nueva línea' ? 'Otra ecuación (para un sistema)' : null,
                     onPressed: () => _insert(k),
@@ -196,7 +200,7 @@ class _MathScreenState extends State<MathScreen> {
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: _busy ? null : _solve,
-                    icon: const Icon(Icons.calculate),
+                    icon: const Icon(CupertinoIcons.number),
                     label: const Text('Resolver'),
                   ),
                 ),
@@ -204,12 +208,12 @@ class _MathScreenState extends State<MathScreen> {
                 IconButton.outlined(
                   tooltip: 'Foto del ejercicio',
                   onPressed: _busy ? null : () => _photo(ImageSource.camera),
-                  icon: const Icon(Icons.photo_camera),
+                  icon: const Icon(CupertinoIcons.camera),
                 ),
                 IconButton.outlined(
                   tooltip: 'Desde Fotos',
                   onPressed: _busy ? null : () => _photo(ImageSource.gallery),
-                  icon: const Icon(Icons.photo_library),
+                  icon: const Icon(CupertinoIcons.photo_on_rectangle),
                 ),
               ],
             ),
@@ -250,7 +254,7 @@ class _MathScreenState extends State<MathScreen> {
                       Text(solution.kind, style: t.titleMedium),
                       const SizedBox(height: 12),
                       _Formula(solution.problemLatex, size: 24),
-                      const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Icon(Icons.south, size: 20)),
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Icon(CupertinoIcons.arrow_down, size: 20)),
                       Container(
                         padding: const EdgeInsets.only(left: 12),
                         decoration: BoxDecoration(
@@ -268,12 +272,12 @@ class _MathScreenState extends State<MathScreen> {
                         children: [
                           FilledButton.icon(
                             onPressed: () => setState(() => _showSteps = !_showSteps),
-                            icon: Icon(_showSteps ? Icons.expand_less : Icons.arrow_forward),
+                            icon: Icon(_showSteps ? CupertinoIcons.chevron_up : CupertinoIcons.arrow_right),
                             label: Text(_showSteps ? 'Ocultar los pasos' : 'Mostrar los pasos'),
                           ),
                           FilledButton.tonalIcon(
                             onPressed: () => _listen(solution),
-                            icon: Icon(_reading ? Icons.stop : Icons.volume_up),
+                            icon: Icon(_reading ? CupertinoIcons.stop_fill : CupertinoIcons.speaker_2),
                             label: Text(_reading ? 'Detener' : 'Escuchar'),
                           ),
                         ],

@@ -1,6 +1,9 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'dot_field.dart';
+import 'premium.dart';
 import 'swarm.dart';
 
 /// Transición entre pantallas con el enjambre de letras: la pantalla que se va
@@ -86,12 +89,12 @@ class FloatingPanel extends StatelessWidget {
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.22)),
+              borderRadius: BorderRadius.circular(Premium.radiusSheet),
+              boxShadow: const [BoxShadow(color: Color(0x40000000), blurRadius: 24, offset: Offset(0, 8))],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: Padding(padding: const EdgeInsets.only(top: 8), child: child),
+              borderRadius: BorderRadius.circular(Premium.radiusSheet),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [const SheetHandle(), Flexible(child: child)]),
             ),
           ),
         ),
@@ -113,7 +116,7 @@ class SwarmMenuButton<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) => IconButton(
     tooltip: tooltip,
-    icon: icon ?? Icon(Icons.adaptive.more),
+    icon: icon ?? Icon(CupertinoIcons.ellipsis),
     onPressed: () async {
       final items = itemBuilder(context).whereType<PopupMenuItem<T>>().toList();
       final value = await showSwarmSheet<T>(

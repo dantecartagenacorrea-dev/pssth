@@ -1,5 +1,6 @@
 import 'dart:io' show Directory;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:path_provider/path_provider.dart';
@@ -41,14 +42,14 @@ Future<void> showAudioExportSheet(BuildContext context, TtsAudioHandler handler,
           ),
           if (here != null)
             ListTile(
-              leading: const Icon(Icons.bookmark_outline),
+              leading: const Icon(CupertinoIcons.bookmark),
               title: const Text('Este capítulo'),
               subtitle: Text(chapters[here].title, maxLines: 2, overflow: TextOverflow.ellipsis),
               onTap: () => Navigator.pop(ctx, _chapterRange(chapters, here, lastPage)),
             ),
           if (chapters.length > 1)
             ListTile(
-              leading: const Icon(Icons.list),
+              leading: const Icon(CupertinoIcons.list_bullet),
               title: const Text('Otro capítulo…'),
               onTap: () async {
                 final i = await _pickChapter(ctx, chapters);
@@ -56,7 +57,7 @@ Future<void> showAudioExportSheet(BuildContext context, TtsAudioHandler handler,
               },
             ),
           ListTile(
-            leading: const Icon(Icons.article_outlined),
+            leading: const Icon(CupertinoIcons.doc_text),
             title: const Text('Esta página'),
             subtitle: Text('Página ${current.pageIndex + 1}'),
             onTap: () => Navigator.pop(ctx, (
@@ -66,7 +67,7 @@ Future<void> showAudioExportSheet(BuildContext context, TtsAudioHandler handler,
             )),
           ),
           ListTile(
-            leading: const Icon(Icons.pages_outlined),
+            leading: const Icon(CupertinoIcons.book),
             title: const Text('Páginas…'),
             onTap: () async {
               final r = await _pickPages(ctx, current.pageIndex, lastPage);

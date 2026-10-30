@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,19 +12,19 @@ class FirstRunGuide {
 
   static const _steps = [
     (
-      icon: Icons.folder_open,
+      icon: CupertinoIcons.folder,
       title: 'Abre lo que quieras escuchar',
       text: 'Un PDF, un EPUB, una foto, una hoja escaneada o un enlace. Todo se queda en tu equipo.',
     ),
     (
-      icon: Icons.play_circle_outline,
+      icon: CupertinoIcons.play_circle,
       title: 'Escucha y sigue la lectura',
       text:
           'La palabra que suena se marca en el texto. Cambia la velocidad, la voz y el tamaño de la letra cuando '
           'quieras.',
     ),
     (
-      icon: Icons.quiz_outlined,
+      icon: CupertinoIcons.question_circle,
       title: 'Estudia sin salir del texto',
       text: 'Resumen con los conceptos clave y preguntas para repasar, al instante y sin Internet.',
     ),

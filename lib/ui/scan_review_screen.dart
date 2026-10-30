@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../domain/scan_filters.dart';
 import 'fragment_image.dart';
 import 'swarm_transition.dart';
+import 'premium.dart';
 
 /// Página limpia lista para el PDF.
 typedef CleanPage = ({Uint8List jpeg, int width, int height});
@@ -53,18 +55,14 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
   @override
   Widget build(BuildContext context) {
     final total = widget.paths.length;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(total == 1 ? 'Revisar escaneo' : 'Revisar escaneo · ${_page + 1} de $total'),
-        actions: [
-          TextButton(
-            onPressed: _finishing ? null : _finish,
-            child: _finishing
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Listo'),
-          ),
-        ],
-      ),
+    return PremiumPage(
+      title: 'Revisar escaneo',
+      subtitle: total == 1 ? null : 'Página ${_page + 1} de $total',
+      actions: [
+        _finishing
+            ? const PageAction.widget(SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)))
+            : PageAction(icon: CupertinoIcons.checkmark, tooltip: 'Listo', onTap: _finish, primary: true),
+      ],
       body: Column(
         children: [
           Expanded(

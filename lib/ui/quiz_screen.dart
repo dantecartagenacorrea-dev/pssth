@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../core/app_exception.dart';
@@ -12,6 +13,7 @@ import '../platform/study_ai.dart';
 import '../playback/tts_audio_handler.dart';
 import 'study_sheets.dart';
 import 'swarm_transition.dart';
+import 'premium.dart';
 
 /// Preguntas de estudio sobre el documento, al estilo Duolingo: rondas de 10,
 /// 30 o 60 preguntas de opción múltiple, niveles básico, medio y experto,
@@ -217,26 +219,24 @@ class _QuizScreenState extends State<QuizScreen> {
   @override
   Widget build(BuildContext context) {
     _sayQuestion();
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Preguntas de estudio'),
-        actions: [
-          IconButton(
-            tooltip: _aloud ? 'No leer en voz alta' : 'Leer en voz alta',
-            icon: Icon(_aloud ? Icons.volume_up : Icons.volume_off),
-            onPressed: () {
-              setState(() => _aloud = !_aloud);
-              if (!_aloud) unawaited(widget.handler.stopAside());
-            },
-          ),
-          if (_points case final p?)
-            Padding(
-              padding: const EdgeInsets.only(right: 16),
-              child: Center(child: Text('${p.document} pts')),
-            ),
-        ],
-      ),
+    return PremiumPage(
+      title: 'Preguntas',
+      subtitle: switch (_points) {
+        final p? => 'Preguntas de estudio · ${p.document} pts',
+        null => 'Preguntas de estudio',
+      },
+      actions: [
+        PageAction(
+          icon: _aloud ? CupertinoIcons.speaker_2 : CupertinoIcons.speaker_slash,
+          tooltip: _aloud ? 'No leer en voz alta' : 'Leer en voz alta',
+          onTap: () {
+            setState(() => _aloud = !_aloud);
+            if (!_aloud) unawaited(widget.handler.stopAside());
+          },
+        ),
+      ],
       body: SafeArea(
+        top: false,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: switch (_stage) {
@@ -293,7 +293,7 @@ class _QuizScreenState extends State<QuizScreen> {
           Text('Sobre qué parte', style: t.titleSmall),
           StudyScopePicker(value: _scope, pageCount: _source.$1.length, onChanged: (s) => setState(() => _scope = s)),
           const SizedBox(height: 24),
-          FilledButton.icon(onPressed: _start, icon: const Icon(Icons.play_arrow), label: const Text('Empezar')),
+          FilledButton.icon(onPressed: _start, icon: const Icon(CupertinoIcons.play_fill), label: const Text('Empezar')),
           if (_points case final p?) ...[
             const SizedBox(height: 24),
             Text('En este documento: ${p.document} puntos · mejor racha ${p.bestStreak}', style: t.bodyMedium),
