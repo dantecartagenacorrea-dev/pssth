@@ -79,7 +79,10 @@ class _ImmersiveReaderState extends State<ImmersiveReader> {
         passwordProvider: () => null,
         firstAttemptByEmptyPassword: true,
       );
-      if (!mounted) return doc.dispose();
+      if (!mounted) {
+        await doc.dispose();
+        return;
+      }
       setState(() => _doc = doc);
     } catch (_) {
       // Sin la página original (protegido o dañado): queda el modo texto.
