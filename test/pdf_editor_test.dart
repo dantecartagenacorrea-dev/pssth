@@ -1,3 +1,8 @@
+// En la máquina macOS de GitHub las pruebas no encuentran la biblioteca
+// PDFium (en el iPhone sí viene dentro de la app).
+@TestOn('!mac-os')
+library;
+
 import 'dart:io';
 import 'dart:ui' show Offset, Rect;
 
