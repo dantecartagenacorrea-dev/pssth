@@ -74,11 +74,22 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
                 child: FutureBuilder<CleanPage>(
                   future: _clean(i, _filter),
                   builder: (context, snap) {
-                    final page = snap.data;
+                    // Al cambiar de filtro FutureBuilder conserva la imagen
+                    // anterior mientras espera: no se muestra la del otro filtro.
+                    final page = snap.connectionState == ConnectionState.done ? snap.data : null;
                     if (page == null) {
                       return snap.hasError
                           ? Center(child: Text('No se pudo mostrar la página: ${snap.error}'))
-                          : const SizedBox.expand();
+                          : const Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircularProgressIndicator(),
+                                  SizedBox(height: 16),
+                                  Text('Preparando la página…'),
+                                ],
+                              ),
+                            );
                     }
                     // La hoja se arma desde la dispersión, como las letras.
                     return InteractiveViewer(maxScale: 5, child: FragmentImage(jpeg: page.jpeg));

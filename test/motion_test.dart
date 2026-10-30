@@ -68,4 +68,11 @@ void main() {
     expect(Comfort.textSize.value, Comfort.maxTextSize);
     Comfort.skipCitations.value = false;
   });
+
+  test('el fondo de la lectura a pantalla completa se recuerda', () async {
+    await Comfort.setReadingPaper('sepia');
+    Comfort.readingPaper.value = null;
+    await Comfort.load();
+    expect(Comfort.readingPaper.value, 'sepia');
+  });
 }

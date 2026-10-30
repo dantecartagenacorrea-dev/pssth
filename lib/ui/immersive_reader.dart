@@ -42,7 +42,10 @@ class ImmersiveReader extends StatefulWidget {
 class _ImmersiveReaderState extends State<ImmersiveReader> {
   PdfDocument? _doc;
   late ImmersiveMode _mode = widget.entry.kind == 'pdf' ? ImmersiveMode.original : ImmersiveMode.text;
-  ReadingPaper _paper = Comfort.paper.value == Paper.black ? ReadingPaper.black : ReadingPaper.white;
+  // El último fondo elegido aquí; si nunca se eligió, el del tema de la app.
+  ReadingPaper _paper =
+      ReadingPaper.values.asNameMap()[Comfort.readingPaper.value] ??
+      (Comfort.paper.value == Paper.black ? ReadingPaper.black : ReadingPaper.white);
   bool _controls = true;
   Timer? _hide;
   late PageController _pages = PageController(initialPage: _snapshotPage);
@@ -302,10 +305,13 @@ class _ImmersiveReaderState extends State<ImmersiveReader> {
                             message: 'Fondo ${p.label.toLowerCase()}',
                             child: InkWell(
                               customBorder: const CircleBorder(),
-                              onTap: () => setState(() {
-                                _paper = p;
-                                _scheduleHide();
-                              }),
+                              onTap: () {
+                                setState(() {
+                                  _paper = p;
+                                  _scheduleHide();
+                                });
+                                unawaited(Comfort.setReadingPaper(p.name));
+                              },
                               child: Container(
                                 width: 30,
                                 height: 30,
