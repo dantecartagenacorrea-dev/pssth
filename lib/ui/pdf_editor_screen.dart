@@ -54,7 +54,10 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
     try {
       await pdfrxFlutterInitialize();
       final ed = await PdfEditor.openFile(widget.path);
-      if (!mounted) return ed.dispose();
+      if (!mounted) {
+        await ed.dispose();
+        return;
+      }
       ed.changes.addListener(_refresh);
       setState(() => _ed = ed);
     } catch (_) {
