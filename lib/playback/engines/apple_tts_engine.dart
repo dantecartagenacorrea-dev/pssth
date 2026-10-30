@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:flutter_tts/flutter_tts.dart';
 
+import '../../domain/voice_ranking.dart' show isUsableSystemVoice;
 import '../tts_engine.dart';
 
 /// Motor del sistema (AVSpeechSynthesizer en iOS, TextToSpeech en Android).
@@ -60,9 +61,15 @@ class AppleTtsEngine extends TtsEngine {
     try {
       final raw = await _tts.getVoices;
       if (raw is! List) return [];
+      final all = raw.whereType<Map>().toList();
+      // Android anuncia cientos de voces (473 en la tablet) y solo unas pocas
+      // están en el equipo (57): el resto no suena o necesita Internet. Si el
+      // motor no informa nada de eso, se muestran todas.
+      final working = all
+          .where((m) => isUsableSystemVoice(features: m['features']?.toString(), network: m['network_required']?.toString()))
+          .toList();
       final seen = <String>{};
-      return raw
-          .whereType<Map>()
+      return (working.isEmpty ? all : working)
           .map(
             (m) => VoiceOption(
               name: '${m['name'] ?? ''}',

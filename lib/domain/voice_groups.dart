@@ -22,6 +22,7 @@ const _languageNames = {
   'es': 'Español', 'en': 'Inglés', 'pt': 'Portugués', 'fr': 'Francés', 'it': 'Italiano',
   'de': 'Alemán', 'ca': 'Catalán', 'gl': 'Gallego', 'eu': 'Euskera', 'nl': 'Neerlandés',
   'ru': 'Ruso', 'zh': 'Chino', 'ja': 'Japonés', 'ko': 'Coreano', 'ar': 'Árabe',
+  'pl': 'Polaco', 'pa': 'Panyabí', 'hi': 'Hindi', 'tr': 'Turco',
 };
 
 const _regionNames = {

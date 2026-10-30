@@ -68,7 +68,16 @@ const kokoroEsModel = ModelSpec(
   extractedDir: 'kokoro-int8-multi-lang-v1_0',
   requiredFiles: ['model.int8.onnx', 'voices.bin', 'tokens.txt'],
   // Datos de espeak-ng (GPL): el paquete los trae, pero la app ya no los usa.
-  prune: ['espeak-ng-data'],
+  // Tampoco el diccionario de chino (dict, fst) ni el léxico británico: la voz
+  // solo carga el léxico de inglés de EE. UU. y el de chino (≈20 MB menos).
+  prune: [
+    'espeak-ng-data',
+    'dict',
+    'lexicon-gb-en.txt',
+    'phone-zh.fst',
+    'number-zh.fst',
+    'date-zh.fst',
+  ],
 );
 
 // Solo los tres archivos que usa la app (los mismos del paquete de sherpa-onnx,
@@ -240,7 +249,9 @@ class ModelStore extends ChangeNotifier {
   /// se quitó porque no respetaba el formato de resúmenes y preguntas.
   static const _retired = ['qwen3'];
 
-  /// Borra lo que quedó instalado de [_retired] (libera espacio).
+  /// Borra lo que quedó instalado de [_retired] y, en los modelos ya
+  /// instalados, lo que [ModelSpec.prune] dice que no se usa (las instalaciones
+  /// anteriores a cada poda lo conservaban).
   Future<void> removeRetired() async {
     for (final id in _retired) {
       final d = Directory('${root.path}/$id');
@@ -248,6 +259,22 @@ class ModelStore extends ChangeNotifier {
         if (await d.exists()) await d.delete(recursive: true);
       } on FileSystemException {
         // se reintenta la próxima vez que se abra la app
+      }
+    }
+    for (final spec in optionalModels) {
+      for (final p in spec.prune) {
+        final path = '${dirFor(spec).path}/$p';
+        try {
+          switch (FileSystemEntity.typeSync(path)) {
+            case FileSystemEntityType.file:
+              await File(path).delete();
+            case FileSystemEntityType.directory:
+              await Directory(path).delete(recursive: true);
+            default:
+          }
+        } on FileSystemException {
+          // se reintenta la próxima vez
+        }
       }
     }
   }

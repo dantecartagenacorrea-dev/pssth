@@ -61,6 +61,27 @@ void main() {
     expect(tmp.listSync().where((e) => e.path.contains('.tmp_')), isEmpty);
   });
 
+  test('al iniciar quita lo retirado y lo que la voz instalada no usa', () async {
+    final store = ModelStore(tmp);
+    final d = store.dirFor(kokoroEsModel)..createSync(recursive: true);
+    for (final f in [
+      ...kokoroEsModel.requiredFiles,
+      'lexicon-us-en.txt',
+      'lexicon-zh.txt',
+      'lexicon-gb-en.txt',
+      'date-zh.fst',
+    ]) {
+      File('${d.path}/$f').writeAsStringSync('x');
+    }
+    File('${d.path}/dict/jieba.dict.utf8').createSync(recursive: true);
+    Directory('${tmp.path}/qwen3').createSync();
+    await store.removeRetired();
+    final left = d.listSync().map((e) => e.uri.pathSegments.lastWhere((s) => s.isNotEmpty)).toSet();
+    expect(left, {...kokoroEsModel.requiredFiles, 'lexicon-us-en.txt', 'lexicon-zh.txt'});
+    expect(store.isInstalled(kokoroEsModel), isTrue);
+    expect(Directory('${tmp.path}/qwen3').existsSync(), isFalse);
+  });
+
   test('solo los modelos de voz obligan a releer las voces', () {
     expect(isVoiceModel(kokoroEsModel), isTrue);
     expect(piperVoiceModels.every(isVoiceModel), isTrue);

@@ -13,4 +13,11 @@ void main() {
     final r = rankVoices<(String, String)>(voces, name: (v) => v.$1, locale: (_) => 'es-ES', quality: (v) => v.$2);
     expect(r.map((v) => v.$2).toList(), ['premium', 'enhanced', 'default']);
   });
+  test('solo las voces del sistema que están en el equipo y no piden Internet', () {
+    expect(isUsableSystemVoice(features: 'legacySetLanguageVoice', network: '0'), isTrue);
+    expect(isUsableSystemVoice(features: 'notInstalled\tnetworkTimeoutMs', network: '0'), isFalse);
+    expect(isUsableSystemVoice(features: '', network: '1'), isFalse);
+    // iOS no informa nada de eso: todas sirven.
+    expect(isUsableSystemVoice(), isTrue);
+  });
 }

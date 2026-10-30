@@ -35,3 +35,9 @@ List<T> rankVoices<T>(
   });
   return list;
 }
+
+/// ¿Funciona sin conexión esta voz del sistema? Android informa por voz si
+/// sus datos no están descargados ("notInstalled" en [features]) y si
+/// necesita Internet ([network] = "1"). Sin esos datos (iOS), sí.
+bool isUsableSystemVoice({String? features, String? network}) =>
+    !(features ?? '').contains('notInstalled') && network != '1';

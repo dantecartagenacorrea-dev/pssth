@@ -19,6 +19,7 @@ import 'data/highlight_store.dart';
 import 'data/library_store.dart';
 import 'data/model_queue.dart';
 import 'data/model_store.dart';
+import 'data/temp_cleanup.dart';
 import 'data/pronunciation_store.dart';
 import 'data/settings_store.dart';
 import 'data/audio_cache.dart';
@@ -123,6 +124,8 @@ Future<void> main() async {
     // Modelos que se bajaron con la app cerrada (gestor de descargas) se
     // instalan solos; con permiso, sigue bajando lo que falta.
     unawaited(ModelQueue.instance.start());
+    // Temporales viejos y restos de la IA quitada (no frena el arranque).
+    unawaited(cleanTemporary(cacheDir).then((b) => mark('temporales: ${b ~/ (1024 * 1024)} MB liberados')));
   });
   startFrameStats(); // solo en la versión de medición
   runApp(
