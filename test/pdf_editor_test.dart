@@ -66,6 +66,50 @@ void main() {
     expect(src.readAsBytesSync(), original);
   });
 
+  test('corta páginas de un documento y las pega en otro', () async {
+    final a = await samplePdf(dir, ['Uno', 'Dos', 'Tres'], name: 'a.pdf');
+    final b = await samplePdf(dir, ['Alfa', 'Beta'], name: 'b.pdf');
+    final original = a.readAsBytesSync();
+    final ea = await PdfEditor.openFile(a.path);
+    expect(ea.locked, isFalse);
+    final clip = await ea.cutPages([2, 0], dir); // Tres y Uno
+    expect(PageClip.current.value, same(clip));
+    expect((await reread(dir, await ea.save())).map((p) => p.text), ['Dos']);
+    await ea.dispose();
+
+    final eb = await PdfEditor.openFile(b.path);
+    await eb.pastePages(clip, at: 1); // entre Alfa y Beta, en su orden
+    expect((await reread(dir, await eb.save())).map((p) => p.text), ['Alfa', 'Uno', 'Tres', 'Beta']);
+    await eb.dispose();
+    expect(a.readAsBytesSync(), original);
+  });
+
+  test('copia y pega en el mismo documento; quita y gira varias', () async {
+    final src = await samplePdf(dir, ['Uno', 'Dos', 'Tres']);
+    final ed = await PdfEditor.openFile(src.path);
+    final clip = await ed.copyPages([1], dir);
+    await ed.pastePages(clip); // al final
+    await ed.rotatePages([0, 3]);
+    await ed.removePages([2]);
+    final pages = await reread(dir, await ed.save());
+    await ed.dispose();
+    expect(pages.map((p) => p.text), ['Uno', 'Dos', 'Dos']);
+    expect(pages.map((p) => p.rotation), [
+      PdfPageRotation.clockwise90,
+      PdfPageRotation.none,
+      PdfPageRotation.clockwise90,
+    ]);
+  });
+
+  test('no deja cortar todas las páginas', () async {
+    final src = await samplePdf(dir, ['Uno', 'Dos']);
+    final ed = await PdfEditor.openFile(src.path);
+    await expectLater(ed.cutPages([0, 1], dir), throwsStateError);
+    await ed.removePages([0, 1]);
+    expect(ed.pageCount, 2);
+    await ed.dispose();
+  });
+
   test('deshace el orden de las páginas', () async {
     final src = await samplePdf(dir, ['Uno', 'Dos']);
     final ed = await PdfEditor.openFile(src.path);

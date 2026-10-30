@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdfrx/pdfrx.dart';
 
 import '../core/app_exception.dart';
 import '../core/motion.dart';
@@ -46,6 +47,7 @@ import 'swarm_transition.dart';
 import '../playback/tts_audio_handler.dart';
 import '../services/llm_cleaner.dart';
 import 'first_run_guide.dart';
+import 'pdf_editor_screen.dart';
 import 'player_screen.dart';
 import 'recorder_screen.dart';
 import 'voices_screen.dart';
@@ -99,6 +101,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   void initState() {
     super.initState();
+    // Las miniaturas de los escaneados necesitan el lector de PDF listo.
+    unawaited(pdfrxFlutterInitialize());
     final bridge = OpenFileBridge.instance;
     bridge.onOpened = _importExternal;
     bridge.start();
@@ -343,10 +347,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         'PSSTH! $kAppVersion · ${Platform.operatingSystem} ${Platform.operatingSystemVersion}\n\n$log',
         flush: true,
       );
-      await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {
-        'path': file.path,
-        'text': 'Informe de errores de PSSTH!',
-      });
+      await const MethodChannel(
+        'lector/share',
+      ).invokeMethod<bool>('shareFile', {'path': file.path, 'text': 'Informe de errores de PSSTH!'});
     } catch (error) {
       if (mounted) showSafeMessage(context, error);
     }
@@ -402,7 +405,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
               ),
             ),
             PageAction(icon: CupertinoIcons.link, tooltip: 'Pegar enlace', onTap: _busy ? null : _openUrl),
-            PageAction(icon: CupertinoIcons.plus, tooltip: 'Abrir documento', onTap: _busy ? null : _openFile, primary: true),
+            PageAction(
+              icon: CupertinoIcons.plus,
+              tooltip: 'Abrir documento',
+              onTap: _busy ? null : _openFile,
+              primary: true,
+            ),
           ],
           hero: _hero(cont),
           body: Column(
@@ -430,10 +438,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               ),
               Expanded(
                 child: entries.isEmpty
-                    ? _EmptyLibrary(
-                        scans: _showScans,
-                        onStart: _busy ? null : (_showScans ? _scanToPdf : _openFile),
-                      )
+                    ? _EmptyLibrary(scans: _showScans, onStart: _busy ? null : (_showScans ? _scanToPdf : _openFile))
+                    : _showScans
+                    ? _scanGrid(entries)
                     : ListView(padding: const EdgeInsets.only(bottom: 16), children: _entryRows(entries)),
               ),
             ],
@@ -471,7 +478,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(_busyLabel, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
+                            Text(
+                              _busyLabel,
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.titleMedium,
+                            ),
                             const SizedBox(height: 16),
                             const LinearProgressIndicator(minHeight: 3),
                           ],
@@ -518,14 +529,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
             children: [
               for (final pill in [
                 if (cont != null)
-                  HeroPill(icon: CupertinoIcons.play_fill, label: 'Seguir', onTap: _busy ? null : () => _openEntry(cont)),
+                  HeroPill(
+                    icon: CupertinoIcons.play_fill,
+                    label: 'Seguir',
+                    onTap: _busy ? null : () => _openEntry(cont),
+                  ),
                 HeroPill(
                   icon: CupertinoIcons.doc_text_viewfinder,
                   label: 'Escanear',
                   tooltip: 'Escanear a PDF',
                   onTap: _busy ? null : _scanToPdf,
                 ),
-                HeroPill(icon: CupertinoIcons.mic, label: 'Grabar', tooltip: 'Grabar clase o conversación', onTap: _busy ? null : _record),
+                HeroPill(
+                  icon: CupertinoIcons.mic,
+                  label: 'Grabar',
+                  tooltip: 'Grabar clase o conversación',
+                  onTap: _busy ? null : _record,
+                ),
                 HeroPill(
                   icon: CupertinoIcons.camera,
                   label: 'Cámara',
@@ -596,7 +616,67 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  /// Favorito y eliminar, en una hoja (en la lista solo se ve el avance).
+  /// Los escaneados se ven: cada uno con su primera página en miniatura.
+  Widget _scanGrid(List<LibraryEntry> entries) {
+    final t = Theme.of(context).textTheme;
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 220,
+        childAspectRatio: 0.66,
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 14,
+      ),
+      itemCount: entries.length,
+      itemBuilder: (context, i) {
+        final entry = entries[i];
+        return InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: _busy ? null : () => _openEntry(entry),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Card(
+                  clipBehavior: Clip.antiAlias,
+                  child: PdfDocumentViewBuilder.file(
+                    entry.storedPath,
+                    builder: (context, doc) => doc == null
+                        ? const Center(child: Icon(CupertinoIcons.doc_text_viewfinder, size: 36))
+                        : PdfPageView(document: doc, pageNumber: 1, maximumDpi: 60),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t.titleSmall),
+                        Text(
+                          dayLabel(DateTime.tryParse(entry.lastOpenedIso ?? ''), DateTime.now()),
+                          style: t.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Opciones de ${entry.name}',
+                    icon: const Icon(CupertinoIcons.ellipsis),
+                    onPressed: _busy ? null : () => _entryOptions(entry),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Favorito, editar y eliminar, en una hoja (en la lista solo se ve el avance).
   Future<void> _entryOptions(LibraryEntry entry) async {
     final choice = await showSwarmSheet<String>(
       context: context,
@@ -613,6 +693,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
               title: Text(entry.favorite ? 'Quitar de favoritos' : 'Marcar como favorito'),
               onTap: () => Navigator.pop(ctx, 'favorito'),
             ),
+            if (entry.kind == 'pdf')
+              ListTile(
+                leading: const Icon(CupertinoIcons.pencil),
+                title: const Text('Editar PDF'),
+                subtitle: const Text('Mover, girar, cortar y pegar páginas, anotar y corregir'),
+                onTap: () => Navigator.pop(ctx, 'editar'),
+              ),
             ListTile(
               leading: const Icon(CupertinoIcons.trash),
               title: const Text('Eliminar de la biblioteca'),
@@ -628,6 +715,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (mounted) setState(() {});
     }
     if (choice == 'eliminar') await _confirmDelete(entry);
+    if (choice == 'editar' && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PdfEditorScreen(path: entry.storedPath, title: entry.name),
+        ),
+      );
+    }
   }
 
   /// Ajustes: todo lo que antes estaba en el menú de arriba.

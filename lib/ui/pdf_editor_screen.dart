@@ -1,4 +1,4 @@
-import 'dart:io' show File;
+import 'dart:io' show Directory, File;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
@@ -60,10 +60,19 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
         await ed.dispose();
         return;
       }
+      if (ed.locked) {
+        await ed.dispose();
+        if (mounted) {
+          setState(() => _error = 'Este PDF está protegido por su autor: se puede leer y escuchar, pero no editar.');
+        }
+        return;
+      }
       ed.changes.addListener(_refresh);
       setState(() => _ed = ed);
     } catch (_) {
-      if (mounted) setState(() => _error = 'No se pudo abrir el PDF para editarlo. Puede estar protegido o dañado.');
+      if (mounted) {
+        setState(() => _error = 'No se pudo abrir el PDF para editarlo: está protegido con contraseña o dañado.');
+      }
     }
   }
 
@@ -107,7 +116,10 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const ListTile(title: Text('Guardar el PDF editado'), subtitle: Text('Es una copia: el original no cambia.')),
+            const ListTile(
+              title: Text('Guardar el PDF editado'),
+              subtitle: Text('Es una copia: el original no cambia.'),
+            ),
             ListTile(
               leading: const Icon(CupertinoIcons.arrow_down_doc),
               title: const Text('Guardar en el dispositivo'),
@@ -200,13 +212,29 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
   }
 
   Widget _body(BuildContext context, PdfEditor? ed) {
-    if (_error != null) return Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)));
+    if (_error case final error?) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(CupertinoIcons.lock, size: 40),
+              const SizedBox(height: 12),
+              Text(error, textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      );
+    }
     if (ed == null) return const Center(child: CircularProgressIndicator());
     return Column(
       children: [
         if (ed.signed)
           const MaterialBanner(
-            content: Text('Este PDF tiene firma digital: la copia editada ya no la tendrá válida. El original no cambia.'),
+            content: Text(
+              'Este PDF tiene firma digital: la copia editada ya no la tendrá válida. El original no cambia.',
+            ),
             actions: [SizedBox.shrink()],
           ),
         Padding(
@@ -227,17 +255,17 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
 
   // ---------- Páginas ----------
 
+  /// Páginas elegidas (mantener presionada una para empezar a elegir).
+  final Set<int> _selected = {};
+
   Widget _pagesGrid(BuildContext context, PdfEditor ed) {
     final n = ed.pageCount;
+    final s = Theme.of(context).colorScheme;
     return Column(
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            icon: const Icon(CupertinoIcons.plus_square_on_square),
-            label: const Text('Agregar páginas de otro PDF'),
-            onPressed: _busy ? null : _appendPdf,
-          ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          child: _selected.isEmpty ? _pagesBar(ed) : _selectionBar(ed),
         ),
         Expanded(
           child: GridView.builder(
@@ -249,40 +277,163 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
               crossAxisSpacing: 8,
             ),
             itemCount: n,
-            itemBuilder: (context, i) => Card(
-              clipBehavior: Clip.antiAlias,
-              child: Column(
-                children: [
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => setState(() {
-                        _page = i;
-                        _pagesMode = false;
-                      }),
-                      child: PdfPageView(
-                        key: ValueKey('${ed.changes.value}-$i'),
-                        document: ed.doc,
-                        pageNumber: i + 1,
-                        maximumDpi: 40,
+            itemBuilder: (context, i) {
+              final chosen = _selected.contains(i);
+              return Card(
+                clipBehavior: Clip.antiAlias,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: BorderSide(color: chosen ? s.onSurface : Colors.transparent, width: 2.5),
+                ),
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        // Eligiendo: tocar suma o saca la página. Si no, abre
+                        // la página para anotarla.
+                        onTap: () => setState(() {
+                          if (_selected.isNotEmpty) {
+                            chosen ? _selected.remove(i) : _selected.add(i);
+                          } else {
+                            _page = i;
+                            _pagesMode = false;
+                          }
+                        }),
+                        onLongPress: () => setState(() => chosen ? _selected.remove(i) : _selected.add(i)),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            PdfPageView(
+                              key: ValueKey('${ed.changes.value}-$i'),
+                              document: ed.doc,
+                              pageNumber: i + 1,
+                              maximumDpi: 40,
+                            ),
+                            if (chosen)
+                              Align(
+                                alignment: Alignment.topRight,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(6),
+                                  child: Icon(CupertinoIcons.checkmark_circle_fill, color: s.onSurface, size: 26),
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  Text('${i + 1}', style: Theme.of(context).textTheme.labelSmall),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      _mini('Girar', CupertinoIcons.rotate_right, () => _do((e) => e.rotate(i))),
-                      _mini('Antes', CupertinoIcons.chevron_left, i == 0 ? null : () => _do((e) => e.movePage(i, i - 1))),
-                      _mini('Después', CupertinoIcons.chevron_right, i == n - 1 ? null : () => _do((e) => e.movePage(i, i + 1))),
-                      _mini('Quitar', CupertinoIcons.trash, n <= 1 ? null : () => _do((e) => e.removePage(i))),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+                    Text('${i + 1}', style: Theme.of(context).textTheme.labelSmall),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _mini('Girar', CupertinoIcons.rotate_right, () => _do((e) => e.rotate(i))),
+                        _mini(
+                          'Antes',
+                          CupertinoIcons.chevron_left,
+                          i == 0 ? null : () => _do((e) => e.movePage(i, i - 1)),
+                        ),
+                        _mini(
+                          'Después',
+                          CupertinoIcons.chevron_right,
+                          i == n - 1 ? null : () => _do((e) => e.movePage(i, i + 1)),
+                        ),
+                        _mini('Quitar', CupertinoIcons.trash, n <= 1 ? null : () => _do((e) => e.removePage(i))),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ],
+    );
+  }
+
+  /// Sin páginas elegidas: agregar otro PDF y, si hay algo copiado, pegarlo.
+  Widget _pagesBar(PdfEditor ed) => ValueListenableBuilder<PageClip?>(
+    valueListenable: PageClip.current,
+    builder: (context, clip, _) => Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        OutlinedButton.icon(
+          icon: const Icon(CupertinoIcons.plus_square_on_square, size: 18),
+          label: const Text('Agregar otro PDF'),
+          onPressed: _busy ? null : _appendPdf,
+        ),
+        if (clip != null)
+          FilledButton.icon(
+            icon: const Icon(CupertinoIcons.doc_on_clipboard, size: 18),
+            label: Text(
+              clip.pages.length == 1 ? 'Pegar 1 página al final' : 'Pegar ${clip.pages.length} páginas al final',
+            ),
+            onPressed: _busy ? null : () => _do((e) => e.pastePages(clip)),
+          ),
+        Text('Mantén presionada una página para elegir varias.', style: Theme.of(context).textTheme.bodySmall),
+      ],
+    ),
+  );
+
+  /// Con páginas elegidas: lo que se puede hacer con ellas.
+  Widget _selectionBar(PdfEditor ed) {
+    final pages = (_selected.toList()..sort());
+    final n = pages.length;
+    Future<void> act(Future<void> Function(PdfEditor e, Directory tmp) f, String done) async {
+      final tmp = await getTemporaryDirectory();
+      await _do((e) => f(e, tmp));
+      if (!mounted) return;
+      setState(_selected.clear);
+      _snack(context, done);
+    }
+
+    return ValueListenableBuilder<PageClip?>(
+      valueListenable: PageClip.current,
+      builder: (context, clip, _) => Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(n == 1 ? '1 página' : '$n páginas', style: Theme.of(context).textTheme.titleSmall),
+          OutlinedButton.icon(
+            icon: const Icon(CupertinoIcons.doc_on_doc, size: 18),
+            label: const Text('Copiar'),
+            onPressed: _busy
+                ? null
+                : () => act((e, t) => e.copyPages(pages, t), 'Copiadas: puedes pegarlas aquí o en otro PDF.'),
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(CupertinoIcons.scissors, size: 18),
+            label: const Text('Cortar'),
+            onPressed: _busy || n >= ed.pageCount
+                ? null
+                : () => act((e, t) => e.cutPages(pages, t), 'Cortadas: puedes pegarlas aquí o en otro PDF.'),
+          ),
+          if (clip != null)
+            OutlinedButton.icon(
+              icon: const Icon(CupertinoIcons.doc_on_clipboard, size: 18),
+              label: const Text('Pegar antes'),
+              onPressed: _busy ? null : () => act((e, _) => e.pastePages(clip, at: pages.first), 'Páginas pegadas.'),
+            ),
+          OutlinedButton.icon(
+            icon: const Icon(CupertinoIcons.rotate_right, size: 18),
+            label: const Text('Girar'),
+            onPressed: _busy ? null : () => act((e, _) => e.rotatePages(pages), 'Páginas giradas.'),
+          ),
+          OutlinedButton.icon(
+            icon: const Icon(CupertinoIcons.trash, size: 18),
+            label: const Text('Quitar'),
+            onPressed: _busy || n >= ed.pageCount
+                ? null
+                : () => act((e, _) => e.removePages(pages), 'Páginas quitadas.'),
+          ),
+          IconButton(
+            tooltip: 'Dejar de elegir',
+            icon: const Icon(CupertinoIcons.xmark),
+            onPressed: () => setState(_selected.clear),
+          ),
+        ],
+      ),
     );
   }
 
@@ -325,7 +476,10 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
             ],
           ),
         ),
-        Padding(padding: const EdgeInsets.all(6), child: Text(_hint, textAlign: TextAlign.center)),
+        Padding(
+          padding: const EdgeInsets.all(6),
+          child: Text(_hint, textAlign: TextAlign.center),
+        ),
         Expanded(
           child: LayoutBuilder(
             builder: (context, box) {
@@ -413,7 +567,13 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(title),
-        content: TextField(controller: c, autofocus: true, maxLines: 4, minLines: 1, decoration: InputDecoration(hintText: hint)),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          maxLines: 4,
+          minLines: 1,
+          decoration: InputDecoration(hintText: hint),
+        ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
           FilledButton(onPressed: () => Navigator.pop(ctx, c.text), child: const Text('Listo')),
@@ -566,10 +726,7 @@ class _Draft extends CustomPainter {
     }
     if (start == null || end == null) return;
     final r = Rect.fromPoints(px(start!), px(end!));
-    canvas.drawRect(
-      r,
-      Paint()..color = tool == _Tool.correct ? const Color(0x55FFFFFF) : const Color(0x66FFD600),
-    );
+    canvas.drawRect(r, Paint()..color = tool == _Tool.correct ? const Color(0x55FFFFFF) : const Color(0x66FFD600));
     canvas.drawRect(
       r,
       Paint()
@@ -604,13 +761,15 @@ class _SignaturePadState extends State<_SignaturePad> {
         child: LayoutBuilder(
           builder: (context, box) {
             final size = box.biggest;
-            Offset norm(Offset p) =>
-                Offset((p.dx / size.width).clamp(0.0, 1.0), (p.dy / size.height).clamp(0.0, 1.0));
+            Offset norm(Offset p) => Offset((p.dx / size.width).clamp(0.0, 1.0), (p.dy / size.height).clamp(0.0, 1.0));
             return GestureDetector(
               onPanStart: (d) => setState(() => _strokes.add([norm(d.localPosition)])),
               onPanUpdate: (d) => setState(() => _strokes.last.add(norm(d.localPosition))),
               child: DecoratedBox(
-                decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey)),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border.all(color: Colors.grey),
+                ),
                 child: CustomPaint(painter: _Strokes(_strokes), size: size),
               ),
             );

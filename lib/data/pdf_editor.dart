@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
-import 'dart:io' show File;
+import 'dart:io' show Directory, File;
 import 'dart:ui' show Offset, Rect;
 
 import 'package:ffi/ffi.dart';
@@ -18,6 +18,17 @@ const Rgba kHighlightYellow = (r: 255, g: 214, b: 0, a: 110);
 const Rgba kInkBlue = (r: 20, g: 60, b: 200, a: 255);
 const Rgba kTextBlack = (r: 0, g: 0, b: 0, a: 255);
 const Rgba kNoteYellow = (r: 255, g: 200, b: 0, a: 255);
+
+/// Páginas copiadas o cortadas, listas para pegar en este u otro documento.
+/// El documento de origen queda guardado en [path] tal como estaba al copiar.
+class PageClip {
+  const PageClip(this.path, this.pages);
+  final String path;
+  final List<int> pages;
+
+  /// El portapapeles de la app (dura mientras la app está abierta).
+  static final ValueNotifier<PageClip?> current = ValueNotifier(null);
+}
 
 /// Lo que se puede deshacer, de lo último a lo primero.
 sealed class _Undo {}
@@ -48,7 +59,7 @@ final class _ObjectsAdded extends _Undo {
 /// Las posiciones llegan normalizadas (0–1) sobre la página tal como se ve
 /// (con su giro), con el origen arriba a la izquierda.
 class PdfEditor {
-  PdfEditor._(this._doc, this.signed);
+  PdfEditor._(this._doc, this.signed, this.locked);
 
   PdfDocument _doc;
 
@@ -57,6 +68,9 @@ class PdfEditor {
 
   /// Tiene firma digital: al editarlo deja de ser válida.
   final bool signed;
+
+  /// Protegido por su autor contra cambios: solo se puede leer.
+  final bool locked;
 
   /// Avisa cada cambio (la vista vuelve a dibujar las páginas).
   final ValueNotifier<int> changes = ValueNotifier(0);
@@ -76,7 +90,10 @@ class PdfEditor {
       firstAttemptByEmptyPassword: true,
     );
     final signed = await doc.useNativeDocumentHandle((h) => _pdfium.FPDF_GetSignatureCount(_docPtr(h)) > 0);
-    return PdfEditor._(doc, signed);
+    // Cifrado con permisos que no dejan armar ni cambiar el documento.
+    final permissions = doc.permissions;
+    final locked = doc.isEncrypted && permissions != null && !permissions.allowsDocumentAssembly;
+    return PdfEditor._(doc, signed, locked);
   }
 
   Future<void> dispose() => _doc.dispose();
@@ -124,6 +141,73 @@ class PdfEditor {
       }
     }),
   );
+
+  /// Gira varias páginas 90° a la derecha.
+  Future<void> rotatePages(List<int> pages) {
+    final list = List.of(pages);
+    return _pagesOp((d) {
+      for (final i in list) {
+        final page = _pdfium.FPDF_LoadPage(d, i);
+        _pdfium.FPDFPage_SetRotation(page, (_pdfium.FPDFPage_GetRotation(page) + 1) % 4);
+        _pdfium.FPDF_ClosePage(page);
+      }
+    });
+  }
+
+  /// Quita varias páginas (siempre queda al menos una).
+  Future<void> removePages(List<int> pages) async {
+    final list = pages.toSet().toList()..sort((a, b) => b.compareTo(a));
+    if (list.isEmpty || list.length >= pageCount) return;
+    await _pagesOp((d) {
+      for (final i in list) {
+        _pdfium.FPDFPage_Delete(d, i);
+      }
+    });
+  }
+
+  /// Copia las páginas al portapapeles: el documento tal como está queda en
+  /// un PDF aparte en [dir] (para pegarlas aquí o en otro documento).
+  Future<PageClip> copyPages(List<int> pages, Directory dir) async {
+    final list = pages.toSet().toList()..sort();
+    final file = File('${dir.path}/portapapeles_${DateTime.now().microsecondsSinceEpoch}.pdf');
+    await file.writeAsBytes(await _doc.encodePdf(), flush: true);
+    final clip = PageClip(file.path, list);
+    PageClip.current.value = clip;
+    return clip;
+  }
+
+  /// Corta: copia las páginas al portapapeles y las quita de aquí.
+  Future<PageClip> cutPages(List<int> pages, Directory dir) async {
+    if (pages.toSet().length >= pageCount) {
+      throw StateError('Tiene que quedar al menos una página');
+    }
+    final clip = await copyPages(pages, dir);
+    await removePages(pages);
+    return clip;
+  }
+
+  /// Pega las páginas del portapapeles antes de la página [at] (al final si
+  /// no se indica).
+  Future<void> pastePages(PageClip clip, {int? at}) {
+    final source = clip.path;
+    final pages = List.of(clip.pages);
+    return _pagesOp(
+      (d) => using((arena) {
+        final other = _pdfium.FPDF_LoadDocument(source.toNativeUtf8(allocator: arena).cast(), nullptr);
+        if (other == nullptr) throw const FormatException('El portapapeles ya no está disponible');
+        try {
+          final indices = arena<Int>(pages.length);
+          for (var i = 0; i < pages.length; i++) {
+            indices[i] = pages[i];
+          }
+          final count = _pdfium.FPDF_GetPageCount(d);
+          _pdfium.FPDF_ImportPagesByIndex(d, other, indices, pages.length, (at ?? count).clamp(0, count));
+        } finally {
+          _pdfium.FPDF_CloseDocument(other);
+        }
+      }),
+    );
+  }
 
   Future<void> _pagesOp(void Function(pf.FPDF_DOCUMENT d) op) async {
     final before = await _doc.encodePdf();
