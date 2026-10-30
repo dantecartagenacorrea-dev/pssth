@@ -5,10 +5,12 @@ import 'dart:ui' show PointMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../domain/caps_speech.dart';
 import '../domain/word_timing.dart';
 import '../playback/tts_audio_handler.dart';
 import 'glyph_dust.dart';
 import 'swarm.dart';
+import '../core/motion.dart';
 
 /// Texto "en el éter": al llegar un fragmento sus letras aparecen dispersas y
 /// se ordenan; las palabras que faltan flotan más cuanto más lejos están de la
@@ -81,8 +83,10 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _still = MediaQuery.disableAnimationsOf(context);
-    if (!_ticker.isActive) _ticker.start();
+    _still = calmOf(context);
+    // Quieto, el texto es normal: no hay letras que mover.
+    if (_still && _ticker.isActive) _ticker.stop();
+    if (!_still && !_ticker.isActive) _ticker.start();
   }
 
   void _prepare() {
@@ -96,8 +100,20 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
     }
     _wordOf = word;
     _wordCount = spans.length;
+    // Oración de cada palabra: una nueva empieza después de . ? ! o …
+    final sentence = List.filled(spans.length, 0);
+    var s = 0;
+    for (var w = 0; w < spans.length; w++) {
+      sentence[w] = s;
+      final end = spans[w].$2;
+      final tail = text.substring(end, math.min(text.length, end + 2));
+      if (RegExp(r'^[.?!…]').hasMatch(tail) || RegExp(r'[.?!…]$').hasMatch(text.substring(spans[w].$1, end))) s++;
+    }
+    _sentenceOf = sentence;
     _scene.reset(text.length, _rnd);
   }
+
+  List<int> _sentenceOf = const [];
 
   /// Mide el ritmo de la voz (palabras por segundo) y cuántas le quedan.
   void _followVoice(int? cur) {
@@ -115,7 +131,8 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
   /// Palabra que suena ahora, o null si la voz no informa (o no coincide).
   int? _currentWord() {
     final range = _h.wordRange.value;
-    if (range == null || _h.currentChunk?.speech != widget.text) return null;
+    final speech = _h.currentChunk?.speech;
+    if (range == null || speech == null || !sameSpokenText(speech, widget.text)) return null;
     if (range.$1 < 0 || range.$1 >= _wordOf.length) return null;
     final w = _wordOf[range.$1];
     return w < 0 ? null : w;
@@ -130,6 +147,9 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
     final cur = _currentWord() ?? (widget.relation == 0 && playing ? 0 : null);
     if (widget.relation == 0) _followVoice(cur);
     final ahead = _ReadingClock.ahead;
+    // La oración que se está leyendo (al comienzo, la primera).
+    final curWord = cur ?? 0;
+    final sentenceNow = curWord < _sentenceOf.length ? _sentenceOf[curWord] : 0;
     final p = _scene.particles;
     for (var i = 0; i < p.length; i++) {
       final c = p[i];
@@ -140,20 +160,23 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
         > 1 => w < 0 ? null : 1 << 20,
         _ => w < 0 ? null : w - (cur ?? -1),
       };
-      // Escrita por adelantado: ya formada, esperando a la voz. El fragmento que
-      // suena está escrito entero (también en pausa) para poder seguirlo.
-      final written = dist != null && dist > 0 && (widget.relation == 0 || dist <= ahead);
+      // Escrita por adelantado: ya formada, esperando a la voz. Del fragmento
+      // que suena, la oración actual entera (también en pausa); lo que sigue
+      // se va armando al paso de la voz.
+      final inSentence = widget.relation == 0 && w >= 0 && w < _sentenceOf.length && _sentenceOf[w] == sentenceNow;
+      final written = dist != null && dist > 0 && (inSentence || dist <= ahead);
       final far = dist == null ? 0.0 : math.min(1.0, (dist - ahead) / 10);
       double amp;
       double pull;
       if (dist == null) {
         amp = playing ? 3 : 1.5;
         pull = 4;
-      } else if (dist < 0) {
-        amp = 0.4;
-        pull = 10;
-      } else if (dist == 0 || written) {
-        amp = 1.2;
+      } else if (dist <= 2) {
+        // Lo leído, la que suena y las dos que siguen: quietas, para leerlas.
+        amp = 0;
+        pull = 16;
+      } else if (written) {
+        amp = 0.6;
         pull = 12;
       } else {
         amp = 8 + 42 * far;
@@ -162,27 +185,35 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
       if (_still) amp = 0;
       final t = _scene.time * c.speed + c.phase;
       final tx = math.sin(t) * amp;
-      final ty = math.cos(t * 0.8) * amp * 0.8;
+      // Las sueltas flotan casi todas por debajo de su renglón (vienen
+      // subiendo); una que otra (la séptima parte) se queda por arriba.
+      final below = c.phase > 0.9; // phase va de 0 a 2π: ~85 % abajo
+      final ty = (0.55 + 0.45 * math.cos(t * 0.8)) * amp * 0.9 * (below ? 1 : -1);
       final f = 1 - math.exp(-pull * dt);
       c.dx += (tx - c.dx) * f;
       c.dy += (ty - c.dy) * f;
       final glowTarget = dist == 0 ? 1.0 : 0.0;
       c.glow += (glowTarget - c.glow) * (1 - math.exp(-(glowTarget > 0 ? 18 : 3) * dt));
-      final litTarget = dist == null || dist <= 0 ? 1.0 : 0.0;
-      c.lit += (litTarget - c.lit) * (1 - math.exp(-4 * dt));
+      // Blanco pleno: lo leído, la que suena y las una o dos palabras que
+      // vienen (para el ojo rápido). Plomo: el resto de la oración, ya
+      // formada. Lo que todavía se arma, apagado.
+      final litTarget = dist == null || dist <= 2 ? 1.0 : (inSentence ? 0.5 : 0.0);
+      c.lit += (litTarget - c.lit) * (1 - math.exp(-6 * dt));
       // Cuánto se deshace la letra en polvo: se junta de golpe al leerse y se
       // dispersa despacio.
       final chaosTarget = _still || written || (dist != null && dist <= 0)
           ? 0.0
           : dist == null
-              ? 0.08
-              : 0.35 + 0.65 * far;
+          ? 0.08
+          : 0.35 + 0.65 * far;
       c.chaos += (chaosTarget - c.chaos) * (1 - math.exp(-(chaosTarget < c.chaos ? 2.5 : 1.2) * dt));
       // Ya formada (escrita por adelantado, sonando o leída), la letra se
       // vuelve sólida y así queda.
       final solidTarget = c.chaos < 0.04 && (dist == null || dist <= ahead || written) ? 1.0 : 0.0;
       c.solid += (solidTarget - c.solid) * (1 - math.exp(-(solidTarget > 0 ? 6 : 2) * dt));
-      c.near = dist != null && dist <= ahead + _nearWords && c.solid < 0.98;
+      // En polvo (fragmentos que se juntan) mientras se arma: las cercanas a
+      // la voz y todas las de la frase que suena, hasta quedar sólidas.
+      c.near = dist != null && (written || dist <= ahead + _nearWords) && c.solid < 0.98;
     }
     _scene.notify();
   }
@@ -210,6 +241,8 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
     final theme = Theme.of(context);
     final style = widget.style ?? theme.textTheme.titleLarge ?? const TextStyle();
     final dark = theme.brightness == Brightness.dark;
+    final glow = dark ? const Color(0xFFFAC775) : const Color(0xFFBA7517);
+    if (_still) return _plain(style, glow);
     final scaler = MediaQuery.textScalerOf(context);
     _loadDust(style, scaler);
     return Semantics(
@@ -230,7 +263,7 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
               layout: layout,
               style: style,
               base: style.color ?? theme.colorScheme.onSurface,
-              glow: dark ? const Color(0xFFFAC775) : const Color(0xFFBA7517),
+              glow: glow,
               scaler: scaler,
               dust: _dustReady,
             ),
@@ -241,12 +274,50 @@ class _EtherTextState extends State<EtherText> with SingleTickerProviderStateMix
   }
 }
 
+extension on _EtherTextState {
+  /// Sin dispersión: el texto normal, con la palabra que suena en amarillo.
+  Widget _plain(TextStyle style, Color glow) => ValueListenableBuilder<(int, int)?>(
+    valueListenable: _h.wordRange,
+    builder: (context, _, _) {
+      final text = widget.text;
+      final word = widget.relation == 0 ? _currentWord() : null;
+      final span = word == null ? null : _wordSpan(word);
+      if (span == null) return Text(text, style: style);
+      final (a, b) = span;
+      return Text.rich(
+        TextSpan(
+          style: style,
+          children: [
+            TextSpan(text: text.substring(0, a)),
+            TextSpan(
+              text: text.substring(a, b),
+              style: TextStyle(color: glow),
+            ),
+            TextSpan(text: text.substring(b)),
+          ],
+        ),
+      );
+    },
+  );
+
+  /// Dónde está la palabra [w] dentro del texto.
+  (int, int)? _wordSpan(int w) {
+    final start = _wordOf.indexOf(w);
+    if (start < 0) return null;
+    var end = start;
+    while (end < _wordOf.length && _wordOf[end] == w) {
+      end++;
+    }
+    return (start, end);
+  }
+}
+
 class _Particle {
   _Particle(math.Random r)
-      : phase = r.nextDouble() * 2 * math.pi,
-        speed = 0.5 + r.nextDouble(),
-        dx = (r.nextDouble() - 0.5) * 520,
-        dy = (r.nextDouble() - 0.5) * 420;
+    : phase = r.nextDouble() * 2 * math.pi,
+      speed = 0.5 + r.nextDouble(),
+      dx = (r.nextDouble() - 0.5) * 520,
+      dy = (r.nextDouble() - 0.5) * 420;
 
   final double phase;
   final double speed;
@@ -256,6 +327,7 @@ class _Particle {
   double lit = 0;
   double chaos = 1;
   double solid = 0;
+
   /// Cerca de la voz: se dibuja como polvo. Lejos, como letra entera que flota
   /// (mucho más liviano: un párrafo largo en polvo son decenas de miles de puntos).
   bool near = true;
@@ -281,11 +353,12 @@ class _EtherPainter extends CustomPainter {
     required this.glow,
     required this.scaler,
     required this.dust,
-  })  : debrisStyle = debrisOf(style),
-        super(repaint: scene);
+  }) : debrisStyle = debrisOf(style),
+       super(repaint: scene);
 
   /// Letras y números rotos: casi del tamaño del texto, para que se reconozcan.
-  static TextStyle debrisOf(TextStyle s) => s.copyWith(fontSize: (s.fontSize ?? 16) * 0.85, fontWeight: FontWeight.w600);
+  static TextStyle debrisOf(TextStyle s) =>
+      s.copyWith(fontSize: (s.fontSize ?? 16) * 0.85, fontWeight: FontWeight.w600);
 
   final _EtherScene scene;
   final String text;
@@ -311,10 +384,8 @@ class _EtherPainter extends CustomPainter {
       return TextPainter(
         text: TextSpan(
           text: ch,
-          style: style.copyWith(
-            color: color,
-            shadows: glowing ? [Shadow(color: glow.withValues(alpha: level / _levels), blurRadius: 5)] : null,
-          ),
+          // La que suena: amarilla y fina, sin halo, para que se lea limpia.
+          style: style.copyWith(color: color),
         ),
         textDirection: TextDirection.ltr,
         textScaler: scaler,
@@ -325,18 +396,22 @@ class _EtherPainter extends CustomPainter {
   /// Lugar de cada letra dentro del párrafo ya ordenado.
   /// Centro de cada letra en el párrafo ordenado (para estamparla del atlas).
   List<Offset?> _centers() => _center ??= [
-        for (var i = 0; i < text.length; i++)
-          text[i].trim().isEmpty
-              ? null
-              : layout.getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + 1)).firstOrNull?.toRect().center,
-      ];
+    for (var i = 0; i < text.length; i++)
+      text[i].trim().isEmpty
+          ? null
+          : layout.getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + 1)).firstOrNull?.toRect().center,
+  ];
 
   List<Offset?> _homes() => _home ??= [
-        for (var i = 0; i < text.length; i++)
-          text[i].trim().isEmpty
-              ? null
-              : layout.getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + 1)).firstOrNull?.toRect().topLeft,
-      ];
+    for (var i = 0; i < text.length; i++)
+      text[i].trim().isEmpty
+          ? null
+          : layout
+                .getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + 1))
+                .firstOrNull
+                ?.toRect()
+                .topLeft,
+  ];
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -351,8 +426,8 @@ class _EtherPainter extends CustomPainter {
       if (home == null) continue;
       final c = p[i];
       final glowing = c.glow > 0.05;
-      final alpha = glowing ? math.min(1.0, 0.55 + c.glow) : 0.35 + 0.6 * c.lit;
-      _glyph(text[i], alpha, glowing).paint(canvas, home + Offset(c.dx, c.dy - 3 * c.glow));
+      final alpha = glowing ? math.min(1.0, 0.55 + c.glow) : 0.3 + 0.7 * c.lit;
+      _glyph(text[i], alpha, glowing).paint(canvas, home + Offset(c.dx, c.dy));
     }
   }
 
@@ -366,7 +441,8 @@ class _EtherPainter extends CustomPainter {
 
   // Letras y números rotos: un trozo sólido de un carácter al azar, que gira
   // y viaja junto a cada letra hasta fundirse en ella.
-  final _bits = <({int letter, String ch, double ox, double oy, double a, double b, double rot, Rect keep, bool absorb})>[];
+  final _bits =
+      <({int letter, String ch, double ox, double oy, double a, double b, double rot, Rect keep, bool absorb})>[];
   final _bitGlyphs = <(String, int, bool), TextPainter>{};
 
   static const _debrisPool = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -465,7 +541,7 @@ class _EtherPainter extends CustomPainter {
       }
       final k = c.chaos;
       final glowing = c.glow > 0.05;
-      var alpha = glowing ? math.min(1.0, 0.6 + c.glow) : (0.35 + 0.6 * c.lit) * (1 - 0.45 * k);
+      var alpha = glowing ? math.min(1.0, 0.6 + c.glow) : (0.3 + 0.7 * c.lit) * (1 - 0.45 * k);
       alpha *= 1 - c.solid;
       final level = (alpha.clamp(0.0, 1.0) * _levels).round();
       if (level == 0) {
@@ -475,7 +551,7 @@ class _EtherPainter extends CustomPainter {
       final b = level + (glowing ? _levels + 1 : 0);
       _bucket[d] = b;
       counts[b]++;
-      var x = dotX[d] + c.dx * 0.5, y = _dotY[d] + c.dy * 0.5 - 3 * c.glow;
+      var x = dotX[d] + c.dx * 0.5, y = _dotY[d] + c.dy * 0.5;
       final g = _groupOf[d];
       final ga = _ga[g], gb = _gb[g];
       // Cada trozo se suelta a su turno: unos llegan antes que otros.
@@ -517,18 +593,7 @@ class _EtherPainter extends CustomPainter {
       final glowing = b > _levels;
       final level = (glowing ? b - _levels - 1 : b) / _levels;
       final points = Float32List.sublistView(_buffer, offset[b] * 2, offset[b + 1] * 2);
-      if (glowing) {
-        canvas.drawRawPoints(
-          PointMode.points,
-          points,
-          // Halo sin desenfoque (el desenfoque por punto era lo más caro de
-          // dibujar): un punto redondo más grande y tenue detrás.
-          Paint()
-            ..strokeCap = StrokeCap.round
-            ..strokeWidth = 4.5
-            ..color = glow.withValues(alpha: 0.22 * level),
-        );
-      }
+      // Sin halo: la que suena se ve amarilla y fina.
       canvas.drawRawPoints(PointMode.points, points, dot..color = (glowing ? glow : base).withValues(alpha: level));
     }
     // Sin líneas: solo se ven las letras en camino a su lugar.
@@ -547,15 +612,20 @@ class _EtherPainter extends CustomPainter {
       final weight = c.near ? c.solid : 1.0;
       if (home == null || center == null || weight < 0.02) continue;
       final glowing = c.glow > 0.05;
-      final alpha = glowing
-          ? math.min(1.0, 0.55 + c.glow)
-          : (0.35 + 0.6 * c.lit) * (c.near ? 1 : 1 - 0.45 * c.chaos);
+      // Blanco pleno (lit 1) sin que se transparente el fondo; plomo (lit
+      // 0,5) para el resto de la oración.
+      final alpha = glowing ? math.min(1.0, 0.55 + c.glow) : (0.3 + 0.7 * c.lit) * (c.near ? 1 : 1 - 0.45 * c.chaos);
       final f = c.near ? 0.5 : 1.0;
-      final shift = Offset(c.dx * f, c.dy * f - 3 * c.glow);
+      final shift = Offset(c.dx * f, c.dy * f);
       if (glowing) {
         _glyph(text[i], alpha * weight, glowing).paint(canvas, home + shift);
       } else {
-        stamped.add((ch: text[i], at: center + shift, size: fontSize, color: base.withValues(alpha: (alpha * weight).clamp(0.0, 1.0))));
+        stamped.add((
+          ch: text[i],
+          at: center + shift,
+          size: fontSize,
+          color: base.withValues(alpha: (alpha * weight).clamp(0.0, 1.0)),
+        ));
       }
     }
     if (!Swarm.instance.stampLetters(canvas, stamped)) {
@@ -586,19 +656,19 @@ class _EtherPainter extends CustomPainter {
     final h = sy - ty;
     final m = 1 - u;
     final a = m * m * m, b = 3 * m * m * u, c = 3 * m * u * u, d = u * u * u;
-    return Offset(
-      a * sx + b * sx + c * tx + d * tx,
-      a * sy + b * (sy - h * 0.55) + c * (ty + h * 0.45) + d * ty,
-    );
+    return Offset(a * sx + b * sx + c * tx + d * tx, a * sy + b * (sy - h * 0.55) + c * (ty + h * 0.45) + d * ty);
   }
 
   TextPainter _bitGlyph(String ch, int level, bool glowing) => _bitGlyphs.putIfAbsent((ch, level, glowing), () {
-        return TextPainter(
-          text: TextSpan(text: ch, style: debrisStyle.copyWith(color: (glowing ? glow : base).withValues(alpha: level / _levels))),
-          textDirection: TextDirection.ltr,
-          textScaler: scaler,
-        )..layout();
-      });
+    return TextPainter(
+      text: TextSpan(
+        text: ch,
+        style: debrisStyle.copyWith(color: (glowing ? glow : base).withValues(alpha: level / _levels)),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+    )..layout();
+  });
 
   /// Las letras y números rotos: viajan con la corriente mientras su letra está
   /// desordenada y se apagan al fundirse en ella.
@@ -624,9 +694,15 @@ class _EtherPainter extends CustomPainter {
       final drift = ((t * (10 + 30 * bit.b) + bit.b * 200) % 80) - 40;
       final bend = k * (1 - k) * 4;
       // Río: lejos corre en vetas; a medio camino serpentea; al final se junta.
-      var x = home.dx + c.dx * 0.5 + e * (bit.a * bit.a * bit.a * 160 + drift) +
+      var x =
+          home.dx +
+          c.dx * 0.5 +
+          e * (bit.a * bit.a * bit.a * 160 + drift) +
           bend * math.cos(home.dx * 0.05 + t * 2.2 + bit.b * 6.283) * 10;
-      var y = home.dy + c.dy * 0.5 + e * (bit.a * 12 + (bit.b - 0.5) * 20) +
+      var y =
+          home.dy +
+          c.dy * 0.5 +
+          e * (bit.a * 12 + (bit.b - 0.5) * 20) +
           bend * math.sin(home.dx * 0.04 + t * 1.8 + bit.a * 6.283) * 16;
       if (bit.absorb) {
         // Sale del documento y desemboca en su letra por su cauce.
@@ -648,12 +724,14 @@ class _EtherPainter extends CustomPainter {
         ..translate(x + w / 2, y + h / 2)
         ..scale(scale)
         ..rotate(k * bit.rot + math.sin(t * 0.8 + bit.b * 6.283) * 0.3 * k)
-        ..clipRect(Rect.fromLTRB(
-          -w / 2 + bit.keep.left * w,
-          -h / 2 + bit.keep.top * h,
-          -w / 2 + bit.keep.right * w,
-          -h / 2 + bit.keep.bottom * h,
-        ));
+        ..clipRect(
+          Rect.fromLTRB(
+            -w / 2 + bit.keep.left * w,
+            -h / 2 + bit.keep.top * h,
+            -w / 2 + bit.keep.right * w,
+            -h / 2 + bit.keep.bottom * h,
+          ),
+        );
       glyph.paint(canvas, Offset(-w / 2, -h / 2));
       canvas.restore();
     }
@@ -661,5 +739,9 @@ class _EtherPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_EtherPainter old) =>
-      old.text != text || old.style != style || old.base != base || old.layout.width != layout.width || old.dust != dust;
+      old.text != text ||
+      old.style != style ||
+      old.base != base ||
+      old.layout.width != layout.width ||
+      old.dust != dust;
 }

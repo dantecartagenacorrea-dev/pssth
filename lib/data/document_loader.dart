@@ -28,7 +28,6 @@ class LoadedDocument {
   final List<int> pendingOcr;
 
   int get pageCount => pages.length;
-  bool get hasAnyText => pages.any((p) => !pageNeedsOcr(p));
 }
 
 typedef OcrPageResult = ({int page, String text});

@@ -27,11 +27,22 @@ void main() {
   });
 
   test('las fichas de modelos apuntan al repositorio oficial y declaran tamaño y hash', () {
+    expect(kokoroEsModel.url, startsWith('https://github.com/k2-fsa/sherpa-onnx/releases/download/'));
+    expect(kokoroEsModel.sha256, hasLength(64));
     for (final m in [kokoroEsModel, whisperBaseModel]) {
-      expect(m.url, startsWith('https://github.com/k2-fsa/sherpa-onnx/releases/download/'));
-      expect(m.sha256, hasLength(64));
       expect(m.sizeBytes, greaterThan(50 * 1024 * 1024));
       expect(m.sizeLabel, endsWith(' MB'));
+    }
+  });
+
+  test('los modelos por archivos traen solo lo requerido, con huella y tamaño que suman', () {
+    for (final m in [whisperBaseModel]) {
+      expect(m.files.map((f) => f.name), m.requiredFiles);
+      expect(m.files.fold<int>(0, (a, f) => a + f.sizeBytes), m.sizeBytes);
+      for (final f in m.files) {
+        expect(f.url, startsWith('https://huggingface.co/'));
+        expect(f.sha256, hasLength(64));
+      }
     }
   });
 

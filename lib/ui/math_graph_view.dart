@@ -19,16 +19,18 @@ class MathGraphView extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 560),
         child: AspectRatio(
           aspectRatio: 1.4,
-          child: CustomPaint(
-            painter: _GraphPainter(
-              graph,
-              axis: scheme.onSurface.withValues(alpha: 0.6),
-              grid: scheme.onSurface.withValues(alpha: 0.08),
-              colors: [scheme.primary, const Color(0xFFFF9F0A)],
-              point: scheme.onSurface,
-              label:
-                  Theme.of(context).textTheme.bodySmall ??
-                  const TextStyle(fontSize: 12),
+          child: Semantics(
+            image: true,
+            label: 'Gráfico de la ecuación',
+            child: CustomPaint(
+              painter: _GraphPainter(
+                graph,
+                axis: scheme.onSurface.withValues(alpha: 0.6),
+                grid: scheme.onSurface.withValues(alpha: 0.08),
+                colors: [scheme.primary, const Color(0xFFFF9F0A)],
+                point: scheme.onSurface,
+                label: Theme.of(context).textTheme.bodySmall ?? const TextStyle(fontSize: 12),
+              ),
             ),
           ),
         ),
@@ -63,8 +65,7 @@ class _GraphPainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
 
     final gridPaint = Paint()..color = grid;
-    final stepX = _niceStep(w.maxX - w.minX),
-        stepY = _niceStep(w.maxY - w.minY);
+    final stepX = _niceStep(w.maxX - w.minX), stepY = _niceStep(w.maxY - w.minY);
     for (var x = (w.minX / stepX).ceil() * stepX; x <= w.maxX; x += stepX) {
       canvas.drawLine(at(x, w.minY), at(x, w.maxY), gridPaint);
     }

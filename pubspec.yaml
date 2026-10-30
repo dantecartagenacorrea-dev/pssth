@@ -72,9 +72,16 @@ flutter:
 
   assets:
     - assets/branding/
+    - assets/fonts/OFL.txt
 
-  shaders:
-    - shaders/dot_field.frag
+  # Letra muy legible opcional (Braille Institute, licencia OFL).
+  fonts:
+    - family: AtkinsonHyperlegible
+      fonts:
+        - asset: assets/fonts/AtkinsonHyperlegible-Regular.ttf
+        - asset: assets/fonts/AtkinsonHyperlegible-Bold.ttf
+          weight: 700
+
 
 
   # To add assets to your application, add an assets section, like this:

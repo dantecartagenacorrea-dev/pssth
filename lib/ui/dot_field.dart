@@ -1,91 +1,112 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'dart:ui' show PointMode;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import '../core/motion.dart';
 
-/// Fondo de todas las pantallas: negro con una malla de puntos que ondula como
+/// Fondo de todas las pantallas: del color del fondo, con una malla de puntos que ondula como
 /// tela y unos hilos de luz hechos de partículas que fluyen despacio. Con
 /// "Reducir movimiento" queda quieto.
 class DotField extends StatefulWidget {
   const DotField({super.key});
 
-  /// Programa de GPU que dibuja el fondo; se carga una vez al iniciar. Sin él
-  /// (no cargó), se dibuja en el procesador como antes.
-  static ui.FragmentProgram? program;
-
-  static Future<void> load() async {
-    try {
-      program = await ui.FragmentProgram.fromAsset('shaders/dot_field.frag');
-    } catch (_) {
-      program = null;
-    }
-  }
+  /// Pantallas con fondo propio y opaco (el reproductor) abiertas encima: el
+  /// fondo de puntos no se ve y deja de dibujarse.
+  static final covered = ValueNotifier<int>(0);
 
   @override
   State<DotField> createState() => _DotFieldState();
 }
 
-class _DotFieldState extends State<DotField> with SingleTickerProviderStateMixin {
-  late final Ticker _ticker = createTicker((d) => _time.value = d.inMicroseconds / 1e6);
-  final _time = ValueNotifier<double>(0);
+/// Pausa el fondo de puntos mientras esta pantalla (de fondo opaco) existe.
+class DotFieldPause extends StatefulWidget {
+  const DotFieldPause({super.key, required this.child});
+  final Widget child;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final still = MediaQuery.disableAnimationsOf(context);
-    if (still && _ticker.isActive) _ticker.stop();
-    if (!still && !_ticker.isActive) _ticker.start();
+  State<DotFieldPause> createState() => _DotFieldPauseState();
+}
+
+class _DotFieldPauseState extends State<DotFieldPause> {
+  @override
+  void initState() {
+    super.initState();
+    DotField.covered.value++;
   }
 
   @override
   void dispose() {
-    _ticker.dispose();
-    _time.dispose();
-    _shader?.dispose();
+    DotField.covered.value--;
     super.dispose();
   }
 
-  late final ui.FragmentShader? _shader = DotField.program?.fragmentShader();
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+class _DotFieldState extends State<DotField> with SingleTickerProviderStateMixin {
+  // El fondo ondula despacio: con 30 cuadros por segundo se ve igual y deja
+  // el resto para las letras.
+  late final Ticker _ticker = createTicker((d) {
+    final t = d.inMicroseconds / 1e6;
+    if (t - _time.value >= 1 / 30 || t < _time.value) _time.value = t;
+  });
+  final _time = ValueNotifier<double>(0);
+
+  bool _still = false;
+
+  @override
+  void initState() {
+    super.initState();
+    DotField.covered.addListener(_sync);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _still = calmOf(context);
+    _sync();
+  }
+
+  /// Corre solo si se ve y se permite el movimiento.
+  void _sync() {
+    final run = !_still && DotField.covered.value == 0;
+    if (!run && _ticker.isActive) _ticker.stop();
+    if (run && !_ticker.isActive) _ticker.start();
+  }
+
+  @override
+  void dispose() {
+    DotField.covered.removeListener(_sync);
+    _ticker.dispose();
+    _time.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final shader = _shader;
+    // Puntos dibujados como puntos (unos miles, en pocas pasadas): mucho más
+    // liviano que calcular cada píxel en la GPU, que bajaba la tablet a 19
+    // cuadros por segundo.
+    final scheme = Theme.of(context).colorScheme;
     return RepaintBoundary(
       child: CustomPaint(
-        painter: shader != null ? _GpuDotFieldPainter(_time, shader) : _DotFieldPainter(_time),
+        painter: _DotFieldPainter(_time, ink: scheme.primary, paper: scheme.surface),
         size: Size.infinite,
       ),
     );
   }
 }
 
-/// El mismo fondo, calculado por la tarjeta gráfica: un solo rectángulo.
-class _GpuDotFieldPainter extends CustomPainter {
-  _GpuDotFieldPainter(this.time, this.shader) : super(repaint: time);
-
-  final ValueNotifier<double> time;
-  final ui.FragmentShader shader;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    shader
-      ..setFloat(0, size.width)
-      ..setFloat(1, size.height)
-      ..setFloat(2, time.value);
-    canvas.drawRect(Offset.zero & size, Paint()..shader = shader);
-  }
-
-  @override
-  bool shouldRepaint(_GpuDotFieldPainter old) => false;
-}
-
 class _DotFieldPainter extends CustomPainter {
-  _DotFieldPainter(this.time) : super(repaint: time);
+  _DotFieldPainter(this.time, {required this.ink, required this.paper}) : super(repaint: time);
 
   final ValueNotifier<double> time;
+
+  /// Color de los puntos y del fondo (blancos sobre negro o al revés).
+  final Color ink, paper;
 
   static const _gap = 14.0; // separación de la malla
   static const _levels = 6; // brillos distintos (una pasada de dibujo por brillo)
@@ -96,7 +117,7 @@ class _DotFieldPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.black);
+    canvas.drawRect(Offset.zero & size, Paint()..color = paper);
     final t = time.value;
     final cols = (size.width / _gap).ceil() + 1;
     final rows = (size.height / _gap).ceil() + 1;
@@ -108,8 +129,8 @@ class _DotFieldPainter extends CustomPainter {
     for (var r = 0; r < rows; r++) {
       for (var c = 0; c < cols; c++) {
         final x = c * _gap, y = r * _gap;
-        final h = math.sin(x * 0.018 + t * 0.6) * math.cos(y * 0.011 - t * 0.4) +
-            0.5 * math.sin((x + y) * 0.01 + t * 0.9);
+        final h =
+            math.sin(x * 0.018 + t * 0.6) * math.cos(y * 0.011 - t * 0.4) + 0.5 * math.sin((x + y) * 0.01 + t * 0.9);
         final i = r * cols + c;
         _buffer[i * 2] = x + h * 4;
         _buffer[i * 2 + 1] = y + h * 16;
@@ -134,7 +155,7 @@ class _DotFieldPainter extends CustomPainter {
       ..strokeWidth = 1.6;
     for (var l = 0; l < _levels; l++) {
       if (counts[l] == 0) continue;
-      dot.color = Colors.white.withValues(alpha: 0.05 + 0.22 * l / (_levels - 1));
+      dot.color = ink.withValues(alpha: 0.05 + 0.22 * l / (_levels - 1));
       canvas.drawRawPoints(PointMode.points, Float32List.sublistView(ordered, start[l] * 2, start[l + 1] * 2), dot);
     }
     // Hilos de luz: trayectorias que serpentean y se deshilachan en partículas.
@@ -154,11 +175,11 @@ class _DotFieldPainter extends CustomPainter {
       Paint()
         ..strokeCap = StrokeCap.square
         ..strokeWidth = 1.8
-        ..color = Colors.white.withValues(alpha: 0.35)
+        ..color = ink.withValues(alpha: 0.35)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5),
     );
   }
 
   @override
-  bool shouldRepaint(_DotFieldPainter old) => false;
+  bool shouldRepaint(_DotFieldPainter old) => old.ink != ink || old.paper != paper;
 }

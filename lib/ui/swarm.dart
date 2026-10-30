@@ -16,10 +16,7 @@ typedef SwarmGlyph = ({Offset at, String ch, double size, Color color, bool bold
 enum _Role { free, text, sphere }
 
 class _Bee {
-  _Bee(math.Random r)
-      : seed = r.nextDouble(),
-        sphereIndex = 0,
-        ch = 0;
+  _Bee(math.Random r) : seed = r.nextDouble(), sphereIndex = 0, ch = 0;
 
   final double seed;
   double flow = 0; // cuánto subió por el río (0 abajo, 1 arriba)
@@ -46,7 +43,8 @@ class Swarm extends ChangeNotifier {
   static const count = 1400;
   // Todo lo que suele haber en pantalla, para que ningún carácter llegue como
   // un punto y aparezca solo al final.
-  static const _chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+  static const _chars =
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
       'ÁÉÍÓÚÑÜáéíóúñüÀÈÌÒÙàèìòùÂÊÎÔÛâêîôûÄËÏÖäëïöÇç'
       '¡!¿?.,:;()[]{}-–—_%«»·•…"\'“”‘’/\\|+=*×÷±≈<>^~#&@\$€°²³√₁₂Δπ';
 
@@ -67,6 +65,38 @@ class Swarm extends ChangeNotifier {
 
   /// Donde corre el río de letras (la pantalla principal, detrás del menú).
   Rect riverArea = Rect.zero;
+
+  /// Color de las letras sueltas (las que forman un texto toman el suyo):
+  /// blancas sobre el fondo negro, negras sobre el blanco.
+  Color get ink => _ink;
+  set ink(Color value) {
+    if (value == _ink) return;
+    _ink = value;
+    // Al cambiar el fondo, las sueltas (río y enjambre) se vuelven del color
+    // nuevo: si no, quedarían blancas sobre blanco.
+    for (final b in _bees) {
+      if (b.role != _Role.text) b.color = value;
+    }
+    _wake();
+  }
+
+  Color _ink = Colors.white;
+
+  /// Sin dispersión: el río de letras se apaga.
+  bool get calm => _calm;
+  set calm(bool value) {
+    if (value == _calm) return;
+    _calm = value;
+    _wake();
+  }
+
+  bool _calm = false;
+
+  /// Lo llama la capa que mueve el enjambre: cuando no queda ninguna letra a
+  /// la vista deja de pedir cuadros (no le quita la GPU a la IA ni gasta
+  /// batería) y vuelve apenas una pantalla llama a las letras.
+  VoidCallback? onWake;
+  void _wake() => onWake?.call();
   double _time = 0, _energy = 0;
   Offset? _swirl; // centro del remolino mientras carga una pantalla
 
@@ -90,7 +120,7 @@ class Swarm extends ChangeNotifier {
 
   /// Cuánto tarda en salir la última letra de una pantalla (la primera sale
   /// enseguida): la pantalla se escribe en secuencia.
-  static const writeDelay = 0.5;
+  static const writeDelay = 0.35;
 
   /// Listo para dibujar (atlas hecho): las pantallas esperan esto para
   /// armarse desde la dispersión y no aparecer ya formadas.
@@ -101,22 +131,37 @@ class Swarm extends ChangeNotifier {
     final canvas = Canvas(recorder);
     void draw(int i, String ch, TextStyle style) {
       final cell = Rect.fromLTWH((i % _cols) * _cellW, (i ~/ _cols) * _cellH, _cellW, _cellH);
-      final tp = TextPainter(text: TextSpan(text: ch, style: style), textDirection: TextDirection.ltr)..layout();
+      final tp = TextPainter(
+        text: TextSpan(text: ch, style: style),
+        textDirection: TextDirection.ltr,
+      )..layout();
       tp.paint(canvas, cell.center - Offset(tp.width / 2, tp.height / 2));
       tp.dispose();
     }
 
     for (var w = 0; w < 2; w++) {
       for (var j = 0; j < _chars.length; j++) {
-        draw(w * _chars.length + j, _chars[j],
-            TextStyle(color: Colors.white, fontSize: atlasFontSize, fontWeight: w == 0 ? FontWeight.w400 : FontWeight.w700));
+        draw(
+          w * _chars.length + j,
+          _chars[j],
+          TextStyle(
+            color: Colors.white,
+            fontSize: atlasFontSize,
+            fontWeight: w == 0 ? FontWeight.w400 : FontWeight.w700,
+          ),
+        );
         if (w == 0) _cells[_chars[j]] = j;
       }
     }
     for (var k = 0; k < _extras.length; k++) {
       final e = _extras[k];
       final i = 2 * _chars.length + k;
-      draw(i, e.ch, TextStyle(color: Colors.white, fontSize: atlasFontSize, fontFamily: e.family));
+      // Sin familia: una letra aprendida, con la fuente normal.
+      draw(
+        i,
+        e.ch,
+        TextStyle(color: Colors.white, fontSize: atlasFontSize, fontFamily: e.family.isEmpty ? null : e.family),
+      );
       _extraCells['${e.family}|${e.ch}'] = i;
     }
     final rows = ((2 * _chars.length + _extras.length) / _cols).ceil();
@@ -140,7 +185,32 @@ class Swarm extends ChangeNotifier {
   // Sin atlas todavía (recién abierta la app) cualquier celda sirve: no se dibuja.
   int _cellOf(String ch, {bool bold = false, String? family}) {
     if (family != null) return _extraCells['$family|$ch'] ?? _cells['·'] ?? 0;
-    return (_cells[ch] ?? _cells['·'] ?? 0) + (bold ? _chars.length : 0);
+    final known = _cells[ch];
+    if (known != null) return known + (bold ? _chars.length : 0);
+    final extra = _extraCells['|$ch'];
+    if (extra != null) return extra;
+    _learn(ch);
+    return _cells['·'] ?? 0;
+  }
+
+  /// Letras que aparecieron y el atlas no tenía (griegas, símbolos raros de
+  /// un libro): se suman al atlas en la próxima vuelta, así no se dibuja otra.
+  final _missing = <String>{};
+  bool _learning = false;
+  static const _maxExtras = 400;
+
+  void _learn(String ch) {
+    if (_atlas == null || ch.trim().isEmpty || _extras.length >= _maxExtras) return;
+    if (!_missing.add(ch) || _learning) return;
+    _learning = true;
+    scheduleMicrotask(() async {
+      for (final m in _missing) {
+        _extras.add((ch: m, family: ''));
+      }
+      _missing.clear();
+      await _buildAtlas();
+      _learning = false;
+    });
   }
 
   Rect _rect(int i) => Rect.fromLTWH((i % _cols) * _cellW, (i ~/ _cols) * _cellH, _cellW, _cellH);
@@ -148,6 +218,7 @@ class Swarm extends ChangeNotifier {
   /// Las letras salen de estos puntos (el logo que se dispersa) y se esparcen.
   void scatterFrom(List<Offset> points) {
     if (points.isEmpty) return;
+    _wake();
     for (var i = 0; i < _bees.length; i++) {
       final b = _bees[i];
       final p = points[i % points.length];
@@ -159,6 +230,7 @@ class Swarm extends ChangeNotifier {
         ..vy = math.sin(a) * 220 - 120
         ..tx = p.dx + math.cos(a) * 120
         ..ty = p.dy + math.sin(a) * 120
+        ..color = ink
         ..alpha = 1
         ..targetAlpha = 0.8
         ..scale = 0.3
@@ -170,6 +242,7 @@ class Swarm extends ChangeNotifier {
   /// Arma los textos de una pantalla: una letra del enjambre por carácter. El
   /// resto forma la esfera (en la pantalla principal) o se apaga.
   void formText(List<SwarmGlyph> glyphs, {required bool sphere, bool overlay = false}) {
+    _wake();
     if (overlay) {
       _formOverlay(glyphs);
       return;
@@ -184,7 +257,10 @@ class Swarm extends ChangeNotifier {
     }
     // Las letras apagadas salen de los fragmentos de la pantalla anterior: se
     // reparten entre las que se ven, así todo el enjambre nace de lo que había.
-    final visible = [for (final b in _bees) if (b.alpha > 0.3) Offset(b.x, b.y)];
+    final visible = [
+      for (final b in _bees)
+        if (b.alpha > 0.3) Offset(b.x, b.y),
+    ];
     if (visible.isNotEmpty) {
       for (final b in _bees) {
         if (b.alpha > 0.05) continue;
@@ -220,7 +296,7 @@ class Swarm extends ChangeNotifier {
           ..targetAlpha = g.color.a;
       } else {
         b
-          ..color = Colors.white
+          ..color = ink
           ..wait = 0;
         // Al entrar al río, cada letra toma un tramo distinto del cauce.
         if (sphere && b.role != _Role.sphere) b.flow = _rnd.nextDouble();
@@ -240,7 +316,10 @@ class Swarm extends ChangeNotifier {
 
   /// Letras que puede usar un diálogo o panel: todas menos las del río, que
   /// sigue corriendo detrás.
-  List<_Bee> _overlayPool() => [for (final b in _bees) if (b.role != _Role.sphere) b]..sort((a, b) => a.y.compareTo(b.y));
+  List<_Bee> _overlayPool() => [
+    for (final b in _bees)
+      if (b.role != _Role.sphere) b,
+  ]..sort((a, b) => a.y.compareTo(b.y));
 
   /// Arma el contenido de un diálogo o panel con las letras libres y las del
   /// texto de atrás (que salen de su lugar), en orden de lectura.
@@ -268,6 +347,7 @@ class Swarm extends ChangeNotifier {
   /// Un diálogo o panel se cierra: sus letras toman el lugar del texto y se
   /// sueltan hacia arriba, apagándose. La pantalla de atrás no se toca.
   void dissolveOverlay(List<SwarmGlyph> glyphs) {
+    _wake();
     final pool = _overlayPool();
     final n = math.min(glyphs.length, pool.length);
     for (var k = 0; k < n; k++) {
@@ -315,6 +395,7 @@ class Swarm extends ChangeNotifier {
     final size = view.physicalSize / view.devicePixelRatio;
     final center = Offset(size.width / 2, size.height / 2);
     _swirl = center;
+    _wake();
     final n = math.min(glyphs.length, _bees.length);
     for (var i = 0; i < _bees.length; i++) {
       final b = _bees[i];
@@ -345,7 +426,7 @@ class Swarm extends ChangeNotifier {
           ..targetAlpha = 1;
         continue;
       }
-      b.color = Colors.white;
+      b.color = ink;
       final a = b.seed * math.pi * 2;
       final r = 60 + b.seed * 90;
       b
@@ -357,15 +438,20 @@ class Swarm extends ChangeNotifier {
     }
   }
 
-  void step(double dt) {
+  /// Mueve el enjambre [dt] segundos. Devuelve false cuando no queda ninguna
+  /// letra a la vista ni por aparecer: ya no hace falta seguir.
+  bool step(double dt) {
     _time += dt;
+    var visible = false;
     final h = handler;
     final level = h != null && h.snapshot.value.playing ? h.voiceLevel.value : 0.0;
     _energy += (level - _energy) * (1 - math.exp(-(level > _energy ? 12 : 2.5) * dt));
     final t = _time;
     // Río de letras: sube suave desde abajo, serpentea y se arremolina. Con
     // la voz corre más rápido y los remolinos giran más.
-    final area = riverArea.isEmpty ? Offset(sphereCenter.dx - sphereRadius * 1.4, 0) & Size(sphereRadius * 2.8, sphereCenter.dy * 2) : riverArea;
+    final area = riverArea.isEmpty
+        ? Offset(sphereCenter.dx - sphereRadius * 1.4, 0) & Size(sphereRadius * 2.8, sphereCenter.dy * 2)
+        : riverArea;
     final speed = 0.035 + 0.12 * _energy; // fracción del alto por segundo
     final eddies = [
       for (var e = 0; e < 3; e++)
@@ -377,7 +463,12 @@ class Swarm extends ChangeNotifier {
     final eddyRadius = area.width * 0.16;
     const k = 55.0, c = 11.0; // resorte y freno: llegan rápido sin rebotar de más
     for (final b in _bees) {
-      if (b.role == _Role.sphere) {
+      if (b.role == _Role.sphere && calm) {
+        b
+          ..tx = b.x
+          ..ty = b.y
+          ..targetAlpha = 0;
+      } else if (b.role == _Role.sphere) {
         final before = b.flow;
         b.flow = (b.flow + dt * speed * (0.6 + 0.8 * b.seed)) % 1;
         final y = area.bottom - b.flow * area.height;
@@ -437,9 +528,14 @@ class Swarm extends ChangeNotifier {
         ..y += b.vy * dt
         ..alpha += (b.targetAlpha - b.alpha) * (1 - math.exp(-6 * dt))
         ..scale += (b.targetScale - b.scale) * (1 - math.exp(-5 * dt));
+      if (b.alpha >= _shown || b.targetAlpha >= _shown) visible = true;
     }
     notifyListeners();
+    return visible;
   }
+
+  /// Más tenue que esto no se dibuja (ver [_paint]).
+  static const _shown = 0.02;
 
   /// Estampa muchas letras en una sola llamada (mucho más liviano que dibujar
   /// cada una por separado). [at] es el centro de cada letra; [size], su tamaño
@@ -450,14 +546,16 @@ class Swarm extends ChangeNotifier {
     if (letters.isEmpty) return true;
     final transforms = <ui.RSTransform>[], rects = <Rect>[], colors = <Color>[];
     for (final l in letters) {
-      transforms.add(ui.RSTransform.fromComponents(
-        rotation: 0,
-        scale: l.size / atlasFontSize,
-        anchorX: _cellW / 2,
-        anchorY: _cellH / 2,
-        translateX: l.at.dx,
-        translateY: l.at.dy,
-      ));
+      transforms.add(
+        ui.RSTransform.fromComponents(
+          rotation: 0,
+          scale: l.size / atlasFontSize,
+          anchorX: _cellW / 2,
+          anchorY: _cellH / 2,
+          translateX: l.at.dx,
+          translateY: l.at.dy,
+        ),
+      );
       rects.add(_rect(_cellOf(l.ch)));
       colors.add(l.color);
     }
@@ -471,15 +569,17 @@ class Swarm extends ChangeNotifier {
     final transforms = <ui.RSTransform>[], rects = <Rect>[], colors = <Color>[];
     for (final b in _bees) {
       final isSphere = b.role == _Role.sphere;
-      if (isSphere != background || b.alpha < 0.02) continue;
-      transforms.add(ui.RSTransform.fromComponents(
-        rotation: 0,
-        scale: b.scale,
-        anchorX: _cellW / 2,
-        anchorY: _cellH / 2,
-        translateX: b.x,
-        translateY: b.y,
-      ));
+      if (isSphere != background || b.alpha < _shown) continue;
+      transforms.add(
+        ui.RSTransform.fromComponents(
+          rotation: 0,
+          scale: b.scale,
+          anchorX: _cellW / 2,
+          anchorY: _cellH / 2,
+          translateX: b.x,
+          translateY: b.y,
+        ),
+      );
       rects.add(_rect(b.ch));
       colors.add(b.color.withValues(alpha: b.alpha.clamp(0.0, 1.0)));
     }
@@ -511,14 +611,22 @@ class _SwarmViewState extends State<SwarmView> with SingleTickerProviderStateMix
       _ticker = createTicker((d) {
         final dt = ((d - _last).inMicroseconds / 1e6).clamp(0.0, 0.05);
         _last = d;
-        Swarm.instance.step(dt);
-      })
-        ..start();
+        if (!Swarm.instance.step(dt)) _ticker?.stop();
+      })..start();
+      Swarm.instance.onWake = _wake;
     }
+  }
+
+  void _wake() {
+    final ticker = _ticker;
+    if (ticker == null || ticker.isActive) return;
+    _last = Duration.zero; // el tiempo del ticker vuelve a empezar en cero
+    ticker.start();
   }
 
   @override
   void dispose() {
+    if (Swarm.instance.onWake == _wake) Swarm.instance.onWake = null;
     _ticker?.dispose();
     super.dispose();
   }
@@ -532,10 +640,10 @@ class _SwarmViewState extends State<SwarmView> with SingleTickerProviderStateMix
 
   @override
   Widget build(BuildContext context) => IgnorePointer(
-        child: RepaintBoundary(
-          child: CustomPaint(painter: _SwarmPainter(widget.background, _origin), size: Size.infinite),
-        ),
-      );
+    child: RepaintBoundary(
+      child: CustomPaint(painter: _SwarmPainter(widget.background, _origin), size: Size.infinite),
+    ),
+  );
 }
 
 class _SwarmPainter extends CustomPainter {
@@ -603,7 +711,7 @@ List<SwarmGlyph> collectGlyphs(BuildContext context, {int max = Swarm.count}) {
         final style = i < styles.length ? styles[i] : null;
         final family = style?.fontFamily;
         final isIcon = family != null && family.contains('Icons');
-        final color = style?.color ?? Colors.white;
+        final color = style?.color ?? Swarm.instance.ink;
         if (color.a < 0.05) continue;
         final boxes = r.getBoxesForSelection(TextSelection(baseOffset: i, extentOffset: i + 1));
         if (boxes.isEmpty) continue;

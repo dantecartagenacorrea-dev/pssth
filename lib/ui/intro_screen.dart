@@ -37,7 +37,7 @@ class _IntroScreenState extends State<IntroScreen> with SingleTickerProviderStat
   }
 
   Future<void> _load() async {
-    final dots = await _Dots.fromAsset('assets/branding/logo.png');
+    final dots = await _Dots.fromAsset('assets/branding/logo.webp');
     if (!mounted) return;
     setState(() => _dots = dots);
     if (MediaQuery.disableAnimationsOf(context)) {
@@ -68,7 +68,10 @@ class _IntroScreenState extends State<IntroScreen> with SingleTickerProviderStat
     final dots = _dots;
     if (dots != null) Swarm.instance.scatterFrom(dots.lastPoints);
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: widget.next, settings: const RouteSettings(name: SwarmTransitionsBuilder.home)),
+      MaterialPageRoute(
+        builder: widget.next,
+        settings: const RouteSettings(name: SwarmTransitionsBuilder.home),
+      ),
     );
   }
 
@@ -86,10 +89,15 @@ class _IntroScreenState extends State<IntroScreen> with SingleTickerProviderStat
       behavior: HitTestBehavior.opaque,
       onTap: _skip,
       child: ColoredBox(
-        color: Colors.black,
+        color: Theme.of(context).colorScheme.surface,
         child: Semantics(
           label: 'PSSTH!',
-          child: dots == null ? const SizedBox.expand() : CustomPaint(painter: _IntroPainter(dots, _time), size: Size.infinite),
+          child: dots == null
+              ? const SizedBox.expand()
+              : CustomPaint(
+                  painter: _IntroPainter(dots, _time, Theme.of(context).colorScheme.primary),
+                  size: Size.infinite,
+                ),
         ),
       ),
     );
@@ -146,10 +154,13 @@ class _Dots {
 }
 
 class _IntroPainter extends CustomPainter {
-  _IntroPainter(this.dots, this.time) : super(repaint: time);
+  _IntroPainter(this.dots, this.time, this.ink) : super(repaint: time);
 
   final _Dots dots;
   final ValueNotifier<double> time;
+
+  /// Color de los puntos sin color propio (blancos o negros, según el fondo).
+  final Color ink;
 
   // Colores reducidos a una paleta corta: una pasada de dibujo por color.
   static int _bucket(int c) => (((c >> 16) & 0xFF) >> 6) << 4 | (((c >> 8) & 0xFF) >> 6) << 2 | ((c & 0xFF) >> 6);
@@ -183,8 +194,9 @@ class _IntroPainter extends CustomPainter {
         y = cy;
       } else if (t < _IntroScreenState._form) {
         // Imán: cada punto se suelta a su turno y acelera al acercarse.
-        final local = ((t - _IntroScreenState._chaos) / (_IntroScreenState._form - _IntroScreenState._chaos) * 1.6 - b * 0.6)
-            .clamp(0.0, 1.0);
+        final local =
+            ((t - _IntroScreenState._chaos) / (_IntroScreenState._form - _IntroScreenState._chaos) * 1.6 - b * 0.6)
+                .clamp(0.0, 1.0);
         final e = local * local * local;
         final swirl = math.sin(local * math.pi) * 40 * (a - 0.5);
         x = cx + (hx - cx) * e + swirl;
@@ -194,8 +206,10 @@ class _IntroPainter extends CustomPainter {
         y = hy;
       } else {
         // Desintegración: el viento lo arrastra hacia la derecha y arriba.
-        final k = ((t - _IntroScreenState._hold) / (_IntroScreenState._end - _IntroScreenState._hold) * 1.4 - (1 - dots.x[i]) * 0.4)
-            .clamp(0.0, 1.0);
+        final k =
+            ((t - _IntroScreenState._hold) / (_IntroScreenState._end - _IntroScreenState._hold) * 1.4 -
+                    (1 - dots.x[i]) * 0.4)
+                .clamp(0.0, 1.0);
         final e = k * k;
         x = hx + e * (180 + 260 * a) + math.sin(t * 6 + b * 9) * 6 * k;
         y = hy - e * (120 + 200 * b);
@@ -211,7 +225,7 @@ class _IntroPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeWidth = 2.2;
     groups.forEach((bucket, pts) {
-      final base = bucket < 0 ? Colors.white : _bucketColor(bucket);
+      final base = bucket < 0 ? ink : _bucketColor(bucket);
       paint.color = base.withValues(alpha: (bucket < 0 ? 0.75 : 0.95) * fade);
       canvas.drawRawPoints(ui.PointMode.points, Float32List.fromList(pts), paint);
     });
@@ -224,5 +238,5 @@ class _IntroPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_IntroPainter old) => old.dots != dots;
+  bool shouldRepaint(_IntroPainter old) => old.dots != dots || old.ink != ink;
 }

@@ -1,9 +1,5 @@
 // Limpieza automática de transcripciones antes de mostrar/leer.
 // Diccionario local + detección de contexto; sin servidores.
-// Aprendizaje: TranscriptCleaner.instance.learn('Urguiado', 'Ur').
-
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class TranscriptCleaner {
   TranscriptCleaner._();
@@ -36,34 +32,6 @@ class TranscriptCleaner {
     'exponerán': 'expulsarán',
   };
 
-  final Map<String, String> _learned = {};
-  bool _loaded = false;
-
-  Future<void> load() async {
-    if (_loaded) return;
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('tc_learned');
-    if (raw != null) {
-      final m = jsonDecode(raw) as Map<String, dynamic>;
-      _learned.addAll(m.map((k, v) => MapEntry(k, v.toString())));
-    }
-    _loaded = true;
-  }
-
-  Future<void> learn(String wrong, String right) async {
-    _learned[wrong.toLowerCase()] = right;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('tc_learned', jsonEncode(_learned));
-  }
-
-  Future<void> forget(String wrong) async {
-    _learned.remove(wrong.toLowerCase());
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('tc_learned', jsonEncode(_learned));
-  }
-
-  Map<String, String> get learned => Map.unmodifiable(_learned);
-
   Set<String> detectContexts(String text) {
     final lower = text.toLowerCase();
     final found = <String>{};
@@ -78,7 +46,6 @@ class TranscriptCleaner {
     for (final ctx in detectContexts(text)) {
       dict.addAll(_contextDicts[ctx] ?? const {});
     }
-    dict.addAll(_learned);
     return dict;
   }
 
@@ -92,7 +59,6 @@ class TranscriptCleaner {
   /// detecta y el patrón se arma una sola vez con [context], no en cada trozo
   /// (con un documento largo, repetirlo por página tardaba minutos).
   String Function(String) cleanerFor(String context) {
-    if (!_loaded) load();
     final dict = _dictFor(context);
     if (dict.isEmpty) return (text) => text;
     final pattern = _patternFor(dict);
@@ -109,7 +75,6 @@ class TranscriptCleaner {
   /// Limpia [text]. [context] opcional: texto mayor para detectar el tema
   /// (p. ej. el documento completo cuando se limpia por bloques).
   String clean(String text, {String? context}) {
-    if (!_loaded) load();
     final dict = _dictFor(context ?? text);
     if (dict.isEmpty) return text;
     return text.replaceAllMapped(_patternFor(dict), (m) {

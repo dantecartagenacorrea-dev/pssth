@@ -1,16 +1,20 @@
 import 'dart:async';
+import 'dart:io' show FileSystemException, Platform;
 
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart';
 
+import '../core/motion.dart';
 import '../core/perf_log.dart';
 import '../data/library_store.dart';
 import '../data/settings_store.dart';
 import '../domain/chapter_detector.dart';
+import '../domain/citations.dart';
 import '../domain/language_segmenter.dart';
 import '../domain/library_entry.dart';
 import '../domain/reading_position.dart';
 import '../domain/text_chunk.dart';
+import '../domain/voice_groups.dart' show voiceDisplayLabel;
 import '../domain/voice_ranking.dart';
 import 'engines/apple_tts_engine.dart';
 import 'tts_engine.dart';
@@ -56,18 +60,23 @@ class PlayerSnapshot {
   }
 }
 
-const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+/// Velocidad más rápida: la voz del iPhone no pasa de 2×; en Android, 3×.
+double get maxSpeed => Platform.isIOS ? 2.0 : 3.0;
+const minSpeed = 0.5;
+
+/// De 0,1× en 0,1× (antes 6 pasos fijos): cada uno elige su ritmo.
+List<double> get speeds => [for (var i = (minSpeed * 10).round(); i <= (maxSpeed * 10).round(); i++) i / 10];
+
+/// Las más usadas, para elegirlas de un toque.
+const quickSpeeds = [0.8, 1.0, 1.2, 1.5, 2.0];
 
 /// Convierte el multiplicador de velocidad (1.0 = normal) al rango del motor
-/// (0.0-1.0, donde 0.5 es la velocidad normal).
-double ttsRateFor(double multiplier) => (0.5 * multiplier).clamp(0.1, 1.0).toDouble();
+/// (0.5 es la velocidad normal; en Android el sistema llega hasta 1,5 = 3×).
+double ttsRateFor(double multiplier) => (0.5 * multiplier).clamp(0.1, 0.5 * maxSpeed).toDouble();
 
 class TtsAudioHandler extends BaseAudioHandler {
-  TtsAudioHandler({
-    required this.libraryStore,
-    required this.settingsStore,
-    TtsEngine? engine,
-  }) : _tts = engine ?? AppleTtsEngine();
+  TtsAudioHandler({required this.libraryStore, required this.settingsStore, TtsEngine? engine})
+    : _tts = engine ?? AppleTtsEngine();
 
   final LibraryStore libraryStore;
   final SettingsStore settingsStore;
@@ -115,6 +124,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   static const _maxFailsInRow = 3;
   List<VoiceOption> _voices = [];
   String? _voiceName;
+
   /// Voz realmente en uso (puede diferir de la guardada si el documento está en otro idioma).
   VoiceOption? _activeVoice;
   String? _voiceLocale;
@@ -131,6 +141,11 @@ class TtsAudioHandler extends BaseAudioHandler {
       return;
     }
     _tts.onProgress = (String text, int start, int end) {
+      // Leyendo aparte (el resumen): la palabra que suena de esa frase.
+      if (asideIndex.value != null && text == _asideText) {
+        asideWord.value = (start, end);
+        return;
+      }
       final c = currentChunk;
       if (c == null || c.speech != text) return;
       wordRange.value = (start, end);
@@ -175,33 +190,27 @@ class TtsAudioHandler extends BaseAudioHandler {
     await stop();
     _entry = entry;
     _chunks = chunks;
+    // "Al terminar el capítulo" era del documento anterior.
+    sleepAtChapterEnd.value = false;
+    _chapterEndPage = null;
     _docLang = null;
     _detectedLang = null;
     _manualLang = null;
     _appliedLang = null;
     _chunkLangs = const [];
-    final keys = chunks
-        .map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex))
-        .toList();
+    final keys = chunks.map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex)).toList();
     _index = entry.finished
         ? 0 // un documento terminado se vuelve a escuchar desde el principio
-        : ReadingPosition(
-            pageIndex: entry.pageIndex,
-            chunkIndex: entry.chunkIndex,
-          ).resolveChunkListIndex(keys);
+        : ReadingPosition(pageIndex: entry.pageIndex, chunkIndex: entry.chunkIndex).resolveChunkListIndex(keys);
     mediaItem.add(
       MediaItem(
         id: entry.id,
         title: entry.name,
-        album: 'LECTOR PDF',
+        album: 'PSSTH!',
         duration: Duration(seconds: chunks.isEmpty ? 1 : chunks.length),
       ),
     );
-    _refresh(
-      hasText: chunks.isNotEmpty,
-      message: chunks.isEmpty ? noTextMessage : notice,
-      playing: false,
-    );
+    _refresh(hasText: chunks.isNotEmpty, message: chunks.isEmpty ? noTextMessage : notice, playing: false);
     _broadcastState(playing: false);
   }
 
@@ -217,18 +226,10 @@ class TtsAudioHandler extends BaseAudioHandler {
   Future<void> replaceChunks(List<TextChunk> chunks) async {
     final current = _chunks.isEmpty ? null : _chunks[_index];
     _chunks = chunks;
-    final keys = chunks
-        .map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex))
-        .toList();
+    final keys = chunks.map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex)).toList();
     final pos = current != null
-        ? ReadingPosition(
-            pageIndex: current.pageIndex,
-            chunkIndex: current.chunkIndex,
-          )
-        : ReadingPosition(
-            pageIndex: _entry?.pageIndex ?? 0,
-            chunkIndex: _entry?.chunkIndex ?? 0,
-          );
+        ? ReadingPosition(pageIndex: current.pageIndex, chunkIndex: current.chunkIndex)
+        : ReadingPosition(pageIndex: _entry?.pageIndex ?? 0, chunkIndex: _entry?.chunkIndex ?? 0);
     _index = pos.resolveChunkListIndex(keys);
     _segmentLanguages();
     _refresh(hasText: chunks.isNotEmpty);
@@ -267,8 +268,9 @@ class TtsAudioHandler extends BaseAudioHandler {
   String? get manualLanguage => _manualLang;
 
   /// Idiomas que tienen al menos una voz instalada.
-  Set<String> get availableLanguages =>
-      {for (final v in _voices) v.locale.toLowerCase().replaceAll('_', '-').split('-').first};
+  Set<String> get availableLanguages => {
+    for (final v in _voices) v.locale.toLowerCase().replaceAll('_', '-').split('-').first,
+  };
 
   /// Ajusta la voz al idioma del documento y prepara el idioma por fragmento
   /// (una frase corta en otro idioma no cambia la voz; un bloque largo sí).
@@ -302,6 +304,35 @@ class TtsAudioHandler extends BaseAudioHandler {
     }
   }
 
+  /// Voces que fallaron en esta sesión: no se vuelven a elegir solas.
+  final Set<String> _badVoices = {};
+
+  /// Muestra un aviso en la pantalla de lectura (p. ej. que se cambió de voz).
+  void notice(String message) => _refresh(message: message);
+
+  /// La voz que suena falló: se deja de lado y se pasa a la mejor otra voz
+  /// del idioma. Devuelve false si no queda ninguna otra.
+  Future<bool> _switchToWorkingVoice() async {
+    final failed = _activeVoice;
+    final lang = _appliedLang ?? _docLang;
+    if (failed == null || lang == null) return false;
+    _badVoices.add(failed.name);
+    final others = _voices.where((v) => v.locale.toLowerCase().startsWith(lang) && !_badVoices.contains(v.name));
+    if (others.isEmpty) return false;
+    // La elegida a mano se olvida solo por esta sesión (no se borra de ajustes).
+    _voiceName = null;
+    _voiceLocale = null;
+    _appliedLang = null;
+    await _applyLanguage(lang);
+    final now = _activeVoice;
+    _refresh(
+      message: now == null
+          ? 'La voz no respondió: sigo con la voz del sistema.'
+          : 'La voz no respondió: sigo con ${voiceDisplayLabel(name: now.name, locale: now.locale, quality: now.quality).split(' · ').first}.',
+    );
+    return true;
+  }
+
   Future<void> _applyLanguage(String lang) async {
     _appliedLang = lang;
     final saved = _voiceLocale;
@@ -312,9 +343,10 @@ class TtsAudioHandler extends BaseAudioHandler {
       _refresh();
       return;
     }
-    // Mejor voz disponible para el idioma (premium > mejorada > local > genérica).
+    // Mejor voz disponible para el idioma (premium > mejorada > local > genérica),
+    // sin las que ya fallaron.
     final match = rankVoices<VoiceOption>(
-      _voices.where((v) => v.locale.toLowerCase().startsWith(lang)),
+      _voices.where((v) => v.locale.toLowerCase().startsWith(lang) && !_badVoices.contains(v.name)),
       name: (v) => v.name,
       locale: (v) => v.locale,
       quality: (v) => v.quality,
@@ -355,17 +387,12 @@ class TtsAudioHandler extends BaseAudioHandler {
     if (_voiceName == null || _voices.isEmpty) {
       return;
     }
-    final exists = _voices.any(
-      (v) => v.name == _voiceName && v.locale == _voiceLocale,
-    );
+    final exists = _voices.any((v) => v.name == _voiceName && v.locale == _voiceLocale);
     if (!exists) {
       _voiceName = null;
       _voiceLocale = null;
       await settingsStore.saveVoice();
-      _refresh(
-        message:
-            'La voz guardada ya no está disponible. Se usará la voz del sistema.',
-      );
+      _refresh(message: 'La voz guardada ya no está disponible. Se usará la voz del sistema.');
       return;
     }
     try {
@@ -385,9 +412,7 @@ class TtsAudioHandler extends BaseAudioHandler {
   }
 
   double _nearestSpeed(double value) {
-    return speeds.reduce(
-      (a, b) => (a - value).abs() < (b - value).abs() ? a : b,
-    );
+    return speeds.reduce((a, b) => (a - value).abs() < (b - value).abs() ? a : b);
   }
 
   @override
@@ -401,6 +426,12 @@ class TtsAudioHandler extends BaseAudioHandler {
     if (_speaking) {
       return; // ya hay un bucle de lectura en marcha
     }
+    // Vuelve el documento: lo que se leía aparte (una pregunta, el resumen)
+    // se termina, si no las dos lecturas se cortaban y se saltaban frases.
+    if (_asideText != null) {
+      _endAside();
+      _asideGen++;
+    }
     _speaking = true;
     final my = ++_playGen;
     _failsInRow = 0;
@@ -409,13 +440,17 @@ class TtsAudioHandler extends BaseAudioHandler {
     while (_speaking && my == _playGen && _index < _chunks.length) {
       _chunkFailed = false;
       try {
-        final speech = _chunks[_index].speech;
-        if (kDebugMode) debugPrint('[lector] speak idx=$_index len=${speech.length} "${speech.length > 70 ? speech.substring(0, 70) : speech}"');
+        final speech = _spoken(_chunks[_index].speech);
+        if (kDebugMode) {
+          debugPrint(
+            '[lector] speak idx=$_index len=${speech.length} "${speech.length > 70 ? speech.substring(0, 70) : speech}"',
+          );
+        }
         if (speech.trim().isNotEmpty) {
           await _tts.stop();
           await _applyChunkLanguage(_index);
           _tts.prefetch([
-            for (var k = _index + 1; k <= _index + 2 && k < _chunks.length; k++) _chunks[k].speech,
+            for (var k = _index + 1; k <= _index + 2 && k < _chunks.length; k++) _spoken(_chunks[k].speech),
           ]);
           await _tts.speak(speech);
         }
@@ -427,6 +462,11 @@ class TtsAudioHandler extends BaseAudioHandler {
       }
       if (_chunkFailed) {
         _failsInRow += 1;
+        // Dos fallos seguidos: probar con otra voz y repetir la frase.
+        if (_failsInRow == 2 && await _switchToWorkingVoice()) {
+          _failsInRow = 0;
+          continue;
+        }
         if (_failsInRow >= _maxFailsInRow) {
           _speaking = false;
           _refresh(playing: false, message: 'El motor de voz no está disponible.');
@@ -444,7 +484,17 @@ class TtsAudioHandler extends BaseAudioHandler {
         _speaking = false;
         _broadcastState(playing: false);
         _refresh(playing: false);
+        sleepAtChapterEnd.value = false;
         await _persistPosition(finished: true);
+        return;
+      }
+      if (_chapterEnds(_index + 1)) {
+        // Terminó el capítulo: al volver a reproducir, empieza el siguiente.
+        _index += 1;
+        sleepAtChapterEnd.value = false;
+        _chapterEndPage = null;
+        await _persistPosition();
+        await pause();
         return;
       }
       _index += 1;
@@ -543,6 +593,12 @@ class TtsAudioHandler extends BaseAudioHandler {
   }
 
   int _asideGen = 0;
+  String? _asideText;
+
+  /// Al leer aparte (el resumen): qué frase suena (su lugar en la lista) y qué
+  /// palabra dentro de ella, para seguir la lectura en pantalla.
+  final ValueNotifier<int?> asideIndex = ValueNotifier(null);
+  final ValueNotifier<(int, int)?> asideWord = ValueNotifier(null);
 
   /// Lee frases sueltas (p. ej. el resumen) una a una, sin cambiar la posición
   /// del documento. Frase a frase para que la voz natural empiece pronto en
@@ -556,6 +612,9 @@ class TtsAudioHandler extends BaseAudioHandler {
       for (var i = 0; i < parts.length; i++) {
         if (my != _asideGen) return null;
         if (parts[i].trim().isEmpty) continue;
+        _asideText = parts[i];
+        asideWord.value = null;
+        asideIndex.value = i;
         _tts.prefetch([if (i + 1 < parts.length) parts[i + 1]]);
         await _tts.speak(parts[i]);
       }
@@ -563,11 +622,24 @@ class TtsAudioHandler extends BaseAudioHandler {
     } catch (e) {
       if (kDebugMode) debugPrint('[lector] speakAside falló: $e');
       return 'No se pudo leer el resumen en voz alta. Prueba con otra voz.';
+    } finally {
+      if (my == _asideGen) _endAside();
     }
   }
 
+  void _endAside() {
+    _asideText = null;
+    asideIndex.value = null;
+    asideWord.value = null;
+  }
+
+  /// Detiene la lectura aparte. Si ya no había (suena el documento), no toca
+  /// la voz: antes cortaba la frase del documento.
   Future<void> stopAside() async {
+    final reading = _asideText != null;
+    _endAside();
     _asideGen++;
+    if (!reading) return;
     try {
       await _tts.stop();
     } catch (_) {}
@@ -589,6 +661,8 @@ class TtsAudioHandler extends BaseAudioHandler {
   /// Temporizador de sueño: al terminar pausa y conserva el progreso.
   void setSleepTimer(Duration? duration) {
     _sleepTimer?.cancel();
+    sleepAtChapterEnd.value = false;
+    _chapterEndPage = null;
     if (duration == null) {
       sleepEndsAt.value = null;
       return;
@@ -599,6 +673,34 @@ class TtsAudioHandler extends BaseAudioHandler {
       await pause();
     });
   }
+
+  /// Pausa al terminar el capítulo que suena (o el documento, si no tiene
+  /// capítulos), en vez de a los minutos.
+  final ValueNotifier<bool> sleepAtChapterEnd = ValueNotifier(false);
+
+  /// Página donde empieza el capítulo siguiente (null: el final del documento).
+  int? _chapterEndPage;
+
+  void setSleepAtChapterEnd() {
+    setSleepTimer(null);
+    final page = _chunks.isEmpty ? 0 : _chunks[_index].pageIndex;
+    int? next;
+    for (final c in chapters) {
+      if (c.pageIndex > page && (next == null || c.pageIndex < next)) next = c.pageIndex;
+    }
+    _chapterEndPage = next;
+    sleepAtChapterEnd.value = true;
+  }
+
+  /// ¿Lo que sigue ya es del capítulo siguiente y hay que pausar?
+  bool _chapterEnds(int nextIndex) {
+    final end = _chapterEndPage;
+    return sleepAtChapterEnd.value && end != null && _chunks[nextIndex].pageIndex >= end;
+  }
+
+  /// Lo que se pronuncia de [speech]: sin las citas, si se pidió en Aspecto y
+  /// letra. Si cambia, esa frase no marca palabra por palabra (no coincidiría).
+  static String _spoken(String speech) => Comfort.skipCitations.value ? withoutCitations(speech) : speech;
 
   List<Chapter> chapters = [];
   List<TextChunk> get chunks => _chunks;
@@ -625,6 +727,7 @@ class TtsAudioHandler extends BaseAudioHandler {
     if (_speaking) await pause();
     return _tts.renderToFile(text, path);
   }
+
   TextChunk? get currentChunk => _chunks.isEmpty ? null : _chunks[_index];
 
   /// Índice del fragmento que se está leyendo.
@@ -647,19 +750,11 @@ class TtsAudioHandler extends BaseAudioHandler {
   Future<void> jumpToPosition(int pageIndex, int chunkIndex) async {
     if (kDebugMode) debugPrint('[lector] jumpToPosition($pageIndex,$chunkIndex)');
     if (_chunks.isEmpty) return;
-    final keys = _chunks
-        .map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex))
-        .toList();
-    await _moveTo(
-      ReadingPosition(pageIndex: pageIndex, chunkIndex: chunkIndex)
-          .resolveChunkListIndex(keys),
-    );
+    final keys = _chunks.map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex)).toList();
+    await _moveTo(ReadingPosition(pageIndex: pageIndex, chunkIndex: chunkIndex).resolveChunkListIndex(keys));
   }
 
-  Future<void> nextPage() => _jumpTo(
-        (i) => _chunks[i].pageIndex > _chunks[_index].pageIndex,
-        forward: true,
-      );
+  Future<void> nextPage() => _jumpTo((i) => _chunks[i].pageIndex > _chunks[_index].pageIndex, forward: true);
 
   Future<void> previousPage() async {
     if (_chunks.isEmpty) return;
@@ -670,10 +765,7 @@ class TtsAudioHandler extends BaseAudioHandler {
       await _moveTo(startOfPage);
       return;
     }
-    await _jumpTo(
-      (i) => _chunks[i].pageIndex < page,
-      forward: false,
-    );
+    await _jumpTo((i) => _chunks[i].pageIndex < page, forward: false);
   }
 
   Future<void> _jumpTo(bool Function(int) test, {required bool forward}) async {
@@ -717,12 +809,18 @@ class TtsAudioHandler extends BaseAudioHandler {
       return;
     }
     final chunk = _chunks[_index];
-    await libraryStore.updatePosition(
-      id: entry.id,
-      pageIndex: chunk.pageIndex,
-      chunkIndex: chunk.chunkIndex,
-      finished: finished ?? (_index < _chunks.length - 1 ? false : null),
-    );
+    try {
+      await libraryStore.updatePosition(
+        id: entry.id,
+        pageIndex: chunk.pageIndex,
+        chunkIndex: chunk.chunkIndex,
+        finished: finished ?? (_index < _chunks.length - 1 ? false : null),
+      );
+    } on FileSystemException catch (e) {
+      // Sin poder guardar la posición se sigue leyendo (antes se detenía la
+      // lectura y la pantalla quedaba en "reproduciendo").
+      if (kDebugMode) debugPrint('[lector] no se pudo guardar la posición: $e');
+    }
   }
 
   void _refresh({bool? playing, bool? hasText, String? message}) {

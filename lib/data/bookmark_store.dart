@@ -26,13 +26,28 @@ class BookmarkStore {
       }
     } catch (_) {
       _all.clear();
+      // Se aparta el archivo dañado: el próximo guardado no lo pisa.
+      try {
+        await _file.rename('${_file.path}.dañado.${DateTime.now().millisecondsSinceEpoch}');
+      } on FileSystemException {
+        // no había archivo
+      }
     }
   }
 
-  Future<void> _save() => _file.writeAsString(
-        jsonEncode(_all.map((b) => b.toJson()).toList()),
-        flush: true,
-      );
+  /// De a uno y en un archivo aparte que se cambia de una vez: dos cambios
+  /// seguidos mezclaban el JSON y, al no poder leerlo, se perdían todos.
+  Future<void> _save() {
+    final next = _saving.then((_) async {
+      final tmp = File('${_file.path}.tmp');
+      await tmp.writeAsString(jsonEncode(_all.map((b) => b.toJson()).toList()), flush: true);
+      await tmp.rename(_file.path);
+    });
+    _saving = next.then((_) {}, onError: (_) {});
+    return next;
+  }
+
+  Future<void> _saving = Future.value();
 
   Future<List<Bookmark>> forDocument(String documentId) async {
     await _load();

@@ -71,6 +71,10 @@
             </intent-filter>
         </receiver>
 
+        <!-- Google Play Services baja los lectores de texto y de códigos QR junto con la app. -->
+        <meta-data
+            android:name="com.google.mlkit.vision.DEPENDENCIES"
+            android:value="ocr,barcode" />
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

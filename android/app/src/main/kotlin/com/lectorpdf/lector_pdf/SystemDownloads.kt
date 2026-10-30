@@ -62,6 +62,14 @@ object SystemDownloads {
                             )
                         }
                     }
+                    "pathFor" -> {
+                        val name = call.argument<String>("name")
+                        if (name == null) {
+                            result.error("bad_args", "Falta el nombre.", null)
+                            return@setMethodCallHandler
+                        }
+                        result.success(File(context.getExternalFilesDir(null), "models/$name").absolutePath)
+                    }
                     "remove" -> {
                         val id = (call.argument<Number>("id") ?: -1).toLong()
                         if (id >= 0) manager.remove(id)

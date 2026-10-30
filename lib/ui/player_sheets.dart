@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io' show File, Platform;
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel;
 import 'package:path_provider/path_provider.dart';
@@ -11,14 +10,15 @@ import '../core/app_exception.dart';
 import '../data/bookmark_store.dart';
 import '../domain/library_entry.dart';
 import '../domain/search.dart';
-import '../domain/summarizer.dart';
-import '../platform/study_ai.dart';
 import '../playback/tts_audio_handler.dart';
 import 'study_sheets.dart';
 import 'swarm_transition.dart';
 
-void _snack(BuildContext c, String m) =>
-    ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));
+void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: SwarmText(m)));
+
+/// El aviso de un error: el mensaje propio si es nuestro ([AppException]);
+/// si no, [fallback] (nunca el texto técnico de la excepción).
+String _say(Object error, String fallback) => error is AppException ? error.message : fallback;
 
 Future<void> showChaptersSheet(BuildContext context, TtsAudioHandler handler) {
   final chapters = handler.chapters;
@@ -27,10 +27,7 @@ Future<void> showChaptersSheet(BuildContext context, TtsAudioHandler handler) {
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
       child: chapters.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('No se detectaron capítulos en este documento.'),
-            )
+          ? const Padding(padding: EdgeInsets.all(24), child: Text('No se detectaron capítulos en este documento.'))
           : ListView(
               shrinkWrap: true,
               children: [
@@ -83,10 +80,7 @@ class _SearchSheetState extends State<_SearchSheet> {
                 padding: const EdgeInsets.all(12),
                 child: TextField(
                   autofocus: true,
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.search),
-                    hintText: 'Buscar en el texto',
-                  ),
+                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar en el texto'),
                   onChanged: (v) => setState(() {
                     _query = v;
                     _hits = searchChunks(chunks, v);
@@ -95,9 +89,7 @@ class _SearchSheetState extends State<_SearchSheet> {
               ),
               Expanded(
                 child: _hits.isEmpty
-                    ? Center(
-                        child: Text(_query.trim().isEmpty ? '' : 'Sin resultados'),
-                      )
+                    ? Center(child: Text(_query.trim().isEmpty ? '' : 'Sin resultados'))
                     : ListView.builder(
                         itemCount: _hits.length,
                         itemBuilder: (_, i) {
@@ -121,20 +113,10 @@ class _SearchSheetState extends State<_SearchSheet> {
   }
 }
 
-Future<void> addBookmark(
-  BuildContext context,
-  TtsAudioHandler handler,
-  BookmarkStore store,
-  LibraryEntry entry,
-) async {
+Future<void> addBookmark(BuildContext context, TtsAudioHandler handler, BookmarkStore store, LibraryEntry entry) async {
   final c = handler.currentChunk;
   if (c == null) return;
-  await store.add(
-    documentId: entry.id,
-    pageIndex: c.pageIndex,
-    chunkIndex: c.chunkIndex,
-    label: c.text,
-  );
+  await store.add(documentId: entry.id, pageIndex: c.pageIndex, chunkIndex: c.chunkIndex, label: c.text);
   if (context.mounted) _snack(context, 'Marcador guardado (página ${c.pageIndex + 1})');
 }
 
@@ -145,37 +127,58 @@ Future<void> showBookmarksSheet(
   LibraryEntry entry,
 ) async {
   final list = await store.forDocument(entry.id);
+  final gone = <String>{}; // borrados en este panel, que todavía se pueden deshacer
   if (!context.mounted) return;
   await showSwarmSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
       child: list.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('Aún no hay marcadores.'),
-            )
+          ? const Padding(padding: EdgeInsets.all(24), child: Text('Aún no hay marcadores.'))
           : StatefulBuilder(
               builder: (ctx, setSheet) => ListView(
                 shrinkWrap: true,
                 children: [
                   for (final b in List.of(list))
-                    ListTile(
-                      title: Text(b.label, maxLines: 2, overflow: TextOverflow.ellipsis),
-                      subtitle: Text('Página ${b.pageIndex + 1}'),
-                      trailing: IconButton(
-                        tooltip: 'Eliminar marcador',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () async {
-                          await store.remove(b.id);
-                          setSheet(() => list.removeWhere((x) => x.id == b.id));
+                    // Borrado: queda su lugar con "Deshacer" (un aviso abajo
+                    // quedaría tapado por este panel).
+                    if (gone.contains(b.id))
+                      ListTile(
+                        title: const Text('Marcador eliminado'),
+                        subtitle: Text('Página ${b.pageIndex + 1}'),
+                        trailing: TextButton(
+                          onPressed: () async {
+                            final back = await store.add(
+                              documentId: b.documentId,
+                              pageIndex: b.pageIndex,
+                              chunkIndex: b.chunkIndex,
+                              label: b.label,
+                            );
+                            setSheet(() {
+                              gone.remove(b.id);
+                              list[list.indexWhere((x) => x.id == b.id)] = back;
+                            });
+                          },
+                          child: const Text('Deshacer'),
+                        ),
+                      )
+                    else
+                      ListTile(
+                        title: Text(b.label, maxLines: 2, overflow: TextOverflow.ellipsis),
+                        subtitle: Text('Página ${b.pageIndex + 1}'),
+                        trailing: IconButton(
+                          tooltip: 'Eliminar marcador',
+                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () async {
+                            await store.remove(b.id);
+                            setSheet(() => gone.add(b.id));
+                          },
+                        ),
+                        onTap: () {
+                          handler.jumpToPosition(b.pageIndex, b.chunkIndex);
+                          Navigator.pop(ctx);
                         },
                       ),
-                      onTap: () {
-                        handler.jumpToPosition(b.pageIndex, b.chunkIndex);
-                        Navigator.pop(ctx);
-                      },
-                    ),
                 ],
               ),
             ),
@@ -184,11 +187,7 @@ Future<void> showBookmarksSheet(
 }
 
 /// Exporta el texto extraído a un .txt elegido por el usuario (no toca el original).
-Future<void> exportText(
-  BuildContext context,
-  TtsAudioHandler handler,
-  LibraryEntry entry,
-) async {
+Future<void> exportText(BuildContext context, TtsAudioHandler handler, LibraryEntry entry) async {
   final chunks = handler.chunks;
   if (chunks.isEmpty) {
     _snack(context, 'No hay texto para exportar.');
@@ -229,119 +228,18 @@ Future<void> exportText(
   }
 }
 
-List<String> _summarize(String text) => summarizeExtractive(text);
-
 /// Resumen del documento: con la IA del equipo si está disponible (conceptos,
 /// ideas y resumen breve); si no, el extractivo local. Se puede escuchar y
 /// descargar.
-Future<void> showSummarySheet(
-  BuildContext context,
-  TtsAudioHandler handler,
-  LibraryEntry entry,
-) async {
-  final source = handler.pages.isNotEmpty
-      ? handler.pages.join('\n\n')
-      : handler.chunks.map((c) => c.text).join(' ');
+Future<void> showSummarySheet(BuildContext context, TtsAudioHandler handler, LibraryEntry entry) async {
+  final source = handler.pages.isNotEmpty ? handler.pages.join('\n\n') : handler.chunks.map((c) => c.text).join(' ');
   if (source.trim().isEmpty) {
     _snack(context, 'No hay texto para resumir.');
     return;
   }
-  final aiMissing = await StudyAi().unavailableReason();
-  if (!context.mounted) return;
-  if (aiMissing == null) return showStudySummarySheet(context, handler, entry);
-  final future = compute(_summarize, source);
-  var leyendo = false;
-  await showSwarmSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    builder: (ctx) => SafeArea(
-      child: FutureBuilder<List<String>>(
-        future: future,
-        builder: (ctx, snap) {
-          if (!snap.hasData) {
-            return const Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator()),
-            );
-          }
-          final frases = snap.data!;
-          if (frases.isEmpty) {
-            return const Padding(
-              padding: EdgeInsets.all(24),
-              child: Text('El texto es demasiado corto para resumirlo.'),
-            );
-          }
-          return ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Resumen', style: Theme.of(ctx).textTheme.titleLarge),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${frases.length} frases clave del propio texto, en su orden original. '
-                    'Para un resumen con conceptos: $aiMissing',
-                    style: Theme.of(ctx).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  Flexible(
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        for (final f in frases)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: Text(f, style: Theme.of(ctx).textTheme.bodyLarge),
-                          ),
-                      ],
-                    ),
-                  ),
-                  StatefulBuilder(
-                    builder: (ctx, setState) => Wrap(
-                      spacing: 12,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        FilledButton.icon(
-                          onPressed: () async {
-                            if (leyendo) {
-                              setState(() => leyendo = false);
-                              await handler.stopAside();
-                              return;
-                            }
-                            setState(() => leyendo = true);
-                            final error = await handler.speakAside(frases);
-                            if (!ctx.mounted) return;
-                            setState(() => leyendo = false);
-                            if (error != null) _snack(ctx, error);
-                          },
-                          icon: Icon(leyendo ? Icons.stop : Icons.volume_up),
-                          label: Text(leyendo ? 'Detener' : 'Escuchar resumen'),
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: () => downloadSummary(ctx, handler, entry, frases),
-                          icon: const Icon(Icons.download),
-                          label: const Text('Descargar'),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cerrar'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    ),
-  );
-  await handler.stopAside();
+  // Siempre el resumen para estudiar: con la IA del equipo si la hay y, si
+  // no, armado con las palabras y frases que más pesan en el texto.
+  return showStudySummarySheet(context, handler, entry);
 }
 
 /// Descarga el resumen como texto (.txt) o como audio con la voz activa.
@@ -397,8 +295,9 @@ Future<void> downloadSummary(
     path = await handler.renderTextAudio(frases.join(' '), '$base.wav');
     if (path == null) throw AppException('Esta voz no permite guardar audio. Elige otra voz e inténtalo de nuevo.');
     if (Platform.isIOS) {
-      final m4a = await const MethodChannel('lector/audio_export')
-          .invokeMethod<String>('toM4a', {'path': path, 'out': '$base.m4a'});
+      final m4a = await const MethodChannel(
+        'lector/audio_export',
+      ).invokeMethod<String>('toM4a', {'path': path, 'out': '$base.m4a'});
       if (m4a != null && m4a.isNotEmpty) {
         original = path;
         path = m4a;
@@ -406,12 +305,11 @@ Future<void> downloadSummary(
     }
     if (!context.mounted) return;
     // La hoja Compartir ofrece "Guardar en Archivos", WhatsApp, etc.
-    await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {
-      'path': path,
-      'text': 'Resumen de "$titulo" leído con PSSTH!',
-    });
+    await const MethodChannel(
+      'lector/share',
+    ).invokeMethod<bool>('shareFile', {'path': path, 'text': 'Resumen de "$titulo" leído con PSSTH!'});
   } catch (error) {
-    if (context.mounted) _snack(context, '$error');
+    if (context.mounted) _snack(context, _say(error, 'No se pudo preparar el audio del resumen.'));
   } finally {
     for (final p in [path, original]) {
       if (p == null) continue;
@@ -425,11 +323,7 @@ Future<void> downloadSummary(
 /// "Compartir fragmento en audio": sintetiza la frase o la página actual con
 /// la voz activa y la ofrece por la hoja Compartir (WhatsApp, Mensajes…).
 /// Todo local: el audio se genera en el dispositivo y se borra al terminar.
-Future<void> showShareAudioSheet(
-  BuildContext context,
-  TtsAudioHandler handler,
-  LibraryEntry entry,
-) async {
+Future<void> showShareAudioSheet(BuildContext context, TtsAudioHandler handler, LibraryEntry entry) async {
   if (handler.shareText().isEmpty) {
     _snack(context, 'No hay texto para compartir.');
     return;
@@ -466,8 +360,9 @@ Future<void> showShareAudioSheet(
     if (path == null) throw AppException('Esta voz no permite guardar audio. Elige otra voz e inténtalo de nuevo.');
     if (Platform.isIOS) {
       // CAF/WAV no viajan bien como nota de voz; iOS los convierte a M4A.
-      final m4a = await const MethodChannel('lector/audio_export')
-          .invokeMethod<String>('toM4a', {'path': path, 'out': '$base.m4a'});
+      final m4a = await const MethodChannel(
+        'lector/audio_export',
+      ).invokeMethod<String>('toM4a', {'path': path, 'out': '$base.m4a'});
       if (m4a != null && m4a.isNotEmpty) {
         original = path;
         path = m4a;
@@ -476,12 +371,11 @@ Future<void> showShareAudioSheet(
     if (!context.mounted) return;
     final dot = entry.name.lastIndexOf('.');
     final titulo = dot > 0 ? entry.name.substring(0, dot) : entry.name;
-    await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {
-      'path': path,
-      'text': 'Fragmento de "$titulo" leído con PSSTH!',
-    });
+    await const MethodChannel(
+      'lector/share',
+    ).invokeMethod<bool>('shareFile', {'path': path, 'text': 'Fragmento de "$titulo" leído con PSSTH!'});
   } catch (error) {
-    if (context.mounted) _snack(context, '$error');
+    if (context.mounted) _snack(context, _say(error, 'No se pudo preparar el audio del fragmento.'));
   } finally {
     for (final p in [path, original]) {
       if (p == null) continue;

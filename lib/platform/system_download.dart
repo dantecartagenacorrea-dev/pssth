@@ -15,11 +15,23 @@ class SystemDownload {
   /// Solo en Android (en iPhone la app descarga por su cuenta).
   static bool get available => Platform.isAndroid;
 
-  /// ¿Hay una descarga de [name] empezada (quizá con la app cerrada)?
-  static Future<bool> hasPending(String name) async {
+  /// ¿Hay una descarga de [name] empezada (quizá con la app cerrada), o el
+  /// paquete completo ya está en la carpeta ([expectedBytes])?
+  static Future<bool> hasPending(String name, {int expectedBytes = 0}) async {
     if (!available) return false;
     final p = await SharedPreferences.getInstance();
-    return p.getInt(_key(name)) != null;
+    if (p.getInt(_key(name)) != null) return true;
+    return await _complete(name, expectedBytes) != null;
+  }
+
+  /// El paquete [name] ya descargado entero (del tamaño esperado), aunque la
+  /// app haya olvidado la descarga: se reutiliza y se verifica con su huella.
+  static Future<File?> _complete(String name, int expectedBytes) async {
+    if (expectedBytes <= 0) return null;
+    final path = await _channel.invokeMethod<String>('pathFor', {'name': name});
+    if (path == null) return null;
+    final f = File(path);
+    return await f.exists() && await f.length() == expectedBytes ? f : null;
   }
 
   /// Descarga [url] como [name] y devuelve la ruta del archivo. Si ya había
@@ -37,6 +49,13 @@ class SystemDownload {
     if (id != null) {
       final status = (await _query(id))['status'];
       if (status == 'missing' || status == 'failed') id = null;
+    }
+    if (id == null) {
+      final ready = await _complete(name, expectedBytes);
+      if (ready != null) {
+        onFraction?.call(1);
+        return ready;
+      }
     }
     if (id == null || path == null) {
       final r = await _channel.invokeMapMethod<String, Object>('enqueue', {'url': url, 'name': name, 'title': title});
@@ -77,6 +96,13 @@ class SystemDownload {
     }
     await prefs.remove(_key(name));
     await prefs.remove(_pathKey(name));
+    // Y el archivo, si quedó (dañado o ya instalado).
+    try {
+      final path = await _channel.invokeMethod<String>('pathFor', {'name': name});
+      if (path != null && await File(path).exists()) await File(path).delete();
+    } on Exception {
+      // si no se puede borrar, se pisa en la próxima descarga
+    }
   }
 
   static Future<Map<String, Object?>> _query(int id) async =>

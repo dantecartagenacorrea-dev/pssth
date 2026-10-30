@@ -7,20 +7,17 @@ class PlaybackPrefs {
     this.speed = 1.0,
     this.voiceName,
     this.voiceLocale,
-    this.lastDocumentId,
   });
 
   final double speed;
   final String? voiceName;
   final String? voiceLocale;
-  final String? lastDocumentId;
 }
 
 class SettingsStore {
   static const _speedKey = 'speed';
   static const _voiceNameKey = 'voiceName';
   static const _voiceLocaleKey = 'voiceLocale';
-  static const _lastDocKey = 'lastDocumentId';
   static const _favoriteVoicesKey = 'favoriteVoices';
   static const _voiceUsesKey = 'voiceUses';
 
@@ -54,7 +51,6 @@ class SettingsStore {
       speed: prefs.getDouble(_speedKey) ?? 1.0,
       voiceName: prefs.getString(_voiceNameKey),
       voiceLocale: prefs.getString(_voiceLocaleKey),
-      lastDocumentId: prefs.getString(_lastDocKey),
     );
   }
 
@@ -74,15 +70,6 @@ class SettingsStore {
       await prefs.remove(_voiceLocaleKey);
     } else {
       await prefs.setString(_voiceLocaleKey, locale);
-    }
-  }
-
-  Future<void> saveLastDocumentId(String? id) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (id == null) {
-      await prefs.remove(_lastDocKey);
-    } else {
-      await prefs.setString(_lastDocKey, id);
     }
   }
 }

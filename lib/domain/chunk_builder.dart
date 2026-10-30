@@ -1,5 +1,6 @@
 import 'dart:isolate';
 
+import 'caps_speech.dart';
 import 'chunker.dart';
 import 'text_chunk.dart';
 import 'text_normalizer.dart';
@@ -23,7 +24,7 @@ List<TextChunk> buildChunks({
           pageIndex: i,
           chunkIndex: c,
           text: parts[c],
-          speech: normalizer.normalize(parts[c]),
+          speech: normalizer.normalize(speakableCaps(parts[c])),
         ),
       );
     }

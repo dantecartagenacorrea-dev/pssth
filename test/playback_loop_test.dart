@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lector_pdf/data/library_store.dart';
+import 'package:lector_pdf/core/motion.dart';
 import 'package:lector_pdf/data/settings_store.dart';
+import 'package:lector_pdf/domain/chapter_detector.dart';
 import 'package:lector_pdf/domain/library_entry.dart';
 import 'package:lector_pdf/domain/text_chunk.dart';
 import 'package:lector_pdf/playback/tts_audio_handler.dart';
@@ -53,7 +55,11 @@ class SlowEngine extends TtsEngine {
   Future<void> dispose() async {}
 }
 
-Future<(TtsAudioHandler, Directory)> handlerWith(SlowEngine engine, List<String> texts) async {
+Future<(TtsAudioHandler, Directory)> handlerWith(
+  SlowEngine engine,
+  List<String> texts, {
+  bool onePerPage = false,
+}) async {
   SharedPreferences.setMockInitialValues({});
   final tmp = Directory.systemTemp.createTempSync('lib');
   final store = LibraryStore();
@@ -62,13 +68,18 @@ Future<(TtsAudioHandler, Directory)> handlerWith(SlowEngine engine, List<String>
   await h.setup();
   final entry = LibraryEntry(id: 'd', name: 'd.txt', storedPath: '', pageCount: 1, totalChunks: texts.length);
   await store.upsert(entry);
-  await h.loadDocument(entry: entry, chunks: [
-    for (var i = 0; i < texts.length; i++) TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: i, text: texts[i]),
-  ]);
+  await h.loadDocument(
+    entry: entry,
+    chunks: [
+      for (var i = 0; i < texts.length; i++)
+        TextChunk(documentId: 'd', pageIndex: onePerPage ? i : 0, chunkIndex: onePerPage ? 0 : i, text: texts[i]),
+    ],
+  );
   return (h, tmp);
 }
 
-Future<void> settle() => Future.delayed(const Duration(milliseconds: 20));
+// Con margen: en la corrida completa (varios archivos a la vez) 20 ms no alcanzaban.
+Future<void> settle() => Future.delayed(const Duration(milliseconds: 100));
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -114,6 +125,37 @@ void main() {
     expect(engine.spoken, ['A.', 'B.', 'C.']);
     expect(h.snapshot.value.playing, isFalse);
     expect(h.snapshot.value.message, 'El motor de voz no está disponible.');
+    tmp.deleteSync(recursive: true);
+  });
+
+  test('con el temporizador "al terminar el capítulo" pausa justo antes del siguiente', () async {
+    final engine = SlowEngine();
+    final (h, tmp) = await handlerWith(engine, ['A.', 'B.', 'C.', 'D.'], onePerPage: true);
+    h.chapters = const [Chapter(title: 'Uno', pageIndex: 0), Chapter(title: 'Dos', pageIndex: 2)];
+    unawaited(h.play());
+    await settle();
+    h.setSleepAtChapterEnd();
+    engine.finishCurrent(); // A.
+    await settle();
+    engine.finishCurrent(); // B.: el capítulo termina
+    await settle();
+    expect(engine.spoken, ['A.', 'B.']);
+    expect(h.snapshot.value.playing, isFalse);
+    expect(h.chunkIndex, 2); // al seguir, empieza el capítulo siguiente
+    expect(h.sleepAtChapterEnd.value, isFalse);
+    tmp.deleteSync(recursive: true);
+  });
+
+  test('con "saltar citas" no pronuncia las referencias', () async {
+    final engine = SlowEngine();
+    final (h, tmp) = await handlerWith(engine, ['El poder corrompe [12].']);
+    Comfort.skipCitations.value = true;
+    addTearDown(() => Comfort.skipCitations.value = false);
+    unawaited(h.play());
+    await settle();
+    expect(engine.spoken, ['El poder corrompe.']);
+    engine.finishCurrent();
+    await settle();
     tmp.deleteSync(recursive: true);
   });
 }

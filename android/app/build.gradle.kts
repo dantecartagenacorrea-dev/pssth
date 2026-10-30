@@ -45,6 +45,14 @@ android {
         }
     }
 
+    // Bibliotecas nativas comprimidas dentro del APK: la descarga baja a la
+    // mitad (101 -> ~48 MB). Al instalar se descomprimen.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     buildTypes {
         release {
             signingConfig = if (keyProperties.isNotEmpty()) {
@@ -72,8 +80,11 @@ flutter {
 
 dependencies {
     // OCR y detección de idioma en el dispositivo (Google ML Kit, gratuito, sin red).
-    // Modelo latino incluido en la app: funciona offline desde la instalación.
-    implementation("com.google.mlkit:text-recognition:16.0.1")
+    // El lector de texto lo trae Google Play Services (11 MB menos en la app); se
+    // pide al instalar y al abrir la app, así funciona sin red desde el inicio.
+    implementation("com.google.android.gms:play-services-mlkit-text-recognition:19.0.1")
+    // Códigos QR de las fotos, también desde Play Services (casi no suma peso).
+    implementation("com.google.android.gms:play-services-mlkit-barcode-scanning:18.3.1")
     implementation("com.google.mlkit:language-id:17.0.6")
     // Escáner de documentos (recorta, endereza, varias páginas) vía Google Play Services.
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")

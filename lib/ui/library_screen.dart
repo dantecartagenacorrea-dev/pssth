@@ -9,12 +9,14 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../core/app_exception.dart';
+import '../core/motion.dart';
 import '../core/perf_log.dart';
 import '../data/batch_import.dart';
 import '../data/bookmark_store.dart';
 import '../data/corrected_pages_store.dart';
 import '../data/document_loader.dart';
 import '../data/library_store.dart';
+import '../data/model_queue.dart';
 import '../data/model_store.dart';
 import '../data/pronunciation_store.dart';
 import '../data/settings_store.dart';
@@ -40,10 +42,12 @@ import 'swarm.dart';
 import 'swarm_transition.dart';
 import '../playback/tts_audio_handler.dart';
 import '../services/llm_cleaner.dart';
+import 'first_run_guide.dart';
 import 'player_screen.dart';
 import 'recorder_screen.dart';
 import 'voices_screen.dart';
 import 'pronunciation_screen.dart';
+import 'processing_sign.dart';
 
 /// Versión mostrada en "Acerca de" (mantener igual que pubspec.yaml).
 const String kAppVersion = '1.0.0';
@@ -79,10 +83,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   String _busyLabel = 'Abriendo…';
   final _native = NativeText();
   TextNormalizer _normalizer = TextNormalizer();
-  late final DocumentLoader _loader = DocumentLoader(
-    cacheDir: widget.libraryStore.root,
-    ocr: _native,
-  );
+  late final DocumentLoader _loader = DocumentLoader(cacheDir: widget.libraryStore.root, ocr: _native);
 
   /// Identifica el trabajo de OCR vigente; un documento nuevo cancela el anterior.
   int _ocrJob = 0;
@@ -95,9 +96,49 @@ class _LibraryScreenState extends State<LibraryScreen> {
     bridge.start();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final pending = await bridge.takePending();
+      // Quien recién instala (biblioteca vacía) ve antes una guía de 3 pasos.
+      final isNewUser = pending == null && widget.libraryStore.data.entries.isEmpty;
+      if (mounted) await FirstRunGuide.showOnce(context, isNewUser: isNewUser);
       if (pending != null) await _importExternal(pending);
+      await _askModelsOnce();
     });
   }
+
+  static const _whatItDoes = {
+    'kokoro': 'Voz natural: la voz que suena como una persona al leer.',
+    'whisper': 'Transcripción: pasa a texto lo que grabas, sin Internet.',
+  };
+
+  /// Una sola vez: ¿bajar en segundo plano la voz natural y los demás modelos?
+  Future<void> _askModelsOnce() async {
+    final queue = ModelQueue.instance;
+    if (queue.consent != null || queue.missing.isEmpty || !mounted) return;
+    final mb = (queue.missingBytes / (1024 * 1024)).round();
+    final yes = await showSwarmDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Completar la app'),
+        content: Text(
+          'Hay complementos que no vienen dentro de la app:\n\n'
+          '${queue.missing.map((m) => '• ${_whatItDoes[m.id] ?? m.title}\n').join()}'
+          '\n¿Los descargo ahora ($mb MB)? Puedes seguir usando la app mientras tanto.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Ahora no')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Descargar')),
+        ],
+      ),
+    );
+    await queue.setConsent(yes ?? false);
+  }
+
+  void _openVoices() => Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) =>
+          VoicesScreen(modelStore: widget.modelStore, onModelsChanged: widget.onModelsChanged, native: _native),
+    ),
+  );
 
   @override
   void dispose() {
@@ -128,13 +169,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (_audioExt.contains(ext)) {
         _importingExternal = false;
         if (mounted) setState(() => _busy = false);
-        await _transcribeAndOpen(file.path, file.name.substring(0, file.name.length - ext.length - 1), deleteSource: true);
+        await _transcribeAndOpen(
+          file.path,
+          file.name.substring(0, file.name.length - ext.length - 1),
+          deleteSource: true,
+        );
         return;
       }
       final bytes = await f.readAsBytes();
       if (bytes.isEmpty) throw AppException('No se pudo leer el archivo recibido.');
       final entry = await widget.libraryStore.importFile(originalName: file.name, bytes: bytes);
-      await widget.settingsStore.saveLastDocumentId(entry.id);
       try {
         await f.delete(); // copia temporal; el original queda en su app
       } catch (_) {}
@@ -163,6 +207,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// como un documento más (se puede escuchar, buscar y resumir).
   Future<void> _record() async {
     if (!await _speech.isAvailable()) {
+      ModelQueue.instance.prioritize(whisperBaseModel);
       if (!mounted) return;
       // Sin transcripción la grabación queda solo como audio: se avisa antes.
       final choice = await showSwarmDialog<String>(
@@ -170,9 +215,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
         builder: (ctx) => AlertDialog(
           title: const Text('Falta la transcripción'),
           content: Text(
-            'Para convertir la grabación en texto hay que descargar una vez el modelo de '
-            'transcripción sin conexión (${whisperBaseModel.sizeLabel}) en Voces y modelos. '
-            'Sin él, la grabación se guarda solo como audio.',
+            widget.modelStore.isInstalling(whisperBaseModel)
+                ? 'La transcripción sin conexión se está bajando en segundo plano. Si grabas antes de '
+                      'que termine, la grabación se guarda solo como audio.'
+                : 'Para convertir la grabación en texto hay que descargar una vez el modelo de '
+                      'transcripción sin conexión (${whisperBaseModel.sizeLabel}) en Voces y modelos. '
+                      'Sin él, la grabación se guarda solo como audio.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, 'grabar'), child: const Text('Grabar igual')),
@@ -184,16 +232,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (choice == 'descargar') {
         await Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => VoicesScreen(modelStore: widget.modelStore, onModelsChanged: widget.onModelsChanged, native: _native),
+            builder: (_) =>
+                VoicesScreen(modelStore: widget.modelStore, onModelsChanged: widget.onModelsChanged, native: _native),
           ),
         );
         return;
       }
     }
     if (!mounted) return;
-    final rec = await Navigator.of(context).push<RecordingResult>(
-      MaterialPageRoute(builder: (_) => const RecorderScreen()),
-    );
+    final rec = await Navigator.of(
+      context,
+    ).push<RecordingResult>(MaterialPageRoute(builder: (_) => const RecorderScreen()));
     if (rec == null || !mounted) return;
     final now = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');
@@ -213,7 +262,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
     try {
       final (entry, aviso) = await _transcribeToLibrary(audioPath, title, deleteSource: deleteSource);
-      await widget.settingsStore.saveLastDocumentId(entry.id);
       if (aviso != null && mounted) showSafeMessage(context, AppException(aviso));
       if (!mounted) return;
       setState(() => _busy = false);
@@ -227,7 +275,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// Transcribe el audio y lo guarda en la biblioteca (sin abrirlo). Devuelve
   /// la entrada y, si la hay, una advertencia para el usuario.
-  Future<(LibraryEntry, String?)> _transcribeToLibrary(String audioPath, String title, {required bool deleteSource}) async {
+  Future<(LibraryEntry, String?)> _transcribeToLibrary(
+    String audioPath,
+    String title, {
+    required bool deleteSource,
+  }) async {
     String text;
     String? aviso;
     try {
@@ -240,10 +292,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       text = 'Grabación sin transcripción. ${e.message}';
       aviso = '${e.message} El audio se guardó.';
     }
-    final entry = await widget.libraryStore.importFile(
-      originalName: '$title.txt',
-      bytes: utf8.encode(text),
-    );
+    final entry = await widget.libraryStore.importFile(originalName: '$title.txt', bytes: utf8.encode(text));
     try {
       final ext = audioPath.contains('.') ? audioPath.substring(audioPath.lastIndexOf('.') + 1) : 'wav';
       await File(audioPath).copy('${widget.libraryStore.root.path}/${entry.id}.$ext');
@@ -257,8 +306,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// Pestaña de la lista: documentos normales o los creados con el escáner.
   bool _showScans = false;
 
-  List<LibraryEntry> get _entries =>
-      [for (final e in widget.libraryStore.data.entries) if (e.scanned == _showScans) e];
+  List<LibraryEntry> get _entries => [
+    for (final e in widget.libraryStore.data.entries)
+      if (e.scanned == _showScans) e,
+  ];
 
   int get _scanCount => widget.libraryStore.data.entries.where((e) => e.scanned).length;
 
@@ -296,16 +347,22 @@ class _LibraryScreenState extends State<LibraryScreen> {
       appBar: AppBar(
         title: const Text('PSSTH!'),
         actions: [
+          ListenableBuilder(
+            listenable: ModelQueue.instance,
+            builder: (_, _) => ProcessingSign(
+              active: ModelQueue.instance.busy,
+              tooltip: 'Preparando voces y modelos',
+              onTap: _openVoices,
+            ),
+          ),
           IconButton(
             tooltip: 'Pronunciación',
             icon: const Icon(Icons.record_voice_over_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => PronunciationScreen(store: widget.pronunciationStore),
-              ),
-            ),
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => PronunciationScreen(store: widget.pronunciationStore))),
           ),
-          PopupMenuButton<String>(
+          SwarmMenuButton<String>(
             tooltip: 'Más',
             onSelected: (v) {
               if (v == 'voces') {
@@ -322,6 +379,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               if (v == 'ia') {
                 _showLlmSettings(context);
               }
+              if (v == 'comodidad') {
+                showComfortSheet(context);
+              }
               if (v == 'acerca') {
                 showAboutDialog(
                   context: context,
@@ -329,12 +389,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   applicationVersion: kAppVersion,
                   applicationLegalese:
                       'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo. '
-                      'Solo se usa Internet si descargas los modelos opcionales (desde GitHub), y la red local '
+                      'Solo se usa Internet si descargas los modelos opcionales (desde GitHub y Hugging Face), y la red local '
                       'solo si activas la corrección con Ollama.\n\n'
                       'El reconocimiento de texto (OCR) y la voz pueden contener errores; '
                       'consulta siempre el documento original para cualquier uso formal.\n\n'
                       'Modelos opcionales: voz natural Kokoro-82M (Apache 2.0; entrenada con datos CC BY: '
-                      'Koniwa y SIWIS) y transcripción Whisper (MIT), ejecutados con sherpa-onnx (Apache 2.0). '
+                      'Koniwa y SIWIS) y transcripción Whisper (MIT), ejecutados con sherpa-onnx (Apache 2.0); '
+                      'Letra Atkinson Hyperlegible (OFL). '
                       'Esta versión incluye espeak-ng (GPL-3.0) dentro de sherpa-onnx. '
                       'El resto de licencias está en «Ver licencias».',
                 );
@@ -343,144 +404,217 @@ class _LibraryScreenState extends State<LibraryScreen> {
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'voces', child: Text('Voces y modelos')),
               PopupMenuItem(value: 'ia', child: Text('Corrección avanzada (IA local)')),
+              PopupMenuItem(value: 'comodidad', child: Text('Aspecto y letra')),
               PopupMenuItem(value: 'acerca', child: Text('Acerca de PSSTH! y licencias')),
             ],
           ),
         ],
       ),
       // La esfera del enjambre de letras gira solo en la pantalla principal.
-      body: Stack(children: [const Positioned.fill(child: SwarmView(background: true)), Center(
-        child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
-        child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Stack(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Solo objetos: el nombre aparece al mantener presionado (y lo
-                // lee el lector de pantalla). El enjambre los forma como letras.
-                Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    _MenuObject(icon: Icons.folder_open, label: 'Abrir documento', onTap: _busy ? null : _openFile),
-                    _MenuObject(icon: Icons.mic, label: 'Grabar clase o conversación', onTap: _busy ? null : _record),
-                    _MenuObject(icon: Icons.link, label: 'Pegar enlace', onTap: _busy ? null : _openUrl),
-                    _MenuObject(icon: Icons.photo_camera, label: 'Cámara', onTap: _busy ? null : () => _pickPhoto(ImageSource.camera)),
-                    _MenuObject(icon: Icons.photo_library, label: 'Fotos', onTap: _busy ? null : () => _pickPhoto(ImageSource.gallery)),
-                    _MenuObject(icon: Icons.document_scanner_outlined, label: 'Escanear a PDF', onTap: _busy ? null : _scanToPdf),
-                    _MenuObject(
-                      icon: Icons.calculate_outlined,
-                      label: 'Resolver ejercicio de matemáticas',
-                      onTap: _busy
-                          ? null
-                          : () => Navigator.of(context).push(
-                                MaterialPageRoute(builder: (_) => MathScreen(handler: widget.handler)),
-                              ),
-                    ),
-                  ],
-                ),
-                if (_busy)
+          const Positioned.fill(child: SwarmView(background: true)),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: kMaxContentWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                   Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Text(_busyLabel, textAlign: TextAlign.center),
-                  ),
-              ],
-            ),
-          ),
-          if (_continueEntry != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Card(
-                child: ListTile(
-                  leading: const Icon(Icons.play_circle_outline, size: 40),
-                  title: const Text('Continuar escuchando'),
-                  subtitle: Text(
-                    '${_continueEntry!.name} · página ${_continueEntry!.pageIndex + 1}',
-                  ),
-                  onTap: _busy ? null : () => _openEntry(_continueEntry!),
-                ),
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                ChoiceChip(
-                  label: const Text('Documentos recientes'),
-                  selected: !_showScans,
-                  onSelected: (_) => setState(() => _showScans = false),
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: Text('Escaneados ($_scanCount)'),
-                  selected: _showScans,
-                  onSelected: (_) => setState(() => _showScans = true),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          Expanded(
-            child: _entries.isEmpty
-                ? Center(
-                    child: Text(_showScans ? 'Todavía no escaneaste documentos.' : 'Todavía no hay documentos.'),
-                  )
-                : ListView.separated(
-                    itemCount: _entries.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final entry = _entries[index];
-                      final percent = (entry.progress * 100).round();
-                      return ListTile(
-                        leading: Icon(_iconFor(entry.kind)),
-                        title: Text(entry.name),
-                        subtitle: Text(
-                          entry.finished
-                              ? 'Terminado'
-                              : entry.pageCount <= 0
-                                  ? 'Sin páginas leídas aún'
-                                  : 'Última página ${entry.pageIndex + 1} · $percent%',
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Cada objeto con una palabra debajo (en el teléfono no se
+                        // adivinaba qué hacía cada uno); el nombre completo aparece al
+                        // mantener presionado y lo lee el lector de pantalla.
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 12,
+                          runSpacing: 12,
                           children: [
-                            IconButton(
-                              tooltip: entry.favorite ? 'Quitar de favoritos' : 'Favorito',
-                              icon: Icon(entry.favorite ? Icons.star : Icons.star_border),
-                              onPressed: () async {
-                                await widget.libraryStore.toggleFavorite(entry.id);
-                                if (mounted) setState(() {});
-                              },
+                            _MenuObject(
+                              icon: Icons.folder_open,
+                              label: 'Abrir documento',
+                              short: 'Abrir',
+                              onTap: _busy ? null : _openFile,
                             ),
-                            IconButton(
-                              tooltip: 'Eliminar de la biblioteca',
-                              icon: const Icon(Icons.delete_outline),
-                              onPressed: _busy ? null : () => _confirmDelete(entry),
+                            _MenuObject(
+                              icon: Icons.mic,
+                              label: 'Grabar clase o conversación',
+                              short: 'Grabar',
+                              onTap: _busy ? null : _record,
+                            ),
+                            _MenuObject(
+                              icon: Icons.link,
+                              label: 'Pegar enlace',
+                              short: 'Enlace',
+                              onTap: _busy ? null : _openUrl,
+                            ),
+                            _MenuObject(
+                              icon: Icons.photo_camera,
+                              label: 'Sacar una foto para leerla',
+                              short: 'Cámara',
+                              onTap: _busy ? null : () => _pickPhoto(ImageSource.camera),
+                            ),
+                            _MenuObject(
+                              icon: Icons.photo_library,
+                              label: 'Leer una foto de la galería',
+                              short: 'Fotos',
+                              onTap: _busy ? null : () => _pickPhoto(ImageSource.gallery),
+                            ),
+                            _MenuObject(
+                              icon: Icons.document_scanner_outlined,
+                              label: 'Escanear a PDF',
+                              short: 'Escanear',
+                              onTap: _busy ? null : _scanToPdf,
+                            ),
+                            _MenuObject(
+                              icon: Icons.calculate_outlined,
+                              label: 'Resolver ejercicio de matemáticas',
+                              short: 'Matemáticas',
+                              onTap: _busy
+                                  ? null
+                                  : () => Navigator.of(
+                                      context,
+                                    ).push(MaterialPageRoute(builder: (_) => MathScreen(handler: widget.handler))),
                             ),
                           ],
                         ),
-                        onTap: _busy ? null : () => _openEntry(entry),
-                      );
-                    },
+                      ],
+                    ),
                   ),
+                  if (_continueEntry != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.play_circle_outline, size: 40),
+                          title: const Text('Continuar escuchando'),
+                          subtitle: Text('${_continueEntry!.name} · página ${_continueEntry!.pageIndex + 1}'),
+                          onTap: _busy ? null : () => _openEntry(_continueEntry!),
+                        ),
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Documentos recientes'),
+                          selected: !_showScans,
+                          onSelected: (_) => setState(() => _showScans = false),
+                        ),
+                        ChoiceChip(
+                          label: Text('Escaneados ($_scanCount)'),
+                          selected: _showScans,
+                          onSelected: (_) => setState(() => _showScans = true),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: _entries.isEmpty
+                        ? _EmptyLibrary(
+                            scans: _showScans,
+                            onStart: _busy ? null : (_showScans ? _scanToPdf : _openFile),
+                          )
+                        : ListView.separated(
+                            itemCount: _entries.length,
+                            separatorBuilder: (_, _) => const Divider(height: 1),
+                            itemBuilder: (context, index) {
+                              final entry = _entries[index];
+                              final percent = (entry.progress * 100).round();
+                              return ListTile(
+                                leading: Icon(_iconFor(entry.kind)),
+                                title: Text(entry.name),
+                                subtitle: Text(
+                                  entry.finished
+                                      ? 'Terminado'
+                                      : entry.pageCount <= 0
+                                      ? 'Sin páginas leídas aún'
+                                      : 'Última página ${entry.pageIndex + 1} · $percent%',
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      tooltip: entry.favorite ? 'Quitar de favoritos' : 'Favorito',
+                                      icon: Icon(entry.favorite ? Icons.star : Icons.star_border),
+                                      onPressed: () async {
+                                        await widget.libraryStore.toggleFavorite(entry.id);
+                                        if (mounted) setState(() {});
+                                      },
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Eliminar de la biblioteca',
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: _busy ? null : () => _confirmDelete(entry),
+                                    ),
+                                  ],
+                                ),
+                                onTap: _busy ? null : () => _openEntry(entry),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
           ),
+          // Mientras carga un documento: un panel flotante en el centro, con el
+          // mismo fondo y forma que el resto (no un texto suelto).
+          if (_busy)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black54,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.22)),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _busyLabel,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 16),
+                              const LinearProgressIndicator(minHeight: 2),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
         ],
-      )))]),
+      ),
     );
   }
 
   IconData _iconFor(String kind) => switch (kind) {
-        'image' => Icons.image,
-        'epub' => Icons.menu_book,
-        'txt' => Icons.article,
-        'html' => Icons.language,
-        _ => Icons.picture_as_pdf,
-      };
+    'image' => Icons.image,
+    'epub' => Icons.menu_book,
+    'txt' => Icons.article,
+    'html' => Icons.language,
+    _ => Icons.picture_as_pdf,
+  };
 
   Future<void> _pickPhoto(ImageSource source) async {
     setState(() {
@@ -501,7 +635,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         originalName: source == ImageSource.camera ? 'Foto $stamp.jpg' : shot.name,
         bytes: bytes,
       );
-      await widget.settingsStore.saveLastDocumentId(entry.id);
       await _openEntry(entry, recienImportado: true);
     } catch (error) {
       if (!mounted) {
@@ -569,8 +702,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: const [
-          'pdf', 'epub', 'txt', 'html', 'htm', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp', 'tif', 'tiff', 'bmp',
-          'wav', 'm4a', 'mp3', 'aac', 'caf',
+          'pdf',
+          'epub',
+          'txt',
+          'html',
+          'htm',
+          'jpg',
+          'jpeg',
+          'png',
+          'heic',
+          'heif',
+          'webp',
+          'tif',
+          'tiff',
+          'bmp',
+          'wav',
+          'm4a',
+          'mp3',
+          'aac',
+          'caf',
         ],
         allowMultiple: true,
       );
@@ -596,11 +746,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (bytes == null || bytes.isEmpty) {
         throw AppException('No se pudo leer el archivo seleccionado.');
       }
-      final entry = await widget.libraryStore.importFile(
-        originalName: file.name,
-        bytes: bytes,
-      );
-      await widget.settingsStore.saveLastDocumentId(entry.id);
+      final entry = await widget.libraryStore.importFile(originalName: file.name, bytes: bytes);
       await _openEntry(entry, recienImportado: true);
     } catch (error) {
       if (!mounted) {
@@ -630,9 +776,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final now = DateTime.now();
     try {
       // Elegir cómo limpiar las páginas (B&N, Mejorar…) viendo cómo quedan.
-      final clean = await Navigator.of(context).push<List<CleanPage>>(
-        MaterialPageRoute(builder: (_) => ScanReviewScreen(paths: paths)),
-      );
+      final clean = await Navigator.of(
+        context,
+      ).push<List<CleanPage>>(MaterialPageRoute(builder: (_) => ScanReviewScreen(paths: paths)));
       if (clean == null || clean.isEmpty || !mounted) return;
       final pages = <ScannedPage>[];
       for (var i = 0; i < clean.length; i++) {
@@ -672,9 +818,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _busy = false;
         _showScans = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('«$fileName» quedó en Escaneados.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText('«$fileName» quedó en Escaneados.')));
       await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {'path': file.path});
     } catch (error) {
       if (mounted) showSafeMessage(context, error);
@@ -725,10 +869,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           autofocus: true,
           keyboardType: TextInputType.url,
           autocorrect: false,
-          decoration: const InputDecoration(
-            hintText: 'https://…',
-            helperText: 'Artículo, noticia, PDF o audio',
-          ),
+          decoration: const InputDecoration(hintText: 'https://…', helperText: 'Artículo, noticia, PDF o audio'),
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
@@ -762,9 +903,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         onProgress: (got, total) {
           if (!mounted) return;
           final mb = (got / (1024 * 1024)).toStringAsFixed(1);
-          setState(() => _busyLabel = total == null
-              ? 'Descargando… $mb MB'
-              : 'Descargando… ${(got * 100 / total).round()}%');
+          setState(
+            () => _busyLabel = total == null ? 'Descargando… $mb MB' : 'Descargando… ${(got * 100 / total).round()}%',
+          );
         },
       );
       if (!mounted) return;
@@ -775,14 +916,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
       }
       final entry = switch (content) {
         UrlText(:final title, :final text) => await widget.libraryStore.importFile(
-            originalName: '${title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}.txt',
-            bytes: utf8.encode('$title\n\n$text\n\nFuente: $uri\n'),
-          ),
-        UrlDocument(:final fileName, :final bytes) =>
-          await widget.libraryStore.importFile(originalName: fileName, bytes: bytes),
+          originalName: '${title.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}.txt',
+          bytes: utf8.encode('$title\n\n$text\n\nFuente: $uri\n'),
+        ),
+        UrlDocument(:final fileName, :final bytes) => await widget.libraryStore.importFile(
+          originalName: fileName,
+          bytes: bytes,
+        ),
         UrlAudio() => throw StateError('audio ya tratado'),
       };
-      await widget.settingsStore.saveLastDocumentId(entry.id);
       await _openEntry(entry, recienImportado: true);
     } catch (error) {
       if (mounted) showSafeMessage(context, error);
@@ -833,22 +975,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final job = ++_ocrJob;
     final sw = Stopwatch()..start();
     try {
-      _normalizer = TextNormalizer(
-        dictionary: await widget.pronunciationStore.load(),
-      );
+      _normalizer = TextNormalizer(dictionary: await widget.pronunciationStore.load());
       final stored = File(entry.storedPath);
       if (!await stored.exists()) {
         throw AppException('El archivo local ya no existe. Vuelve a abrirlo desde el teléfono.');
       }
       final doc = await _loader.load(entry);
       perfLog('tiempo: cargar ${doc.pageCount} pág. ${sw.elapsedMilliseconds} ms');
-      await widget.libraryStore.updateExtraction(
-        id: entry.id,
-        pageCount: doc.pageCount,
-        totalChunks: 0,
-      );
+      await widget.libraryStore.updateExtraction(id: entry.id, pageCount: doc.pageCount, totalChunks: 0);
       final updated = widget.libraryStore.byId(entry.id) ?? entry;
-      await widget.settingsStore.saveLastDocumentId(updated.id);
 
       // IA local: lo ya corregido en otra apertura se usa al momento; el resto
       // se corrige en segundo plano mientras se escucha (ver _runLlm).
@@ -882,18 +1017,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
           }
           // Las demás páginas siguen reconociéndose: no decir que no hay texto.
           noTextMessage = ocrInProgressMessage;
-          unawaited(ocr.then((_) {
-            if (job == _ocrJob) widget.handler.showMessage(ocrNoTextMessage);
-          }));
+          unawaited(
+            ocr.then((_) {
+              if (job == _ocrJob) widget.handler.showMessage(ocrNoTextMessage);
+            }),
+          );
         }
       }
 
-      await widget.handler.loadDocument(
-        entry: updated,
-        chunks: chunks,
-        noTextMessage: noTextMessage,
-        notice: notice,
-      );
+      await widget.handler.loadDocument(entry: updated, chunks: chunks, noTextMessage: noTextMessage, notice: notice);
       widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));
       widget.handler.pages = List.of(doc.pages);
       unawaited(_applyLanguage(chunks, manual: updated.language));
@@ -901,14 +1033,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
       // páginas; al terminar de extraerse el resto, se suma sin perder el lugar.
       final more = doc.morePages;
       if (more != null) {
-        unawaited(more.then((all) async {
-          if (job != _ocrJob || !mounted) return;
-          final full = await buildChunksInBackground(documentId: updated.id, pages: all, normalizer: _normalizer);
-          await widget.libraryStore.updateExtraction(id: updated.id, pageCount: all.length, totalChunks: 0);
-          await widget.handler.replaceChunks(full);
-          widget.handler.chapters = detectChapters(all);
-          widget.handler.pages = List.of(all);
-        }).catchError((Object _) {}));
+        unawaited(
+          more
+              .then((all) async {
+                if (job != _ocrJob || !mounted) return;
+                // Las primeras páginas se quedan como están (pueden venir ya
+                // corregidas o reconocidas); se suman las que faltaban. Así las
+                // correcciones y el OCR siguientes trabajan sobre el texto completo.
+                doc.pages.addAll(all.skip(doc.pages.length));
+                final full = await buildChunksInBackground(
+                  documentId: updated.id,
+                  pages: doc.pages,
+                  normalizer: _normalizer,
+                );
+                await widget.libraryStore.updateExtraction(id: updated.id, pageCount: doc.pages.length, totalChunks: 0);
+                await _publish(doc, job, chunks: full);
+              })
+              .catchError((Object _) {}),
+        );
       }
       if (llm.ready) unawaited(_runLlm(updated, doc, job, corrected));
       if (!mounted) {
@@ -918,11 +1060,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       await Navigator.of(context).push(
         MaterialPageRoute(
           settings: const RouteSettings(name: SwarmTransitionsBuilder.solidBackground),
-          builder: (_) => PlayerScreen(
-            handler: widget.handler,
-            entry: updated,
-            bookmarkStore: widget.bookmarkStore,
-          ),
+          builder: (_) => PlayerScreen(handler: widget.handler, entry: updated, bookmarkStore: widget.bookmarkStore),
         ),
       );
       if (mounted) {
@@ -945,19 +1083,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   /// OCR en segundo plano: cada página lista se añade a la reproducción.
-  Future<void> _runOcr(
-    LibraryEntry entry,
-    LoadedDocument doc,
-    int job,
-    Completer<void> first,
-  ) async {
+  Future<void> _runOcr(LibraryEntry entry, LoadedDocument doc, int job, Completer<void> first) async {
     try {
       await for (final r in _loader.runOcr(entry, doc)) {
         if (job != _ocrJob) return; // se abrió otro documento
         doc.pages[r.page] = r.text;
-        await widget.handler.replaceChunks(_chunksFor(entry, doc, _normalizer));
-        widget.handler.chapters = (doc.chapters ?? detectChapters(doc.pages));
-        widget.handler.pages = List.of(doc.pages);
+        await _publish(doc, job, chunks: _chunksFor(entry, doc, _normalizer));
         if (!first.isCompleted) first.complete();
       }
     } on OcrUnavailable {
@@ -967,6 +1098,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
     } finally {
       if (!first.isCompleted) first.complete();
     }
+  }
+
+  /// Pasa al reproductor el texto de [doc] (fragmentos, capítulos y páginas
+  /// juntos), solo si sigue abierto ese documento: un trabajo atrasado del
+  /// anterior (OCR, IA, páginas que faltaban) pisaba al recién abierto.
+  Future<void> _publish(LoadedDocument doc, int job, {required List<TextChunk> chunks}) async {
+    if (job != _ocrJob) return;
+    await widget.handler.replaceChunks(chunks);
+    if (job != _ocrJob) return;
+    widget.handler.chapters = doc.chapters ?? detectChapters(doc.pages);
+    widget.handler.pages = List.of(doc.pages);
   }
 
   late final CorrectedPagesStore _corrected = CorrectedPagesStore(widget.libraryStore.root);
@@ -988,9 +1130,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         saved[page] = text;
         await _corrected.save(entry.id, model: llm.model, pages: saved);
         if (doc.pages[page] == text) continue;
+        if (job != _ocrJob) return; // se abrió otro mientras se guardaba
         doc.pages[page] = text;
-        await widget.handler.replaceChunks(_chunksFor(entry, doc, _normalizer));
-        widget.handler.pages = List.of(doc.pages);
+        await _publish(doc, job, chunks: _chunksFor(entry, doc, _normalizer));
       }
     } on Exception {
       // la corrección es opcional: si falla, se sigue leyendo el original
@@ -1004,7 +1146,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
     await widget.handler.applyDocumentLanguage(lang, manual: manual);
   }
 }
-
 
 Future<void> _showLlmSettings(BuildContext context) async {
   final llm = LlmCleaner.instance;
@@ -1035,12 +1176,15 @@ Future<void> _showLlmSettings(BuildContext context) async {
               value: on,
               onChanged: (v) => setS(() => on = v),
             ),
-            TextField(controller: urlCtl, decoration: const InputDecoration(labelText: 'URL de Ollama')),
-            TextField(controller: modelCtl, decoration: const InputDecoration(labelText: 'Modelo')),
-            if (status != null) ...[
-              const SizedBox(height: 8),
-              Text(status!, style: const TextStyle(fontSize: 12)),
-            ],
+            TextField(
+              controller: urlCtl,
+              decoration: const InputDecoration(labelText: 'URL de Ollama'),
+            ),
+            TextField(
+              controller: modelCtl,
+              decoration: const InputDecoration(labelText: 'Modelo'),
+            ),
+            if (status != null) ...[const SizedBox(height: 8), Text(status!, style: const TextStyle(fontSize: 12))],
           ],
         ),
         actions: [
@@ -1048,7 +1192,11 @@ Future<void> _showLlmSettings(BuildContext context) async {
             onPressed: () async {
               await llm.save(url: urlCtl.text, model: modelCtl.text, enabled: on);
               final e = await llm.ping();
-              setS(() => status = e == null ? 'Conectado ✓' : 'Sin conexión: $e');
+              setS(
+                () => status = e == null
+                    ? 'Conectado ✓'
+                    : 'Sin conexión: revisa que la computadora esté encendida, en la misma red Wi-Fi y con Ollama abierto.',
+              );
             },
             child: const Text('Probar'),
           ),
@@ -1065,20 +1213,213 @@ Future<void> _showLlmSettings(BuildContext context) async {
   );
 }
 
-/// Un objeto del menú principal: solo el ícono, grande. El nombre se ve al
-/// mantenerlo presionado y es lo que dice el lector de pantalla.
-class _MenuObject extends StatelessWidget {
-  const _MenuObject({required this.icon, required this.label, required this.onTap});
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
+/// Biblioteca sin documentos: qué se puede abrir y un botón para empezar.
+class _EmptyLibrary extends StatelessWidget {
+  const _EmptyLibrary({required this.scans, required this.onStart});
+  final bool scans;
+  final VoidCallback? onStart;
 
   @override
-  Widget build(BuildContext context) => IconButton(
-        tooltip: label,
-        iconSize: 44,
-        padding: const EdgeInsets.all(14),
-        onPressed: onTap,
-        icon: Icon(icon),
-      );
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(scans ? 'Todavía no escaneaste documentos.' : 'Todavía no hay documentos.', style: t.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              scans
+                  ? 'Escanea hojas con la cámara: quedan como PDF con su texto, listas para escuchar.'
+                  : 'Abre un PDF, un EPUB o una imagen, pega un enlace o saca una foto: PSSTH! lo lee en voz '
+                        'alta, sin Internet.',
+              textAlign: TextAlign.center,
+              style: t.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onStart,
+              icon: Icon(scans ? Icons.document_scanner_outlined : Icons.folder_open),
+              label: Text(scans ? 'Escanear a PDF' : 'Abrir documento'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
+
+/// Un objeto del menú principal: el ícono grande con una palabra debajo
+/// ([short]). El nombre completo ([label]) se ve al mantenerlo presionado y
+/// es lo que dice el lector de pantalla.
+class _MenuObject extends StatelessWidget {
+  const _MenuObject({required this.icon, required this.label, required this.short, required this.onTap});
+  final IconData icon;
+  final String label;
+  final String short;
+  final VoidCallback? onTap;
+
+  static const _width = 84.0;
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: label,
+    excludeFromSemantics: true,
+    child: Semantics(
+      button: true,
+      enabled: onTap != null,
+      label: label,
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Opacity(
+          // Mientras carga otra cosa no se puede tocar: se ve apagado.
+          opacity: onTap == null ? 0.38 : 1,
+          child: SizedBox(
+            width: _width,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 44),
+                  const SizedBox(height: 4),
+                  Text(
+                    short,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Fondo (negro o blanco), dispersión de letras y letra muy legible.
+Future<void> showComfortSheet(BuildContext context) => showSwarmSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  builder: (ctx) => SafeArea(
+    child: ListenableBuilder(
+      listenable: Listenable.merge([
+        Comfort.paper,
+        Comfort.scatter,
+        Comfort.legible,
+        Comfort.textSize,
+        Comfort.lineHeight,
+        Comfort.keepControls,
+        Comfort.skipCitations,
+      ]),
+      builder: (ctx, _) => ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.85),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Fondo', style: Theme.of(ctx).textTheme.titleLarge),
+              RadioGroup<Paper>(
+                groupValue: Comfort.paper.value,
+                onChanged: (p) {
+                  if (p != null) Comfort.setPaper(p);
+                },
+                child: Column(
+                  children: [
+                    for (final p in Paper.values)
+                      RadioListTile<Paper>(
+                        value: p,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(p.label),
+                        subtitle: Text(p.detail),
+                      ),
+                  ],
+                ),
+              ),
+              const Divider(),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: Comfort.scatter.value,
+                onChanged: Comfort.setScatter,
+                title: const Text('Dispersión de letras'),
+                subtitle: Text(
+                  Comfort.scatter.value && MediaQuery.of(ctx).disableAnimations
+                      ? 'El sistema pide reducir el movimiento: la app queda quieta.'
+                      : 'Las pantallas se forman desde un enjambre de letras y el fondo se mueve. '
+                            'Apagada, la pantalla es lisa y todo aparece de una vez.',
+                ),
+              ),
+              const Divider(),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: Comfort.legible.value,
+                onChanged: Comfort.setLegible,
+                title: const Text('Letra muy legible'),
+                subtitle: const Text('Letras más abiertas y fáciles de distinguir.'),
+              ),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text('Lectura', style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              Text('Tamaño de la letra: ${Comfort.textSize.value.round()}'),
+              Slider(
+                value: Comfort.textSize.value,
+                min: Comfort.minTextSize,
+                max: Comfort.maxTextSize,
+                divisions: (Comfort.maxTextSize - Comfort.minTextSize).round(),
+                label: '${Comfort.textSize.value.round()}',
+                onChanged: Comfort.setTextSize,
+              ),
+              // Muestra cómo queda el texto que se lee.
+              Text(
+                'Así se verá el texto que se lee en voz alta.',
+                style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
+                  fontSize: Comfort.textSize.value,
+                  height: Comfort.lineHeight.value.height,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Espacio entre renglones'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final l in LineSpacing.values)
+                    ChoiceChip(
+                      label: Text(l.label),
+                      selected: Comfort.lineHeight.value == l,
+                      onSelected: (_) => Comfort.setLineHeight(l),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: Comfort.keepControls.value,
+                onChanged: Comfort.setKeepControls,
+                title: const Text('Mantener controles visibles'),
+                subtitle: const Text('Mientras lee, los botones no se esconden solos.'),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: Comfort.skipCitations.value,
+                onChanged: Comfort.setSkipCitations,
+                title: const Text('Saltar citas y notas'),
+                subtitle: const Text('No lee en voz alta las referencias como [12] o (Pérez, 2019).'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  ),
+);

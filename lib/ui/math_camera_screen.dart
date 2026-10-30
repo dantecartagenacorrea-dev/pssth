@@ -47,7 +47,7 @@ class _MathCameraScreenState extends State<MathCameraScreen> {
       if (mounted) {
         setState(() => _error = e.code == 'CameraAccessDenied'
             ? 'Sin permiso de cámara. Actívalo en Ajustes.'
-            : 'No se pudo abrir la cámara: ${e.description ?? e.code}');
+            : 'No se pudo abrir la cámara. Ciérrala en otras apps e inténtalo de nuevo.');
       }
     }
   }
@@ -73,8 +73,8 @@ class _MathCameraScreenState extends State<MathCameraScreen> {
         // la foto original es temporal: si no se borra, no pasa nada
       }
       if (mounted) Navigator.pop(context, out);
-    } on CameraException catch (e) {
-      if (mounted) setState(() => _error = 'No se pudo tomar la foto: ${e.description ?? e.code}');
+    } on CameraException {
+      if (mounted) setState(() => _error = 'No se pudo tomar la foto. Inténtalo de nuevo.');
     } finally {
       if (mounted) setState(() => _shooting = false);
     }

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:archive/archive.dart';
 
 import '../domain/chapter_detector.dart';
+import '../domain/html_text.dart' show decodeHtmlEntities;
 import '../domain/text_paginator.dart';
 
 class EpubBook {
@@ -115,32 +116,11 @@ String htmlToText(String html) {
       .replaceAll(RegExp(r'</(p|div|h[1-6]|li|tr|blockquote|section)>', caseSensitive: false), '\n\n')
       .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
       .replaceAll(RegExp(r'<[^>]+>'), '');
-  t = _decodeEntities(t);
+  // El mismo traductor que las páginas web (el propio no sabía &ntilde;).
+  t = decodeHtmlEntities(t);
   t = t
       .replaceAll(RegExp(r'[ \t\u00A0]+'), ' ')
       .replaceAll(RegExp(r' *\n *'), '\n')
       .replaceAll(RegExp(r'\n{3,}'), '\n\n');
   return t.trim();
 }
-
-const _named = {
-  'amp': '&', 'lt': '<', 'gt': '>', 'quot': '"', 'apos': "'", 'nbsp': ' ',
-  'hellip': '…', 'mdash': '—', 'ndash': '–', 'laquo': '«', 'raquo': '»',
-  'ldquo': '“', 'rdquo': '”', 'lsquo': '‘', 'rsquo': '’',
-};
-
-String _decodeEntities(String s) => s.replaceAllMapped(
-      RegExp(r'&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z]+);'),
-      (m) {
-        final e = m[1]!;
-        if (e.startsWith('#x')) {
-          final c = int.tryParse(e.substring(2), radix: 16);
-          return c == null ? m[0]! : String.fromCharCode(c);
-        }
-        if (e.startsWith('#')) {
-          final c = int.tryParse(e.substring(1));
-          return c == null ? m[0]! : String.fromCharCode(c);
-        }
-        return _named[e] ?? m[0]!;
-      },
-    );

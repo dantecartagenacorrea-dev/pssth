@@ -84,6 +84,19 @@ void main() {
     expect(m.toLines().first, 'final');
   });
 
+  test('studyOutline arma la lista de lo que enumera el documento', () {
+    final pages = [
+      for (var i = 1; i <= 4; i++) 'LEY Nº\n$i\nTÍTULO NÚMERO $i\nCRITERIO\nTexto.',
+    ];
+    final o = studyOutline(pages, 0, 4)!;
+    expect(o.$1, 'Las 4 leyes');
+    expect(o.$2.first, 'Ley 1 · Título número 1');
+    expect(studyOutline(pages, 0, 2), isNull); // menos de tres
+    const s = StudySummary(concepts: [], ideas: ['Idea.'], brief: '');
+    final lines = s.withOutline(o.$1, o.$2).toLines();
+    expect(lines, containsAllInOrder(['Las 4 leyes.', 'Ley 1. Título número 1.']));
+  });
+
   test('StudySummary.fromMap ignora lo vacío', () {
     final s = StudySummary.fromMap({
       'concepts': [

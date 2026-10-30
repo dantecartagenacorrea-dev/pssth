@@ -54,8 +54,18 @@ String voiceDisplayLabel({required String name, required String locale, String? 
     _ when n.endsWith('-local') => 'Alta',
     _ => 'Básica',
   };
-  final limpio = name.replaceAll(RegExp(r'\s*\(natural\)\s*$', caseSensitive: false), '');
+  final limpio = _friendlyName(name.replaceAll(RegExp(r'\s*\(natural\)\s*$', caseSensitive: false), ''));
   return [limpio, ?region, calidad].join(' · ');
+}
+
+/// Las voces de Google en Android llegan como "es-us-x-esd-local": se
+/// muestran como "Voz ESD" (el resto ya lo dicen la región y la calidad).
+String _friendlyName(String name) {
+  final m = RegExp(r'^[a-z]{2,3}-[a-z0-9]{2,3}-x-([a-z0-9]+)(?:-(?:local|network))?$', caseSensitive: false).firstMatch(name);
+  if (m != null) return 'Voz ${m[1]!.toUpperCase()}';
+  // Otras con forma de código ("es-ES-language"): el idioma ya se ve aparte.
+  if (RegExp(r'^[a-z]{2,3}[-_][a-z]{2,3}([-_]\w+)*$', caseSensitive: false).hasMatch(name)) return 'Voz del sistema';
+  return name;
 }
 
 /// Agrupa las voces para elegir sin perderse entre cientos: primero las

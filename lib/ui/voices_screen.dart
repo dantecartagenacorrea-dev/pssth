@@ -9,12 +9,7 @@ import 'swarm_transition.dart';
 
 /// Voces y modelos opcionales. Todo se descarga una vez y funciona sin conexión.
 class VoicesScreen extends StatefulWidget {
-  const VoicesScreen({
-    super.key,
-    required this.modelStore,
-    required this.onModelsChanged,
-    required this.native,
-  });
+  const VoicesScreen({super.key, required this.modelStore, required this.onModelsChanged, required this.native});
 
   final ModelStore modelStore;
 
@@ -53,14 +48,14 @@ class _VoicesScreenState extends State<VoicesScreen> {
   /// Una descarga que siguió con la app cerrada (gestor de descargas del
   /// sistema): se retoma para verificarla e instalarla.
   Future<void> _resumePending() async {
-    for (final m in [kokoroEsModel, whisperBaseModel]) {
+    for (final m in optionalModels) {
       if (widget.modelStore.isInstalled(m) || widget.modelStore.isInstalling(m)) continue;
       if (await widget.modelStore.hasPendingDownload(m) && mounted) unawaited(_install(m));
     }
   }
 
   Future<void> _refreshSizes() async {
-    for (final m in [kokoroEsModel, whisperBaseModel]) {
+    for (final m in optionalModels) {
       _sizes[m.id] = await widget.modelStore.installedBytes(m);
     }
     if (mounted) setState(() {});
@@ -72,9 +67,12 @@ class _VoicesScreenState extends State<VoicesScreen> {
       _progress[m.id] = const ModelProgress(ModelPhase.downloading, 0);
     });
     try {
-      await widget.modelStore.install(m, onProgress: (p) {
-        if (mounted) setState(() => _progress[m.id] = p);
-      });
+      await widget.modelStore.install(
+        m,
+        onProgress: (p) {
+          if (mounted) setState(() => _progress[m.id] = p);
+        },
+      );
       await widget.onModelsChanged();
     } on ModelInstallException catch (e) {
       _errors[m.id] = e.message;
@@ -182,6 +180,13 @@ class _VoicesScreenState extends State<VoicesScreen> {
             'Mayor naturalidad en español (voces Dora y Alex). Funciona sin conexión después de instalarse. '
             'Necesita un teléfono reciente; si va lento, PSSTH! vuelve solo a la voz del sistema.',
           ),
+          const SizedBox(height: 8),
+          _modelTile(piperAldModel, 'Voz latinoamericana clara y firme, de acento mexicano neutro. Sin conexión.'),
+          const SizedBox(height: 8),
+          _modelTile(
+            piperClaudeModel,
+            'Otra voz latinoamericana de acento mexicano neutro, de mayor calidad. Sin conexión.',
+          ),
           if (Platform.isIOS) ...[
             const SizedBox(height: 8),
             Card(
@@ -216,7 +221,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Los modelos vienen del proyecto sherpa-onnx (licencia Apache 2.0) y se verifican antes de instalarse. '
+            'Los modelos vienen de los proyectos sherpa-onnx y Piper (licencias libres) y se verifican antes de instalarse. '
             'Ningún documento ni grabación sale del dispositivo.',
             style: Theme.of(context).textTheme.bodySmall,
           ),

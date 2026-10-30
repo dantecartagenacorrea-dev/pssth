@@ -8,7 +8,6 @@ void main() {
   test('preparar la limpieza una vez da el mismo texto que limpiar trozo a trozo', () async {
     SharedPreferences.setMockInitialValues({});
     final c = TranscriptCleaner.instance;
-    await c.load();
     const doc = 'El asiento contable del balance y el libro diario. La cuenta de activo y pasivo del ejercicio.';
     final pages = ['El asiento contable del balance', 'y el libro diario.', 'La cuenta de activo y pasivo del ejercicio.'];
     final clean = c.cleanerFor(doc);

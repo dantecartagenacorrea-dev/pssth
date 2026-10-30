@@ -60,6 +60,6 @@ void main() {
     expect(voiceDisplayLabel(name: 'Mónica', locale: 'es-ES', quality: 'enhanced'), 'Mónica · España · Mejorada');
     expect(voiceDisplayLabel(name: 'Jorge', locale: 'es-ES', quality: 'default'), 'Jorge · España · Básica');
     expect(voiceDisplayLabel(name: 'Dora (natural)', locale: 'es-ES', quality: 'natural'), 'Dora · España · Natural');
-    expect(voiceDisplayLabel(name: 'es-us-x-sfb-local', locale: 'es-US', quality: null), 'es-us-x-sfb-local · EE. UU. · Alta');
+    expect(voiceDisplayLabel(name: 'es-us-x-sfb-local', locale: 'es-US', quality: null), 'Voz SFB · EE. UU. · Alta');
   });
 }

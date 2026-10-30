@@ -97,6 +97,23 @@ class LlmCleaner {
     }
   }
 
+  /// Respuesta en JSON con la forma de [schema] (resúmenes y preguntas de
+  /// estudio con la IA de la computadora). null si el servidor no respondió.
+  Future<Object?> generateJson(String system, String prompt, Map<String, dynamic> schema) async {
+    final r = await _post('/api/chat', {
+      'model': model,
+      'stream': false,
+      'format': schema,
+      'options': {'temperature': 0.3},
+      'messages': [
+        {'role': 'system', 'content': system},
+        {'role': 'user', 'content': prompt},
+      ],
+    }, timeout: const Duration(minutes: 4));
+    final content = (r?['message'] as Map?)?['content'] as String?;
+    return content == null ? null : jsonDecode(content);
+  }
+
   Future<Map<String, dynamic>?> _post(String path, Map<String, dynamic>? body,
       {required Duration timeout, bool get = false}) async {
     final base = url.replaceAll(RegExp(r'/v1/?$'), '').replaceAll(RegExp(r'/$'), '');

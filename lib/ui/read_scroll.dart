@@ -75,7 +75,7 @@ class _ReadScrollState extends State<_ReadScroll> {
     final all = widget.pages.map((p) => p.$2).join('\n\n');
     await Clipboard.setData(ClipboardData(text: all));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Texto leído copiado.')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText('Texto leído copiado.')));
   }
 
   @override
@@ -99,7 +99,9 @@ class _ReadScrollState extends State<_ReadScroll> {
         ),
         Expanded(
           child: widget.pages.isEmpty
-              ? Center(child: Text('Todavía no se leyó nada.', style: TextStyle(color: gray)))
+              ? Center(
+                  child: Text('Todavía no se leyó nada.', style: TextStyle(color: gray)),
+                )
               // Una sola zona de selección: se puede marcar de una página a otra.
               : SelectionArea(
                   child: ListView.builder(

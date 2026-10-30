@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../domain/scan_filters.dart';
 import 'fragment_image.dart';
+import 'swarm_transition.dart';
 
 /// Página limpia lista para el PDF.
 typedef CleanPage = ({Uint8List jpeg, int width, int height});
@@ -31,9 +32,9 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
   final _originals = <int, Future<Uint8List>>{};
 
   Future<CleanPage> _clean(int page, ScanFilter filter) => _done.putIfAbsent((filter, page), () async {
-        final jpeg = await _originals.putIfAbsent(page, () => File(widget.paths[page]).readAsBytes());
-        return applyScanFilter(jpeg, filter);
-      });
+    final jpeg = await _originals.putIfAbsent(page, () => File(widget.paths[page]).readAsBytes());
+    return applyScanFilter(jpeg, filter);
+  });
 
   Future<void> _finish() async {
     setState(() => _finishing = true);
@@ -43,7 +44,9 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() => _finishing = false);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('No se pudo preparar la página: $error')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: SwarmText('No se pudo preparar la página. Inténtalo de nuevo.')));
     }
   }
 

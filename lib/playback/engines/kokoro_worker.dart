@@ -5,8 +5,8 @@ import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
 import '../../domain/spanish_phonemizer.dart';
 
-/// Sintetiza con Kokoro (sherpa-onnx) en un isolate propio para no bloquear la
-/// interfaz. Devuelve audio WAV de 16 bits.
+/// Sintetiza con Kokoro (o una voz Piper) vía sherpa-onnx, en un isolate
+/// propio para no bloquear la interfaz. Devuelve audio WAV de 16 bits.
 class KokoroWorker {
   KokoroWorker._(this._isolate, this._commands);
   final Isolate _isolate;
@@ -14,9 +14,16 @@ class KokoroWorker {
   var _nextId = 0;
 
   /// Carga el modelo (varios segundos). Lanza si falta algún archivo o falla.
-  static Future<KokoroWorker> start(String modelDir, {int threads = 2, String lang = 'es'}) async {
+  static Future<KokoroWorker> start(String modelDir, {int threads = 2, String lang = 'es'}) =>
+      _start([modelDir, threads, lang, '']);
+
+  /// Una voz Piper: [onnx] es el modelo y [tokens] sus fonemas.
+  static Future<KokoroWorker> startPiper(String onnx, String tokens, {int threads = 2}) =>
+      _start([onnx, threads, tokens, 'piper']);
+
+  static Future<KokoroWorker> _start(List<Object> config) async {
     final ready = ReceivePort();
-    final isolate = await Isolate.spawn(_entry, [ready.sendPort, modelDir, threads, lang]);
+    final isolate = await Isolate.spawn(_entry, [ready.sendPort, ...config]);
     final first = await ready.first;
     ready.close();
     if (first is SendPort) return KokoroWorker._(isolate, first);
@@ -45,19 +52,23 @@ void _entry(List<Object> args) {
   final out = args[0] as SendPort;
   final dir = args[1] as String;
   final threads = args[2] as int;
-  final lang = args[3] as String;
+  final lang = args[3] as String; // en Piper: el archivo de fonemas
+  final piper = args[4] == 'piper';
   sherpa.OfflineTts tts;
   try {
     sherpa.initBindings();
     final config = sherpa.OfflineTtsConfig(
       model: sherpa.OfflineTtsModelConfig(
-        kokoro: sherpa.OfflineTtsKokoroModelConfig(
-          model: '$dir/model.int8.onnx',
-          voices: '$dir/voices.bin',
-          tokens: '$dir/tokens.txt',
-          lexicon: '$dir/lexicon-us-en.txt,$dir/lexicon-zh.txt',
-          lang: lang,
-        ),
+        kokoro: piper
+            ? const sherpa.OfflineTtsKokoroModelConfig()
+            : sherpa.OfflineTtsKokoroModelConfig(
+                model: '$dir/model.int8.onnx',
+                voices: '$dir/voices.bin',
+                tokens: '$dir/tokens.txt',
+                lexicon: '$dir/lexicon-us-en.txt,$dir/lexicon-zh.txt',
+                lang: lang,
+              ),
+        vits: piper ? sherpa.OfflineTtsVitsModelConfig(model: dir, tokens: lang) : const sherpa.OfflineTtsVitsModelConfig(),
         numThreads: threads,
         debug: false,
         provider: 'cpu',

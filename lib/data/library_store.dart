@@ -62,7 +62,17 @@ class LibraryStore {
 
   /// Se escribe en un archivo aparte y se cambia de una vez: si la app se
   /// cierra a mitad de camino, la lista anterior queda entera.
-  Future<void> _save() async {
+  /// De a uno: dos guardados a la vez (la posición de lectura y una pausa)
+  /// compartían el archivo aparte y uno fallaba o lo dañaba.
+  Future<void> _save() {
+    final next = _saving.then((_) => _write());
+    _saving = next.then((_) {}, onError: (_) {});
+    return next;
+  }
+
+  Future<void> _saving = Future.value();
+
+  Future<void> _write() async {
     final tmp = File('${_indexFile.path}.tmp');
     await tmp.writeAsString(const JsonEncoder.withIndent('  ').convert(_data.toJson()), flush: true);
     await tmp.rename(_indexFile.path);

@@ -75,10 +75,15 @@ class _FragmentImageState extends State<FragmentImage> with SingleTickerProvider
       builder: (context, box) {
         final fit = math.min(box.maxWidth / img.width, box.maxHeight / img.height);
         final size = Size(img.width * fit, img.height * fit);
+        final paint = CustomPaint(size: size, painter: _ShardPainter(img, _shards, _anim, _spread, fit));
+        final theme = Theme.of(context);
+        // Sobre el fondo blanco una hoja blanca no se distingue: borde fino.
+        if (theme.brightness == Brightness.dark) return Center(child: paint);
         return Center(
-          child: CustomPaint(
-            size: size,
-            painter: _ShardPainter(img, _shards, _anim, _spread, fit),
+          child: DecoratedBox(
+            position: DecorationPosition.foreground,
+            decoration: BoxDecoration(border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.22))),
+            child: paint,
           ),
         );
       },
@@ -88,14 +93,14 @@ class _FragmentImageState extends State<FragmentImage> with SingleTickerProvider
 
 class _Shard {
   _Shard(this.col, this.row, int cols, int rows, math.Random r)
-      : delay = r.nextDouble() * 0.45,
-        angle = (r.nextDouble() - 0.5) * math.pi * 2,
-        dx = (r.nextDouble() - 0.5) * 2.2,
-        dy = (r.nextDouble() - 0.5) * 2.2 + 0.35, // suben un poco desde abajo
-        ux = col / cols,
-        uy = row / rows,
-        uw = 1 / cols,
-        uh = 1 / rows;
+    : delay = r.nextDouble() * 0.45,
+      angle = (r.nextDouble() - 0.5) * math.pi * 2,
+      dx = (r.nextDouble() - 0.5) * 2.2,
+      dy = (r.nextDouble() - 0.5) * 2.2 + 0.35, // suben un poco desde abajo
+      ux = col / cols,
+      uy = row / rows,
+      uw = 1 / cols,
+      uh = 1 / rows;
 
   final int col, row;
   final double delay, angle, dx, dy;
@@ -116,8 +121,12 @@ class _ShardPainter extends CustomPainter {
     final t = anim.value;
     final dst = Offset.zero & size;
     if (t >= 1) {
-      canvas.drawImageRect(image, Offset.zero & Size(image.width.toDouble(), image.height.toDouble()), dst,
-          Paint()..filterQuality = FilterQuality.medium);
+      canvas.drawImageRect(
+        image,
+        Offset.zero & Size(image.width.toDouble(), image.height.toDouble()),
+        dst,
+        Paint()..filterQuality = FilterQuality.medium,
+      );
       return;
     }
     final w = image.width.toDouble(), h = image.height.toDouble();
@@ -127,18 +136,28 @@ class _ShardPainter extends CustomPainter {
       final away = (1 - p) * spread;
       final src = Rect.fromLTWH(s.ux * w, s.uy * h, s.uw * w, s.uh * h);
       final home = Offset((s.ux + s.uw / 2) * size.width, (s.uy + s.uh / 2) * size.height);
-      transforms.add(ui.RSTransform.fromComponents(
-        rotation: s.angle * away,
-        scale: fit * (1 - 0.6 * away),
-        anchorX: src.width / 2,
-        anchorY: src.height / 2,
-        translateX: home.dx + s.dx * size.width * away,
-        translateY: home.dy + s.dy * size.height * away,
-      ));
+      transforms.add(
+        ui.RSTransform.fromComponents(
+          rotation: s.angle * away,
+          scale: fit * (1 - 0.6 * away),
+          anchorX: src.width / 2,
+          anchorY: src.height / 2,
+          translateX: home.dx + s.dx * size.width * away,
+          translateY: home.dy + s.dy * size.height * away,
+        ),
+      );
       rects.add(src);
       colors.add(Colors.white.withValues(alpha: (0.15 + 0.85 * p).clamp(0.0, 1.0)));
     }
-    canvas.drawAtlas(image, transforms, rects, colors, BlendMode.modulate, null, Paint()..filterQuality = FilterQuality.low);
+    canvas.drawAtlas(
+      image,
+      transforms,
+      rects,
+      colors,
+      BlendMode.modulate,
+      null,
+      Paint()..filterQuality = FilterQuality.low,
+    );
   }
 
   @override

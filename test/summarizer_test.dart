@@ -2,6 +2,24 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lector_pdf/domain/summarizer.dart';
 
 void main() {
+  test('resumen para estudiar sin IA: conceptos, ideas y resumen breve', () {
+    final text = List.generate(
+      12,
+      (i) =>
+          'El poder se conquista con estrategia y paciencia número $i. '
+          'La estrategia exige observar a los rivales con calma. '
+          'Quien domina la paciencia controla el tiempo del juego.',
+    ).join(' ');
+    final s = studySummaryExtractive(text);
+    expect(s.ideas, isNotEmpty);
+    expect(s.brief, isNotEmpty);
+    final terms = s.concepts.map((c) => c.term.toLowerCase()).toList();
+    expect(terms, contains('estrategia'));
+    expect(terms, contains('paciencia'));
+    expect(s.concepts.every((c) => c.meaning.isNotEmpty), isTrue);
+    expect(studySummaryExtractive('corto').isEmpty, isTrue);
+  });
+
   const texto = '''
 La masonería simbólica trabaja con herramientas de la construcción para enseñar virtudes morales a sus miembros.
 El mandil es una de las herramientas simbólicas más antiguas de la masonería y representa el trabajo honesto.
@@ -49,5 +67,25 @@ Las herramientas de la construcción sirven como lenguaje simbólico para transm
     expect(a, b);
     expect(a.length, lessThanOrEqualTo(30));
     expect(sw.elapsedMilliseconds, lessThan(5000));
+  });
+
+  test('el resumen para estudiar no toma títulos en mayúsculas ni palabras comunes', () {
+    const text =
+        'LAS 48 LEYES DEL PODER ROBERT GREENE EDITORIAL ATLANTIDA BUENOS AIRES. '
+        'LEY N° 1 página 29 NUNCA LE HAGA SOMBRA A SU AMO Usted debe hacer que sus superiores se sientan superiores. '
+        'La ingratitud tiene una historia larga y profunda entre los cortesanos. '
+        'Los cortesanos que olvidan la ingratitud de su amo pierden el favor. '
+        'Usted nunca debe confiar en la gratitud de los cortesanos ni del amo. '
+        'La gratitud del amo dura poco y la ingratitud dura mucho entre cortesanos. '
+        'Un cortesano prudente conoce la ingratitud y la gratitud de cada amo.';
+    final s = studySummaryExtractive(text);
+    final terms = [for (final c in s.concepts) c.term.toLowerCase()];
+    expect(terms, isNot(contains('usted')));
+    expect(terms, isNot(contains('nunca')));
+    expect(terms, isNot(contains('leyes')));
+    for (final part in [s.brief, ...s.ideas, for (final c in s.concepts) c.meaning]) {
+      expect(part, isNot(contains('GREENE')), reason: part);
+      expect(part, isNot(contains('NUNCA LE HAGA')), reason: part);
+    }
   });
 }

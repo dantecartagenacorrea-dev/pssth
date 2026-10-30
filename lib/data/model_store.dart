@@ -21,7 +21,12 @@ class ModelSpec {
     required this.extractedDir,
     required this.requiredFiles,
     this.prune = const [],
+    this.files = const [],
   });
+
+  /// Si no está vacía, el modelo se baja archivo por archivo (sin paquete que
+  /// extraer): solo lo que la app usa, cada uno verificado por su huella.
+  final List<ModelFile> files;
 
   final String id;
   final String title;
@@ -43,6 +48,15 @@ class ModelSpec {
   String get sizeLabel => '${(sizeBytes / (1024 * 1024)).round()} MB';
 }
 
+/// Un archivo de un modelo que se baja suelto.
+class ModelFile {
+  const ModelFile(this.name, this.url, this.sizeBytes, this.sha256);
+  final String name;
+  final String url;
+  final int sizeBytes;
+  final String sha256;
+}
+
 const kokoroEsModel = ModelSpec(
   id: 'kokoro',
   title: 'Voz natural (español)',
@@ -57,16 +71,95 @@ const kokoroEsModel = ModelSpec(
   prune: ['espeak-ng-data'],
 );
 
+// Solo los tres archivos que usa la app (los mismos del paquete de sherpa-onnx,
+// que además trae una versión grande sin usar): 161 MB en vez de 208.
+const _whisperRepo =
+    'https://huggingface.co/csukuangfj/sherpa-onnx-whisper-base/resolve/bb53ee204431c90d314c1cc08d28d23e5b7927cc';
 const whisperBaseModel = ModelSpec(
   id: 'whisper',
   title: 'Transcripción sin conexión',
-  url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-base.tar.bz2',
-  sizeBytes: 207557382,
-  sha256: '911b2083efd7c0dca2ac3b358b75222660dc09fb716d64fbfc417ba6c99ff3de',
-  extractedDir: 'sherpa-onnx-whisper-base',
+  url: _whisperRepo,
+  sizeBytes: 29120534 + 130672026 + 816730,
+  sha256: '',
+  extractedDir: '',
   requiredFiles: ['base-encoder.int8.onnx', 'base-decoder.int8.onnx', 'base-tokens.txt'],
-  prune: ['base-encoder.onnx', 'base-decoder.onnx', 'test_wavs'],
+  files: [
+    ModelFile(
+      'base-encoder.int8.onnx',
+      '$_whisperRepo/base-encoder.int8.onnx',
+      29120534,
+      '0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11',
+    ),
+    ModelFile(
+      'base-decoder.int8.onnx',
+      '$_whisperRepo/base-decoder.int8.onnx',
+      130672026,
+      '9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d',
+    ),
+    ModelFile(
+      'base-tokens.txt',
+      '$_whisperRepo/base-tokens.txt',
+      816730,
+      'b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126',
+    ),
+  ],
 );
+
+/// Voces latinoamericanas (Piper, acento mexicano neutro), convertidas por
+/// sherpa-onnx. Solo el modelo y sus fonemas: el español se le pasa ya
+/// convertido a fonemas, como a la voz natural.
+ModelSpec _piperVoice(
+  String id,
+  String title,
+  String name,
+  String commit,
+  int onnxBytes,
+  String onnxSha,
+  int tokensBytes,
+  String tokensSha,
+) {
+  final repo = 'https://huggingface.co/csukuangfj/vits-piper-$name/resolve/$commit';
+  return ModelSpec(
+    id: id,
+    title: title,
+    url: repo,
+    sizeBytes: onnxBytes + tokensBytes,
+    sha256: '',
+    extractedDir: '',
+    requiredFiles: ['$name.onnx', 'tokens.txt'],
+    files: [
+      ModelFile('$name.onnx', '$repo/$name.onnx', onnxBytes, onnxSha),
+      ModelFile('tokens.txt', '$repo/tokens.txt', tokensBytes, tokensSha),
+    ],
+  );
+}
+
+final piperAldModel = _piperVoice(
+  'piper-ald',
+  'Voz latina: Ald',
+  'es_MX-ald-medium',
+  '7e97a71dada30e05c6bdb069f64c9e021401bfef',
+  63201426,
+  'b5e77074846d97651421244167a11d53c762fa41f953de98ab21957a6036eab4',
+  921,
+  '87c8ef66eae5473ed0cc0366b3964c736ca6c5f676c979522ea31234e47430b9',
+);
+final piperClaudeModel = _piperVoice(
+  'piper-claude',
+  'Voz latina: Claude',
+  'es_MX-claude-high',
+  '802b53b82c60d3de4f8b965314ac99bbec2499b0',
+  63122441,
+  'f5eceb904655a60141037d957f21e6257efa93b8c8b7b818c0c57396217bcb1c',
+  940,
+  'ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d',
+);
+final piperVoiceModels = [piperAldModel, piperClaudeModel];
+
+/// Todos los modelos que se pueden instalar en este equipo, en el orden de
+/// Voces y modelos. La cola de descargas automáticas usa solo algunos
+/// ([ModelQueue.all]); retomar descargas pendientes, todos.
+List<ModelSpec> get optionalModels => [kokoroEsModel, ...piperVoiceModels, whisperBaseModel];
 
 enum ModelPhase { downloading, verifying, extracting, done }
 
@@ -78,11 +171,11 @@ class ModelProgress {
   final double? fraction;
 
   String get label => switch (phase) {
-        ModelPhase.downloading => 'Descargando ${((fraction ?? 0) * 100).round()} %',
-        ModelPhase.verifying => 'Comprobando…',
-        ModelPhase.extracting => 'Instalando…',
-        ModelPhase.done => 'Instalado',
-      };
+    ModelPhase.downloading => 'Descargando ${((fraction ?? 0) * 100).round()} %',
+    ModelPhase.verifying => 'Comprobando…',
+    ModelPhase.extracting => 'Instalando…',
+    ModelPhase.done => 'Instalado',
+  };
 }
 
 class ModelInstallException implements Exception {
@@ -105,7 +198,15 @@ class ModelStore extends ChangeNotifier {
   ModelProgress? progressOf(ModelSpec spec) => _progress[spec.id];
 
   /// ¿Quedó una descarga empezada (p. ej. con la app cerrada) para retomar?
-  Future<bool> hasPendingDownload(ModelSpec spec) => SystemDownload.hasPending('${spec.id}.tar.bz2');
+  Future<bool> hasPendingDownload(ModelSpec spec) async {
+    if (spec.files.isEmpty) return SystemDownload.hasPending('${spec.id}.tar.bz2', expectedBytes: spec.sizeBytes);
+    for (final f in spec.files) {
+      if (await SystemDownload.hasPending(_fileKey(spec, f), expectedBytes: f.sizeBytes)) return true;
+    }
+    return false;
+  }
+
+  static String _fileKey(ModelSpec spec, ModelFile f) => '${spec.id}-${f.name}';
 
   Directory dirFor(ModelSpec spec) => Directory('${root.path}/${spec.id}');
 
@@ -131,6 +232,22 @@ class ModelStore extends ChangeNotifier {
     if (await d.exists()) await d.delete(recursive: true);
   }
 
+  /// Modelos que la app ya no usa: la IA chica de estudio (Qwen3, 330 MB)
+  /// se quitó porque no respetaba el formato de resúmenes y preguntas.
+  static const _retired = ['qwen3'];
+
+  /// Borra lo que quedó instalado de [_retired] (libera espacio).
+  Future<void> removeRetired() async {
+    for (final id in _retired) {
+      final d = Directory('${root.path}/$id');
+      try {
+        if (await d.exists()) await d.delete(recursive: true);
+      } on FileSystemException {
+        // se reintenta la próxima vez que se abra la app
+      }
+    }
+  }
+
   /// Descarga, verifica, extrae y deja el modelo listo. Idempotente: si ya
   /// hay una instalación en curso, espera a esa.
   Future<void> install(ModelSpec spec, {void Function(ModelProgress p)? onProgress}) {
@@ -153,6 +270,10 @@ class ModelStore extends ChangeNotifier {
 
     try {
       report(const ModelProgress(ModelPhase.downloading, 0));
+      if (spec.files.isNotEmpty) {
+        await _installFiles(spec, tmp, report);
+        return;
+      }
       if (SystemDownload.available) {
         // Android: el gestor del sistema sigue aunque la app se cierre.
         archive = await SystemDownload.fetch(
@@ -198,7 +319,9 @@ class ModelStore extends ChangeNotifier {
       rethrow;
     } on SocketException catch (e) {
       throw ModelInstallException(
-        e.osError == null && e.message.isNotEmpty ? e.message : 'Sin conexión. La descarga necesita Internet solo esta vez.',
+        e.osError == null && e.message.isNotEmpty
+            ? e.message
+            : 'Sin conexión. La descarga necesita Internet solo esta vez.',
       );
     } on PlatformException catch (e) {
       throw ModelInstallException(e.message ?? 'No se pudo descargar.');
@@ -211,6 +334,51 @@ class ModelStore extends ChangeNotifier {
         if (await tmp.exists()) await tmp.delete(recursive: true);
       } catch (_) {}
     }
+  }
+
+  /// Baja cada archivo (el avance cuenta los bytes de todos), lo verifica y
+  /// recién con todos bien los deja en la carpeta del modelo.
+  Future<void> _installFiles(ModelSpec spec, Directory tmp, void Function(ModelProgress) report) async {
+    final total = spec.files.fold<int>(0, (a, f) => a + f.sizeBytes);
+    var before = 0;
+    final ready = <ModelFile, File>{};
+    for (final f in spec.files) {
+      void progress(double x) => report(ModelProgress(ModelPhase.downloading, (before + x * f.sizeBytes) / total));
+      var file = File('${tmp.path}/${f.name}');
+      if (SystemDownload.available) {
+        file = await SystemDownload.fetch(
+          f.url,
+          _fileKey(spec, f),
+          title: 'PSSTH! · ${spec.title}',
+          expectedBytes: f.sizeBytes,
+          onFraction: progress,
+        );
+      } else {
+        await _download(f.url, file, f.sizeBytes, progress);
+      }
+      before += f.sizeBytes;
+      ready[f] = file;
+    }
+    report(const ModelProgress(ModelPhase.verifying));
+    for (final MapEntry(key: f, value: file) in ready.entries) {
+      final digest = await sha256.bind(file.openRead()).first;
+      if (digest.toString() != f.sha256) {
+        await SystemDownload.forget(_fileKey(spec, f));
+        throw ModelInstallException('La descarga llegó dañada. Inténtalo de nuevo.');
+      }
+    }
+    report(const ModelProgress(ModelPhase.extracting));
+    final target = dirFor(spec);
+    if (await target.exists()) await target.delete(recursive: true);
+    await target.create(recursive: true);
+    for (final MapEntry(key: f, value: file) in ready.entries) {
+      // Se copia con otro nombre y se renombra al final: a medio copiar el
+      // modelo no parece instalado (la IA intentaba cargar un archivo cortado).
+      final part = await file.copy('${target.path}/${f.name}.part');
+      await part.rename('${target.path}/${f.name}');
+      await SystemDownload.forget(_fileKey(spec, f));
+    }
+    report(const ModelProgress(ModelPhase.done));
   }
 
   static Future<void> _download(String url, File out, int expected, void Function(double) onFraction) async {

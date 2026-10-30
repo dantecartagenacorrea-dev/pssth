@@ -19,7 +19,16 @@ class StudyPointsStore {
   }
 
   /// Suma [points] al documento y al total, y guarda la racha si es la mejor.
-  Future<StudyPoints> add(String documentId, int points, {required int streak}) async {
+  Future<StudyPoints> add(String documentId, int points, {required int streak}) {
+    // De a una: dos respuestas seguidas leían el mismo total y se perdía una suma.
+    final next = _adding.then((_) => _add(documentId, points, streak: streak));
+    _adding = next.then((_) {}, onError: (_) {});
+    return next;
+  }
+
+  static Future<void> _adding = Future.value();
+
+  Future<StudyPoints> _add(String documentId, int points, {required int streak}) async {
     final p = await SharedPreferences.getInstance();
     final now = await load(documentId);
     final next = (

@@ -128,7 +128,14 @@ class FallbackTtsEngine extends TtsEngine {
 
   /// Vuelve a intentar el motor primario (p. ej. tras instalar el modelo).
   Future<bool> retryPrimary() async {
-    if (_primaryOk) return true;
+    if (_primaryOk) {
+      // Ya andaba: puede haber voces nuevas (otro modelo recién instalado).
+      try {
+        await primary.init();
+        await _indexPrimaryVoices();
+      } catch (_) {}
+      return true;
+    }
     try {
       _wire(primary);
       await primary.init();
