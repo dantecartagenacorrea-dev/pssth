@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 
 import '../core/app_exception.dart';
 import '../data/bookmark_store.dart';
+import '../data/highlight_store.dart';
+import '../domain/highlight.dart';
 import '../domain/library_entry.dart';
 import '../domain/search.dart';
 import '../playback/tts_audio_handler.dart';
@@ -184,6 +186,140 @@ Future<void> showBookmarksSheet(
             ),
     ),
   );
+}
+
+/// Subraya la frase que suena; si ya estaba subrayada, abre su nota.
+Future<void> highlightCurrent(BuildContext context, TtsAudioHandler handler) async {
+  final store = HighlightStore.instance;
+  final c = handler.currentChunk;
+  if (store == null || c == null) return;
+  final existing = await store.find(c.documentId, c.pageIndex, c.chunkIndex);
+  if (!context.mounted) return;
+  if (existing != null) return editHighlightNote(context, existing);
+  final h = await store.add(documentId: c.documentId, pageIndex: c.pageIndex, chunkIndex: c.chunkIndex, text: c.text);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: const SwarmText('Frase subrayada'),
+      action: SnackBarAction(label: 'Agregar nota', onPressed: () => editHighlightNote(context, h)),
+    ),
+  );
+}
+
+/// Escribir o cambiar la nota de un subrayado, o quitarlo.
+Future<void> editHighlightNote(BuildContext context, Highlight h) async {
+  final store = HighlightStore.instance;
+  if (store == null) return;
+  final controller = TextEditingController(text: h.note);
+  const remove = '\u0000quitar';
+  final result = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text('Nota · página ${h.pageIndex + 1}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(h.text, maxLines: 4, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 12),
+          TextField(
+            controller: controller,
+            autofocus: true,
+            minLines: 2,
+            maxLines: 6,
+            decoration: const InputDecoration(hintText: 'Escribe tu nota'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, remove), child: const Text('Quitar subrayado')),
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancelar')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, controller.text), child: const Text('Guardar')),
+      ],
+    ),
+  );
+  controller.dispose();
+  if (result == null) return;
+  if (result == remove) {
+    await store.remove(h.id);
+  } else {
+    await store.setNote(h.id, result);
+  }
+}
+
+/// Las frases subrayadas del documento con sus notas: saltar a cada una,
+/// editar la nota, quitarla o exportarlas todas como texto.
+Future<void> showHighlightsSheet(BuildContext context, TtsAudioHandler handler, LibraryEntry entry) async {
+  final store = HighlightStore.instance;
+  if (store == null) return;
+  await showSwarmSheet(
+    context: context,
+    isScrollControlled: true,
+    builder: (ctx) => SafeArea(
+      child: ValueListenableBuilder<int>(
+        valueListenable: store.changes,
+        builder: (ctx, _, _) => FutureBuilder<List<Highlight>>(
+          future: store.forDocument(entry.id),
+          builder: (ctx, snap) {
+            final list = snap.data;
+            if (list == null) return const SizedBox(height: 120);
+            if (list.isEmpty) {
+              return const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Aún no hay frases subrayadas. Toca el subrayador mientras escuchas.'),
+              );
+            }
+            return ListView(
+              shrinkWrap: true,
+              children: [
+                ListTile(
+                  title: Text('Notas y subrayados (${list.length})'),
+                  trailing: TextButton.icon(
+                    icon: const Icon(Icons.file_download_outlined),
+                    label: const Text('Exportar'),
+                    onPressed: () => _exportHighlights(ctx, entry, list),
+                  ),
+                ),
+                for (final h in list)
+                  ListTile(
+                    title: Text(h.text, maxLines: 3, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                      h.note.isEmpty ? 'Página ${h.pageIndex + 1}' : 'Página ${h.pageIndex + 1} · ${h.note}',
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    trailing: IconButton(
+                      tooltip: 'Editar nota',
+                      icon: const Icon(Icons.edit_note),
+                      onPressed: () => editHighlightNote(ctx, h),
+                    ),
+                    onTap: () {
+                      handler.jumpToPosition(h.pageIndex, h.chunkIndex);
+                      Navigator.pop(ctx);
+                    },
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> _exportHighlights(BuildContext context, LibraryEntry entry, List<Highlight> list) async {
+  final dot = entry.name.lastIndexOf('.');
+  final base = dot > 0 ? entry.name.substring(0, dot) : entry.name;
+  try {
+    final path = await FilePicker.platform.saveFile(
+      dialogTitle: 'Exportar notas',
+      fileName: 'Notas - $base.txt',
+      bytes: utf8.encode(highlightsAsText(base, list)),
+    );
+    if (context.mounted && path != null) _snack(context, 'Notas exportadas.');
+  } catch (_) {
+    if (context.mounted) _snack(context, 'No se pudieron exportar las notas.');
+  }
 }
 
 /// Exporta el texto extraído a un .txt elegido por el usuario (no toca el original).

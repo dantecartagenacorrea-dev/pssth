@@ -11,10 +11,12 @@ import 'package:path_provider/path_provider.dart';
 import '../core/app_exception.dart';
 import '../core/motion.dart';
 import '../core/perf_log.dart';
+import '../core/crash_log.dart';
 import '../data/batch_import.dart';
 import '../data/bookmark_store.dart';
 import '../data/corrected_pages_store.dart';
 import '../data/document_loader.dart';
+import '../data/highlight_store.dart';
 import '../data/library_store.dart';
 import '../data/model_queue.dart';
 import '../data/model_store.dart';
@@ -323,6 +325,30 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return null;
   }
 
+  /// «Enviar informe de errores»: los errores anotados en el aparato, por la
+  /// hoja Compartir (correo, WhatsApp…). Solo sale si la persona lo envía.
+  Future<void> _shareCrashLog() async {
+    final log = await CrashLog.instance?.read() ?? '';
+    if (!mounted) return;
+    if (log.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: SwarmText('No hay errores registrados.')));
+      return;
+    }
+    try {
+      final file = File('${(await getTemporaryDirectory()).path}/PSSTH-errores.txt');
+      await file.writeAsString(
+        'PSSTH! $kAppVersion · ${Platform.operatingSystem} ${Platform.operatingSystemVersion}\n\n$log',
+        flush: true,
+      );
+      await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {
+        'path': file.path,
+        'text': 'Informe de errores de PSSTH!',
+      });
+    } catch (error) {
+      if (mounted) showSafeMessage(context, error);
+    }
+  }
+
   Future<void> _confirmDelete(LibraryEntry entry) async {
     final ok = await showSwarmDialog<bool>(
       context: context,
@@ -343,6 +369,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     // guardar sus archivos (y a pedirle páginas a la IA) después de borrarlo.
     if (_jobDocId == entry.id) _ocrJob++;
     await widget.bookmarkStore.removeAllFor(entry.id);
+    await HighlightStore.instance?.removeAllFor(entry.id);
     await widget.libraryStore.remove(entry.id);
     if (mounted) setState(() {});
   }
@@ -388,6 +415,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               if (v == 'comodidad') {
                 showComfortSheet(context);
               }
+              if (v == 'errores') {
+                _shareCrashLog();
+              }
               if (v == 'acerca') {
                 showAboutDialog(
                   context: context,
@@ -411,6 +441,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               PopupMenuItem(value: 'voces', child: Text('Voces y modelos')),
               PopupMenuItem(value: 'ia', child: Text('Corrección avanzada (IA local)')),
               PopupMenuItem(value: 'comodidad', child: Text('Aspecto y letra')),
+              PopupMenuItem(value: 'errores', child: Text('Enviar informe de errores')),
               PopupMenuItem(value: 'acerca', child: Text('Acerca de PSSTH! y licencias')),
             ],
           ),

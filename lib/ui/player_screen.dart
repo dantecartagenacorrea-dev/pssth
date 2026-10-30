@@ -6,10 +6,14 @@ import 'package:flutter/material.dart';
 import '../core/app_exception.dart';
 import '../core/motion.dart';
 import '../data/bookmark_store.dart';
+import '../data/highlight_store.dart';
 import '../domain/library_entry.dart';
+import '../domain/text_chunk.dart';
 import '../domain/reading_window.dart';
 import '../domain/voice_groups.dart';
 import '../playback/tts_audio_handler.dart';
+import 'audio_export_sheet.dart';
+import 'pdf_editor_screen.dart';
 import 'player_sheets.dart';
 import 'quiz_screen.dart';
 import 'read_scroll.dart';
@@ -68,6 +72,11 @@ class PlayerScreen extends StatelessWidget {
                 onPressed: () => showReadScroll(context, handler),
               ),
               IconButton(
+                tooltip: 'Subrayar la frase',
+                icon: const Icon(Icons.border_color_outlined),
+                onPressed: () => highlightCurrent(context, handler),
+              ),
+              IconButton(
                 tooltip: 'Agregar marcador',
                 icon: const Icon(Icons.bookmark_add_outlined),
                 onPressed: () => addBookmark(context, handler, bookmarkStore, entry),
@@ -105,6 +114,8 @@ class PlayerScreen extends StatelessWidget {
                       showChaptersSheet(context, handler);
                     case 'marcadores':
                       showBookmarksSheet(context, handler, bookmarkStore, entry);
+                    case 'notas':
+                      showHighlightsSheet(context, handler, entry);
                     case 'resumen':
                       showSummarySheet(context, handler, entry);
                     case 'preguntas':
@@ -117,19 +128,28 @@ class PlayerScreen extends StatelessWidget {
                       exportText(context, handler, entry);
                     case 'compartir':
                       showShareAudioSheet(context, handler, entry);
+                    case 'audio':
+                      showAudioExportSheet(context, handler, entry);
+                    case 'editar':
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => PdfEditorScreen(path: entry.storedPath, title: entry.name)),
+                      );
                     case 'aspecto':
                       showComfortSheet(context);
                   }
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'buscar', child: Text('Buscar en el texto')),
-                  PopupMenuItem(value: 'capitulos', child: Text('Capítulos')),
-                  PopupMenuItem(value: 'marcadores', child: Text('Marcadores')),
-                  PopupMenuItem(value: 'resumen', child: Text('Resumen del texto')),
-                  PopupMenuItem(value: 'preguntas', child: Text('Preguntas de estudio')),
-                  PopupMenuItem(value: 'exportar', child: Text('Exportar texto')),
-                  PopupMenuItem(value: 'compartir', child: Text('Compartir fragmento en audio')),
-                  PopupMenuItem(value: 'aspecto', child: Text('Aspecto y letra')),
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'buscar', child: Text('Buscar en el texto')),
+                  const PopupMenuItem(value: 'capitulos', child: Text('Capítulos')),
+                  const PopupMenuItem(value: 'marcadores', child: Text('Marcadores')),
+                  const PopupMenuItem(value: 'notas', child: Text('Notas y subrayados')),
+                  const PopupMenuItem(value: 'resumen', child: Text('Resumen del texto')),
+                  const PopupMenuItem(value: 'preguntas', child: Text('Preguntas de estudio')),
+                  const PopupMenuItem(value: 'exportar', child: Text('Exportar texto')),
+                  const PopupMenuItem(value: 'compartir', child: Text('Compartir fragmento en audio')),
+                  const PopupMenuItem(value: 'audio', child: Text('Exportar en audio')),
+                  if (entry.kind == 'pdf') const PopupMenuItem(value: 'editar', child: Text('Editar PDF')),
+                  const PopupMenuItem(value: 'aspecto', child: Text('Aspecto y letra')),
                 ],
               ),
             ],
@@ -586,6 +606,8 @@ class _ReadingViewState extends State<_ReadingView> {
     if (old.index != widget.index) _scrollToCurrent();
   }
 
+  bool _marked(TextChunk c) => HighlightStore.instance?.isMarked(c.documentId, c.pageIndex, c.chunkIndex) ?? false;
+
   void _scrollToCurrent() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctx = _keys[widget.index]?.currentContext;
@@ -596,8 +618,9 @@ class _ReadingViewState extends State<_ReadingView> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    // Tamaño y espacio entre renglones elegidos en Aspecto y letra.
-    listenable: _style,
+    // Tamaño y espacio entre renglones elegidos en Aspecto y letra, y las
+    // frases que se subrayan.
+    listenable: Listenable.merge([_style, ?HighlightStore.instance?.changes]),
     builder: (context, _) => _text(context),
   );
 
@@ -614,14 +637,17 @@ class _ReadingViewState extends State<_ReadingView> {
     // Lo que viene no se ve: sus letras suben desde abajo y se arman (si se
     // viera tenue, taparía la reconstrucción).
     final hidden = base?.copyWith(color: Colors.transparent);
+    final mark = theme.brightness == Brightness.dark ? const Color(0xFFFAC775) : const Color(0xFFBA7517);
     _keys.removeWhere((i, _) => i < start || i >= end);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         for (var i = start; i < end; i++)
-          Padding(
+          Container(
             key: _keys.putIfAbsent(i, GlobalKey.new),
             padding: const EdgeInsets.fromLTRB(8, 6, 8, 16),
+            // Frase subrayada: una barra ámbar a la izquierda.
+            decoration: _marked(chunks[i]) ? BoxDecoration(border: Border(left: BorderSide(color: mark, width: 3))) : null,
             // Solo el fragmento que suena y el siguiente se animan: lo ya leído
             // es texto quieto y lo que falta sigue en el documento (su río sube
             // desde abajo con los dos animados). Así la lectura va fluida.

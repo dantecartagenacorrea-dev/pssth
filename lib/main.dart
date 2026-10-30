@@ -13,7 +13,9 @@ import 'services/llm_cleaner.dart';
 import 'theme/app_theme.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'core/crash_log.dart';
 import 'data/bookmark_store.dart';
+import 'data/highlight_store.dart';
 import 'data/library_store.dart';
 import 'data/model_queue.dart';
 import 'data/model_store.dart';
@@ -32,6 +34,8 @@ import 'ui/library_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Los errores quedan anotados en el aparato (no se envían solos).
+  CrashLog.install();
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(['Atkinson Hyperlegible'], await rootBundle.loadString('assets/fonts/OFL.txt'));
   });
@@ -62,6 +66,7 @@ Future<void> main() async {
   final settingsStore = SettingsStore();
   final pronunciationStore = PronunciationStore(File('${libraryStore.root.path}/pronunciation.json'));
   final bookmarkStore = BookmarkStore(File('${libraryStore.root.path}/bookmarks.json'));
+  HighlightStore.instance = HighlightStore(File('${libraryStore.root.path}/highlights.json'));
 
   // Voz natural (opcional): modelo en <documentos>/models/kokoro; sin él solo hay voces del sistema.
   final modelStore = ModelStore(Directory('${docs.path}/models'));

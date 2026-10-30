@@ -662,6 +662,12 @@ class TtsAudioHandler extends BaseAudioHandler {
     return _tts.renderToFile(text, path);
   }
 
+  /// Lo que dice la voz en las páginas [from]..[to] (incluidas), frase a frase.
+  List<String> speechForPages(int from, int to) => [
+    for (final c in _chunks)
+      if (c.pageIndex >= from && c.pageIndex <= to && c.speech.trim().isNotEmpty) c.speech.trim(),
+  ];
+
   /// Texto original por página (para exportar y buscar), sin normalizar.
   List<String> pages = const [];
 

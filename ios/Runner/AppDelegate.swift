@@ -325,6 +325,10 @@ final class AudioExportBridge: NSObject, FlutterPlugin {
   }
 
   func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    if call.method == "joinToM4a" {
+      join(call, result: result)
+      return
+    }
     guard call.method == "toM4a",
           let args = call.arguments as? [String: Any],
           let path = args["path"] as? String,
@@ -334,6 +338,49 @@ final class AudioExportBridge: NSObject, FlutterPlugin {
     }
     let asset = AVURLAsset(url: URL(fileURLWithPath: path))
     guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+      result(nil)
+      return
+    }
+    let outURL = URL(fileURLWithPath: out)
+    try? FileManager.default.removeItem(at: outURL)
+    session.outputURL = outURL
+    session.outputFileType = .m4a
+    session.exportAsynchronously {
+      DispatchQueue.main.async {
+        result(session.status == .completed ? out : nil)
+      }
+    }
+  }
+
+  /// "joinToM4a" (paths, out): pone una parte tras otra (CAF de la voz del
+  /// sistema al exportar un capítulo) y las guarda en un solo M4A.
+  private func join(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any],
+          let paths = args["paths"] as? [String],
+          let out = args["out"] as? String,
+          !paths.isEmpty else {
+      result(nil)
+      return
+    }
+    let composition = AVMutableComposition()
+    guard let track = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+      result(nil)
+      return
+    }
+    var cursor = CMTime.zero
+    for path in paths {
+      let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+      guard let source = asset.tracks(withMediaType: .audio).first else { continue }
+      let range = CMTimeRange(start: .zero, duration: asset.duration)
+      do {
+        try track.insertTimeRange(range, of: source, at: cursor)
+      } catch {
+        result(nil)
+        return
+      }
+      cursor = CMTimeAdd(cursor, asset.duration)
+    }
+    guard let session = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else {
       result(nil)
       return
     }

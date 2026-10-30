@@ -25,6 +25,8 @@ class MainActivity : AudioServiceActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        NativeCrashLog.install(applicationContext)
+        AudioExport.register(flutterEngine.dartExecutor.binaryMessenger)
         NativeTextTools.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         SystemDownloads.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "lector/open_file")
@@ -43,6 +45,8 @@ class MainActivity : AudioServiceActivity() {
                 val mime = when {
                     path.endsWith(".pdf") -> "application/pdf"
                     path.endsWith(".wav") -> "audio/wav"
+                    path.endsWith(".m4a") -> "audio/mp4"
+                    path.endsWith(".txt") -> "text/plain"
                     else -> "audio/*"
                 }
                 val send = Intent(Intent.ACTION_SEND).apply {
@@ -51,7 +55,12 @@ class MainActivity : AudioServiceActivity() {
                     if (text.isNotEmpty()) putExtra(Intent.EXTRA_TEXT, text)
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                startActivity(Intent.createChooser(send, if (path.endsWith(".pdf")) "Compartir PDF" else "Compartir audio"))
+                val title = when {
+                    path.endsWith(".pdf") -> "Compartir PDF"
+                    path.endsWith(".txt") -> "Compartir"
+                    else -> "Compartir audio"
+                }
+                startActivity(Intent.createChooser(send, title))
                 result.success(true)
             } catch (e: Exception) {
                 result.error("share", e.message, null)

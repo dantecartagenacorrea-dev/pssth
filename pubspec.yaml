@@ -31,6 +31,9 @@ dependencies:
   flutter:
     sdk: flutter
   pdfrx: 2.4.8
+  # Edición de PDF (anotar y corregir): PDFium, el mismo que trae pdfrx.
+  pdfium_dart: 0.2.5
+  ffi: ^2.1.4
   flutter_tts: ^4.2.5
   audio_service: ^0.18.19
   file_picker: ^10.3.3
