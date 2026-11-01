@@ -60,7 +60,7 @@ jobs:
         run: flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
       - name: Preparar el proyecto sin compilar (la firma compila una sola vez)
         if: ${{ inputs.subir }}
-        run: flutter build ios --release --config-only --build-number=${{ github.run_number }}
+        run: flutter build ios --release --config-only --no-codesign --build-number=${{ github.run_number }}
       - name: Firmar y subir a TestFlight
         if: ${{ inputs.subir }}
         env:
