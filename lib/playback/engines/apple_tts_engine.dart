@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:flutter_tts/flutter_tts.dart';
 
-import '../../domain/voice_ranking.dart' show isUsableSystemVoice;
+import '../../domain/voice_ranking.dart' show isUsableSystemVoice, topSystemVoices;
 import '../tts_engine.dart';
 
 /// Motor del sistema (AVSpeechSynthesizer en iOS, TextToSpeech en Android).
@@ -69,7 +69,7 @@ class AppleTtsEngine extends TtsEngine {
           .where((m) => isUsableSystemVoice(features: m['features']?.toString(), network: m['network_required']?.toString()))
           .toList();
       final seen = <String>{};
-      return (working.isEmpty ? all : working)
+      final options = (working.isEmpty ? all : working)
           .map(
             (m) => VoiceOption(
               name: '${m['name'] ?? ''}',
@@ -77,8 +77,13 @@ class AppleTtsEngine extends TtsEngine {
               quality: m['quality'] == null ? null : '${m['quality']}',
             ),
           )
-          .where((v) => v.name.isNotEmpty && seen.add(v.id))
-          .toList();
+          .where((v) => v.name.isNotEmpty && seen.add(v.id));
+      return topSystemVoices<VoiceOption>(
+        options,
+        name: (v) => v.name,
+        locale: (v) => v.locale,
+        quality: (v) => v.quality,
+      );
     } catch (_) {
       return [];
     }

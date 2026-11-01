@@ -43,5 +43,14 @@ class PronunciationStore {
     await _save();
   }
 
+  /// Deja exactamente [entries] (lo que quedó al sincronizar).
+  Future<void> replaceAll(Map<String, String> entries) async {
+    await load();
+    _entries
+      ..clear()
+      ..addAll(entries);
+    await _save();
+  }
+
   Future<void> _save() => _file.writeAsString(jsonEncode(_entries), flush: true);
 }

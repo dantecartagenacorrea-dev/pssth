@@ -48,13 +48,14 @@ if not exist "%AVD%\lector.avd" (
 "%ADB%" devices | findstr /C:"emulator-" >nul
 if errorlevel 1 (
   >> %LOG% echo Arrancando emulador...
-  start "Emulador Lector" "%SDK%\emulator\emulator.exe" -avd lector -no-boot-anim -no-snapshot-load
+  start "Emulador Lector" "%SDK%\emulator\emulator.exe" -avd lector -no-boot-anim -no-snapshot-load -gpu swiftshader_indirect
 )
 set /a N=0
 :esperar
 set /a N+=1
 if %N% gtr 60 ( >> %LOG% echo ERROR: el emulador no arranco en 5 min & goto fin )
-timeout /t 5 /nobreak >nul
+rem ping espera ~5 s; timeout.exe falla si se ejecuta sin consola (Git Bash, Claude).
+%SystemRoot%\System32\ping.exe -n 6 127.0.0.1 >nul
 "%ADB%" -e shell getprop sys.boot_completed 2>nul | findstr "1" >nul
 if errorlevel 1 goto esperar
 >> %LOG% echo Emulador listo tras %N% intentos
@@ -69,7 +70,7 @@ if not exist build\app\outputs\flutter-apk\app-debug.apk goto fin
 "%ADB%" -e push pruebas /sdcard/Download/ >> %LOG% 2>&1
 "%ADB%" -e logcat -c
 "%ADB%" -e shell monkey -p com.lectorpdf.lectorPdf -c android.intent.category.LAUNCHER 1 >> %LOG% 2>&1
-timeout /t 15 /nobreak >nul
+%SystemRoot%\System32\ping.exe -n 16 127.0.0.1 >nul
 "%ADB%" -e exec-out screencap -p > emu_pantalla.png
 "%ADB%" -e logcat -d -v brief *:E flutter:V > emu_logcat.txt
 :fin

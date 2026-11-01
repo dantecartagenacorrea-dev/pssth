@@ -143,16 +143,6 @@ ModelSpec _piperVoice(
   );
 }
 
-final piperAldModel = _piperVoice(
-  'piper-ald',
-  'Voz latina: Ald',
-  'es_MX-ald-medium',
-  '7e97a71dada30e05c6bdb069f64c9e021401bfef',
-  63201426,
-  'b5e77074846d97651421244167a11d53c762fa41f953de98ab21957a6036eab4',
-  921,
-  '87c8ef66eae5473ed0cc0366b3964c736ca6c5f676c979522ea31234e47430b9',
-);
 final piperClaudeModel = _piperVoice(
   'piper-claude',
   'Voz latina: Claude',
@@ -163,7 +153,7 @@ final piperClaudeModel = _piperVoice(
   940,
   'ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d',
 );
-final piperVoiceModels = [piperAldModel, piperClaudeModel];
+final piperVoiceModels = [piperClaudeModel];
 
 /// Todos los modelos que se pueden instalar en este equipo, en el orden de
 /// Voces y modelos. La cola de descargas automáticas usa solo algunos
@@ -246,8 +236,9 @@ class ModelStore extends ChangeNotifier {
   }
 
   /// Modelos que la app ya no usa: la IA chica de estudio (Qwen3, 330 MB)
-  /// se quitó porque no respetaba el formato de resúmenes y preguntas.
-  static const _retired = ['qwen3'];
+  /// se quitó porque no respetaba el formato de resúmenes y preguntas; la voz
+  /// Piper Ald (62 MB), porque la app deja solo seis voces.
+  static const _retired = ['qwen3', 'piper-ald'];
 
   /// Borra lo que quedó instalado de [_retired] y, en los modelos ya
   /// instalados, lo que [ModelSpec.prune] dice que no se usa (las instalaciones

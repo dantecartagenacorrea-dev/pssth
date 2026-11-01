@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import '../core/motion.dart';
 import '../core/perf_log.dart';
 import '../data/library_store.dart';
+import '../data/listening_store.dart';
 import '../data/settings_store.dart';
 import '../domain/chapter_detector.dart';
 import '../domain/citations.dart';
@@ -113,6 +114,18 @@ class TtsAudioHandler extends BaseAudioHandler {
   bool _speaking = false;
   bool _keepIndexAfterStop = false;
 
+  /// Al cambiar de voz a media frase: desde qué carácter del fragmento sigue
+  /// la voz nueva (0 = desde el principio).
+  int _resumeAt = 0;
+
+  /// Lo que suena cuando se leyó solo el final del fragmento ([_partialFrom]
+  /// = dónde empieza), para marcar la palabra en el lugar correcto.
+  String? _partialText;
+  int _partialFrom = 0;
+
+  /// Cambios de voz pedidos: si llega otro mientras se prepara uno, gana el último.
+  int _voiceGen = 0;
+
   /// Identifica el bucle de lectura vigente: al pausar y reanudar rápido, el
   /// bucle anterior puede seguir esperando su frase; con esto se retira solo
   /// en vez de leer a la par del nuevo (se callaban entre sí y saltaban frases).
@@ -148,9 +161,14 @@ class TtsAudioHandler extends BaseAudioHandler {
         return;
       }
       final c = currentChunk;
-      if (c == null || c.speech != text) return;
-      wordRange.value = (start, end);
+      if (c == null) return;
+      if (c.speech == text) {
+        wordRange.value = (start, end);
+      } else if (text == _partialText) {
+        wordRange.value = (start + _partialFrom, end + _partialFrom);
+      }
     };
+    _tts.onVoicesChanged = (message) => unawaited(_voicesChanged(message));
     _tts.onLevel = (level) => voiceLevel.value = level;
     _tts.onError = (message) {
       if (kDebugMode) debugPrint('[lector] error del motor de voz: $message');
@@ -389,6 +407,24 @@ class TtsAudioHandler extends BaseAudioHandler {
     _refresh();
   }
 
+  /// Se ocultaron voces: si la elegida era una, pasa a la mejor que queda
+  /// para el idioma (sin cortar lo que suena) y avisa por qué.
+  Future<void> _voicesChanged(String message) async {
+    await _loadVoices();
+    final gone = _voiceName != null && !_voices.any((v) => v.name == _voiceName && v.locale == _voiceLocale);
+    if (gone) {
+      _voiceName = null;
+      _voiceLocale = null;
+      await settingsStore.saveVoice();
+    }
+    final lang = _appliedLang ?? _docLang;
+    if (gone && lang != null) {
+      _appliedLang = null;
+      await _applyLanguage(lang);
+    }
+    _refresh(message: message);
+  }
+
   Future<void> _loadVoices() async {
     _voices = await _tts.voices();
   }
@@ -450,7 +486,15 @@ class TtsAudioHandler extends BaseAudioHandler {
     while (_speaking && my == _playGen && _index < _chunks.length) {
       _chunkFailed = false;
       try {
-        final speech = _spoken(_chunks[_index].speech);
+        final changing = _voiceChange;
+        if (changing != null) await changing;
+        if (!_speaking || my != _playGen) break;
+        final whole = _chunks[_index].speech;
+        final from = _resumeAt > 0 && _resumeAt < whole.length ? _resumeAt : 0;
+        _resumeAt = 0;
+        final speech = _spoken(from > 0 ? whole.substring(from) : whole);
+        _partialText = from > 0 ? speech : null;
+        _partialFrom = from;
         if (kDebugMode) {
           debugPrint(
             '[lector] speak idx=$_index len=${speech.length} "${speech.length > 70 ? speech.substring(0, 70) : speech}"',
@@ -462,7 +506,9 @@ class TtsAudioHandler extends BaseAudioHandler {
           _tts.prefetch([
             for (var k = _index + 1; k <= _index + 2 && k < _chunks.length; k++) _spoken(_chunks[k].speech),
           ]);
+          final heard = Stopwatch()..start();
           await _tts.speak(speech);
+          _countListening(heard.elapsed, speech, whole: _speaking && my == _playGen && !_keepIndexAfterStop);
         }
       } catch (_) {
         _chunkFailed = true;
@@ -513,6 +559,19 @@ class TtsAudioHandler extends BaseAudioHandler {
       _broadcastState(playing: true);
     }
   }
+
+  /// Estadísticas de escucha: el tiempo que sonó la frase y, si se oyó entera
+  /// (no se pausó ni se saltó a mitad), sus palabras.
+  void _countListening(Duration elapsed, String speech, {required bool whole}) {
+    final store = ListeningStore.instance;
+    if (store == null || _chunkFailed) return;
+    final seconds = (elapsed.inMilliseconds / 1000).round().clamp(0, _maxCountedSeconds);
+    final words = whole ? RegExp(r'\S+').allMatches(speech).length : 0;
+    unawaited(store.add(seconds: seconds, words: words).then((_) {}, onError: (_) {}));
+  }
+
+  /// Más que esto en una sola frase no es escucha (p. ej. la voz se trabó).
+  static const _maxCountedSeconds = 600;
 
   @override
   Future<void> pause() async {
@@ -592,15 +651,55 @@ class TtsAudioHandler extends BaseAudioHandler {
     _refresh();
   }
 
+  /// Regla de la app: nunca queda en silencio. Si está leyendo, la voz
+  /// anterior sigue sonando mientras se prepara la nueva, y la nueva sigue
+  /// desde la palabra donde iba (no desde el principio de la frase ni saltando
+  /// al fragmento siguiente).
   Future<void> setVoice(VoiceOption? voice) async {
     await setup();
-    _voiceName = voice?.name;
-    _voiceLocale = voice?.locale;
-    _activeVoice = null;
-    await settingsStore.saveVoice(name: _voiceName, locale: _voiceLocale);
-    await _applyVoice();
+    final my = ++_voiceGen;
+    var resume = _speaking && _asideText == null && _chunks.isNotEmpty;
+    var index = _index;
+    var from = wordRange.value?.$1 ?? 0;
+    final sw = Stopwatch()..start();
+    while (resume && voice != null) {
+      final whole = _chunks[index].speech;
+      if (from >= whole.length) from = 0;
+      perfLog('cambio de voz: prepara ${voice.name} frase $index desde $from (${whole.length} car.)');
+      await _tts.prepare(voice, _spoken(from > 0 ? whole.substring(from) : whole));
+      perfLog('cambio de voz: lista en ${sw.elapsedMilliseconds} ms; suena la frase $_index');
+      if (my != _voiceGen) return; // se eligió otra voz mientras tanto
+      if (index == _index || !_speaking) break;
+      // La frase terminó mientras se preparaba: se prepara la que suena ahora.
+      index = _index;
+      from = 0;
+    }
+    resume = resume && _speaking && index == _index;
+    // Al pasar entre la voz natural y la del sistema, el cambio de motor calla
+    // la anterior: la lectura espera a que la voz nueva quede puesta y repite
+    // desde [from] en vez de avanzar al fragmento siguiente.
+    final changed = Completer<void>();
+    if (resume) {
+      _resumeAt = from;
+      _keepIndexAfterStop = true;
+      _voiceChange = changed.future;
+    }
+    try {
+      _voiceName = voice?.name;
+      _voiceLocale = voice?.locale;
+      _activeVoice = null;
+      await _applyVoice();
+      if (resume && _keepIndexAfterStop) await _tts.stop();
+    } finally {
+      changed.complete();
+      if (identical(_voiceChange, changed.future)) _voiceChange = null;
+    }
     _refresh();
+    await settingsStore.saveVoice(name: _voiceName, locale: _voiceLocale);
   }
+
+  /// Cambio de voz en curso: el bucle de lectura lo espera antes de hablar.
+  Future<void>? _voiceChange;
 
   int _asideGen = 0;
   String? _asideText;

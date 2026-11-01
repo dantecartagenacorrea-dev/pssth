@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,11 +23,24 @@ enum LineSpacing {
   final double height;
 }
 
+/// Letra del texto que se lee.
+enum ReadingFont {
+  normal('Normal'),
+  legible('Muy legible'),
+  book('De libro');
+
+  const ReadingFont(this.label);
+  final String label;
+}
+
 /// Ajustes de comodidad visual, guardados en el equipo.
 class Comfort {
   Comfort._();
   static const _paperKey = 'paper';
   static const _scatterKey = 'scatter';
+  static const _fontKey = 'reading_font';
+
+  /// Ajuste anterior (sí o no a la letra muy legible): solo para leerlo.
   static const _legibleKey = 'legible_font';
   static const _textSizeKey = 'reading_size';
   static const _lineHeightKey = 'reading_line_height';
@@ -45,14 +59,22 @@ class Comfort {
   /// de una vez (también si el sistema pide reducir el movimiento).
   static final scatter = ValueNotifier(true);
 
-  /// Letra pensada para leer mejor (Atkinson Hyperlegible).
-  static final legible = ValueNotifier(false);
+  /// Letra del texto que se lee: la de la interfaz, una pensada para leer
+  /// mejor (Atkinson Hyperlegible) o una de libro.
+  static final font = ValueNotifier(ReadingFont.normal);
 
   static const legibleFamily = 'AtkinsonHyperlegible';
 
-  /// Letra del texto que se lee: la muy legible si se eligió; si no, la de
-  /// la interfaz.
-  static String? get readingFont => legible.value ? legibleFamily : null;
+  /// Con serifa, como un libro impreso. Viene en el sistema (Noto Serif en
+  /// Android, Georgia en iPhone): no suma peso a la app.
+  static String get bookFamily => defaultTargetPlatform == TargetPlatform.iOS ? 'Georgia' : 'serif';
+
+  /// Familia del texto que se lee; null es la de la interfaz.
+  static String? get readingFont => switch (font.value) {
+    ReadingFont.normal => null,
+    ReadingFont.legible => legibleFamily,
+    ReadingFont.book => bookFamily,
+  };
 
   /// Tamaño de la letra del texto que se lee (antes fijo en 19).
   static final textSize = ValueNotifier(defaultTextSize);
@@ -81,7 +103,10 @@ class Comfort {
     // Quien tenía "Completo" sigue con la dispersión; "Suave" o "Quieto", sin.
     final old = p.getString(_oldMotionKey);
     scatter.value = p.getBool(_scatterKey) ?? (old == null || old == 'completo');
-    legible.value = p.getBool(_legibleKey) ?? false;
+    // Quien tenía la letra muy legible la conserva.
+    font.value =
+        ReadingFont.values.asNameMap()[p.getString(_fontKey)] ??
+        ((p.getBool(_legibleKey) ?? false) ? ReadingFont.legible : ReadingFont.normal);
     textSize.value = (p.getDouble(_textSizeKey) ?? defaultTextSize).clamp(minTextSize, maxTextSize);
     lineHeight.value = LineSpacing.values.asNameMap()[p.getString(_lineHeightKey)] ?? LineSpacing.normal;
     keepControls.value = p.getBool(_keepControlsKey) ?? false;
@@ -130,9 +155,9 @@ class Comfort {
     await (await SharedPreferences.getInstance()).setBool(_scatterKey, on);
   }
 
-  static Future<void> setLegible(bool on) async {
-    legible.value = on;
-    await (await SharedPreferences.getInstance()).setBool(_legibleKey, on);
+  static Future<void> setFont(ReadingFont value) async {
+    font.value = value;
+    await (await SharedPreferences.getInstance()).setString(_fontKey, value.name);
   }
 }
 

@@ -24,7 +24,7 @@ if errorlevel 1 (
   "%ADB%" wait-for-device
   :espera
   for /f %%b in ('"%ADB%" shell getprop sys.boot_completed 2^>nul') do set BOOT=%%b
-  if not "%BOOT%"=="1" ( timeout /t 3 >nul & goto espera )
+  if not "%BOOT%"=="1" ( %SystemRoot%\System32\timeout.exe /t 3 >nul & goto espera )
 )
 
 echo Instalando...

@@ -73,6 +73,14 @@ class FallbackTtsEngine extends TtsEngine {
     e.onProgress = (t, s, en) => onProgress?.call(t, s, en);
     e.onLevel = (l) => onLevel?.call(l);
     e.onError = (m) => onError?.call(m);
+    e.onVoicesChanged = (m) async {
+      if (identical(e, primary)) {
+        try {
+          await _indexPrimaryVoices();
+        } catch (_) {}
+      }
+      onVoicesChanged?.call(m);
+    };
   }
 
   Future<void> _initFallback() async {
@@ -174,6 +182,16 @@ class FallbackTtsEngine extends TtsEngine {
   }
 
   @override
+  Future<void> prepare(VoiceOption voice, String text) async {
+    if (!_primaryOk || !_primaryVoiceIds.contains(voice.id)) return;
+    try {
+      await primary.prepare(voice, text);
+    } catch (_) {
+      // Si no se pudo preparar, el cambio de voz lo sintetiza al hablar.
+    }
+  }
+
+  @override
   Future<void> setVoice(VoiceOption voice) async {
     if (_primaryOk && _primaryVoiceIds.contains(voice.id)) {
       _primaryVoice = voice;
@@ -245,14 +263,29 @@ class FallbackTtsEngine extends TtsEngine {
     }
   }
 
+  /// Regla de la app: nunca en silencio. Si la voz natural todavía no tiene
+  /// listo el audio de [text], ese fragmento lo lee la voz del sistema
+  /// mientras la natural prepara los siguientes; vuelve en cuanto tenga uno.
   @override
   Future<void> speak(String text) async {
+    if (!usingFallback && _fallbackReady && !await _primaryReadyFor(text)) {
+      await fallback.speak(text);
+      return;
+    }
     try {
       await _active.speak(text);
     } catch (e) {
       if (usingFallback) rethrow;
       await _disablePrimary(e);
       await _active.speak(text);
+    }
+  }
+
+  Future<bool> _primaryReadyFor(String text) async {
+    try {
+      return await primary.canSpeakNow(text);
+    } catch (_) {
+      return true; // que [speak] pruebe y, si falla, pase a la voz del sistema
     }
   }
 

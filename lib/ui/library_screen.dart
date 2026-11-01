@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
 
+import '../core/activity.dart';
 import '../core/app_exception.dart';
 import '../core/motion.dart';
 import '../core/perf_log.dart';
@@ -20,6 +21,8 @@ import '../data/corrected_pages_store.dart';
 import '../data/document_loader.dart';
 import '../data/highlight_store.dart';
 import '../data/library_store.dart';
+import '../data/listening_store.dart';
+import '../services/sync_controller.dart';
 import '../data/model_queue.dart';
 import '../data/model_store.dart';
 import '../data/pronunciation_store.dart';
@@ -47,6 +50,8 @@ import 'swarm_transition.dart';
 import '../playback/tts_audio_handler.dart';
 import '../services/llm_cleaner.dart';
 import 'first_run_guide.dart';
+import 'listening_stats_screen.dart';
+import 'sync_screen.dart';
 import 'pdf_editor_screen.dart';
 import 'player_screen.dart';
 import 'recorder_screen.dart';
@@ -105,6 +110,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     unawaited(pdfrxFlutterInitialize());
     final bridge = OpenFileBridge.instance;
     bridge.onOpened = _importExternal;
+    // La sincronización puede cambiar el avance o los documentos.
+    SyncController.instance?.changes.addListener(_refresh);
     bridge.start();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final pending = await bridge.takePending();
@@ -155,7 +162,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   void dispose() {
     OpenFileBridge.instance.onOpened = null;
+    SyncController.instance?.changes.removeListener(_refresh);
     super.dispose();
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
   }
 
   /// Archivo llegado desde otra app: importar y abrir directamente.
@@ -728,20 +740,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Future<void> _showSettings() async {
     final v = await showSwarmSheet<String>(
       context: context,
+      // Con la letra grande del sistema la lista no cabe: se desplaza.
       builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final (value, icon, label) in const [
-              ('voces', CupertinoIcons.waveform, 'Voces y modelos'),
-              ('pronunciacion', CupertinoIcons.ear, 'Pronunciación'),
-              ('ia', CupertinoIcons.sparkles, 'Corrección avanzada (IA local)'),
-              ('comodidad', CupertinoIcons.paintbrush, 'Aspecto y letra'),
-              ('errores', CupertinoIcons.ant, 'Enviar informe de errores'),
-              ('acerca', CupertinoIcons.info_circle, 'Acerca de PSSTH! y licencias'),
-            ])
-              ListTile(leading: Icon(icon), title: Text(label), onTap: () => Navigator.pop(ctx, value)),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final (value, icon, label) in const [
+                ('voces', CupertinoIcons.waveform, 'Voces y modelos'),
+                ('pronunciacion', CupertinoIcons.ear, 'Pronunciación'),
+                ('ia', CupertinoIcons.sparkles, 'Corrección avanzada (IA local)'),
+                ('comodidad', CupertinoIcons.paintbrush, 'Aspecto y letra'),
+                ('estadisticas', CupertinoIcons.chart_bar, 'Estadísticas de escucha'),
+                ('sincronizar', CupertinoIcons.cloud, 'Sincronizar con Google Drive'),
+                ('errores', CupertinoIcons.ant, 'Enviar informe de errores'),
+                ('acerca', CupertinoIcons.info_circle, 'Acerca de PSSTH! y licencias'),
+              ])
+                ListTile(leading: Icon(icon), title: Text(label), onTap: () => Navigator.pop(ctx, value)),
+            ],
+          ),
         ),
       ),
     );
@@ -757,6 +774,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _showLlmSettings(context);
       case 'comodidad':
         showComfortSheet(context);
+      case 'estadisticas':
+        final store = ListeningStore.instance;
+        if (store != null) {
+          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ListeningStatsScreen(store: store)));
+        }
+      case 'sincronizar':
+        final sync = SyncController.instance;
+        if (sync != null) {
+          await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SyncScreen(sync: sync)));
+          if (mounted) setState(() {}); // pudo cambiar el avance o bajar documentos
+        }
       case 'errores':
         await _shareCrashLog();
       case 'acerca':
@@ -1255,7 +1283,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   /// OCR en segundo plano: cada página lista se añade a la reproducción.
-  Future<void> _runOcr(LibraryEntry entry, LoadedDocument doc, int job, Completer<void> first) async {
+  Future<void> _runOcr(LibraryEntry entry, LoadedDocument doc, int job, Completer<void> first) =>
+      Activity.run('Reconociendo texto', () => _ocrWork(entry, doc, job, first));
+
+  Future<void> _ocrWork(LibraryEntry entry, LoadedDocument doc, int job, Completer<void> first) async {
     try {
       await for (final r in _loader.runOcr(entry, doc)) {
         if (job != _ocrJob) return; // se abrió otro documento
@@ -1289,7 +1320,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// actual. Cada página corregida reemplaza a la original (sin perder la
   /// posición) y se guarda para la próxima vez. Si falla, se sigue con el
   /// texto original.
-  Future<void> _runLlm(LibraryEntry entry, LoadedDocument doc, int job, Map<int, String> done) async {
+  Future<void> _runLlm(LibraryEntry entry, LoadedDocument doc, int job, Map<int, String> done) =>
+      Activity.run('Corrigiendo con IA', () => _llmWork(entry, doc, job, done));
+
+  Future<void> _llmWork(LibraryEntry entry, LoadedDocument doc, int job, Map<int, String> done) async {
     final llm = LlmCleaner.instance;
     final saved = Map<int, String>.of(done);
     try {
@@ -1432,7 +1466,7 @@ Future<void> showComfortSheet(BuildContext context) => showSwarmSheet<void>(
       listenable: Listenable.merge([
         Comfort.paper,
         Comfort.scatter,
-        Comfort.legible,
+        Comfort.font,
         Comfort.textSize,
         Comfort.lineHeight,
         Comfort.keepControls,
@@ -1478,13 +1512,26 @@ Future<void> showComfortSheet(BuildContext context) => showSwarmSheet<void>(
                 ),
               ),
               const Divider(),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: Comfort.legible.value,
-                onChanged: Comfort.setLegible,
-                title: const Text('Letra muy legible'),
-                subtitle: const Text('Para el texto que se lee: letras más abiertas y fáciles de distinguir.'),
+              const Text('Letra del texto que se lee'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final f in ReadingFont.values)
+                    ChoiceChip(
+                      label: Text(f.label),
+                      selected: Comfort.font.value == f,
+                      onSelected: (_) => Comfort.setFont(f),
+                    ),
+                ],
               ),
+              const SizedBox(height: 4),
+              Text(switch (Comfort.font.value) {
+                ReadingFont.normal => 'La misma letra de la app.',
+                ReadingFont.legible => 'Letras más abiertas y fáciles de distinguir.',
+                ReadingFont.book => 'Con serifa, como un libro impreso.',
+              }, style: Theme.of(ctx).textTheme.bodySmall),
+              const SizedBox(height: 8),
               const Divider(),
               const SizedBox(height: 8),
               Text('Lectura', style: Theme.of(ctx).textTheme.titleLarge),
@@ -1504,6 +1551,7 @@ Future<void> showComfortSheet(BuildContext context) => showSwarmSheet<void>(
                 style: Theme.of(ctx).textTheme.bodyLarge?.copyWith(
                   fontSize: Comfort.textSize.value,
                   height: Comfort.lineHeight.value.height,
+                  fontFamily: Comfort.readingFont,
                 ),
               ),
               const SizedBox(height: 12),

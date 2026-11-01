@@ -445,6 +445,17 @@ class _EtherPainter extends CustomPainter {
       <({int letter, String ch, double ox, double oy, double a, double b, double rot, Rect keep, bool absorb})>[];
   final _bitGlyphs = <(String, int, bool), TextPainter>{};
 
+  /// Pantalla de teléfono: el polvo que sube de abajo tapaba media pantalla.
+  /// Ahí sale de una franja corta bajo el texto, con menos trozos y más tenue.
+  static const _narrowWidth = 560.0;
+  bool get _narrow => layout.width < _narrowWidth;
+  double get _calm => _narrow ? 0.55 : 1.0;
+
+  /// Los párrafos que todavía no se leen flotan como letras sueltas debajo del
+  /// que suena: en el teléfono llenaban la mitad de abajo; ahí, casi en su lugar
+  /// y apenas visibles.
+  double get _farCalm => _narrow ? 0.3 : 1.0;
+
   static const _debrisPool = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
   static const _shardW = 5.0, _shardH = 6.0;
 
@@ -481,7 +492,8 @@ class _EtherPainter extends CustomPainter {
       }
       // Una letra o número roto por letra viaja en la corriente: la mayoría
       // desemboca en su letra, como el agua que se junta en el río; el resto
-      // no lo alcanza el imán y sube.
+      // no lo alcanza el imán y sube. En el teléfono, solo una de cada tres.
+      if (_narrow && r.nextDouble() > 0.35) continue;
       final cut = r.nextInt(4); // qué lado se rompió
       final part = 0.45 + r.nextDouble() * 0.3;
       _bits.add((
@@ -542,7 +554,7 @@ class _EtherPainter extends CustomPainter {
       final k = c.chaos;
       final glowing = c.glow > 0.05;
       var alpha = glowing ? math.min(1.0, 0.6 + c.glow) : (0.3 + 0.7 * c.lit) * (1 - 0.45 * k);
-      alpha *= 1 - c.solid;
+      alpha *= (1 - c.solid) * (1 - (1 - _calm) * k);
       final level = (alpha.clamp(0.0, 1.0) * _levels).round();
       if (level == 0) {
         _bucket[d] = _hidden;
@@ -614,8 +626,10 @@ class _EtherPainter extends CustomPainter {
       final glowing = c.glow > 0.05;
       // Blanco pleno (lit 1) sin que se transparente el fondo; plomo (lit
       // 0,5) para el resto de la oración.
-      final alpha = glowing ? math.min(1.0, 0.55 + c.glow) : (0.3 + 0.7 * c.lit) * (c.near ? 1 : 1 - 0.45 * c.chaos);
-      final f = c.near ? 0.5 : 1.0;
+      final alpha = glowing
+          ? math.min(1.0, 0.55 + c.glow)
+          : (0.3 + 0.7 * c.lit) * (c.near ? 1 : (1 - 0.45 * c.chaos) * _farCalm);
+      final f = c.near ? 0.5 : (_narrow ? 0.25 : 1.0);
       final shift = Offset(c.dx * f, c.dy * f);
       if (glowing) {
         _glyph(text[i], alpha * weight, glowing).paint(canvas, home + shift);
@@ -652,7 +666,7 @@ class _EtherPainter extends CustomPainter {
   /// revés. [u] 0 = en el documento, 1 = en la letra (tx, ty).
   Offset _channel(double tx, double ty, double ga, double gb, double u) {
     final sx = layout.width * (ga + 1) / 2;
-    final sy = ty + 380 + gb * 420;
+    final sy = ty + (_narrow ? 90 + gb * 110 : 380 + gb * 420);
     final h = sy - ty;
     final m = 1 - u;
     final a = m * m * m, b = 3 * m * m * u, c = 3 * m * u * u, d = u * u * u;
@@ -687,7 +701,7 @@ class _EtherPainter extends CustomPainter {
       // Los que desembocan en la letra siguen visibles hasta casi el final y se
       // funden cuando la letra se solidifica; los demás se apagan al subir.
       final presence = bit.absorb ? math.min(1.0, k * 4) * (1 - c.solid) : math.min(1.0, k * 1.4);
-      final alpha = presence * (glowing ? 0.9 : 0.55 + 0.3 * c.lit);
+      final alpha = presence * (glowing ? 0.9 : (0.55 + 0.3 * c.lit) * _calm);
       final level = (alpha.clamp(0.0, 1.0) * _levels).round();
       if (level == 0) continue;
       final e = k * k;

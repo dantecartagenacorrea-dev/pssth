@@ -251,7 +251,7 @@ class _ImmersiveReaderState extends State<ImmersiveReader> {
     ];
     return SafeArea(
       child: ListenableBuilder(
-        listenable: Listenable.merge([_h.snapshot, Comfort.textSize, Comfort.lineHeight, Comfort.legible]),
+        listenable: Listenable.merge([_h.snapshot, Comfort.textSize, Comfort.lineHeight, Comfort.font]),
         builder: (context, _) => _TextPage(
           chunks: chunks,
           current: _h.currentChunk,

@@ -71,6 +71,11 @@ class PremiumPage extends StatelessWidget {
   /// Título grande debajo de la barra (si no, va chico en la barra).
   final bool largeTitle;
 
+  /// Más bajo que esto y apaisado (teléfono en horizontal), el título y la
+  /// tarjeta ocupan [_sideShare] del ancho, al costado.
+  static const _shortHeight = 520.0;
+  static const _sideShare = 0.42;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -106,36 +111,63 @@ class PremiumPage extends StatelessWidget {
         ],
       ),
     );
-    final content = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        bar,
-        if (largeTitle && heading != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-            child: DefaultTextStyle(
-              style: theme.textTheme.headlineLarge!,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              child: heading,
-            ),
+    final top = <Widget>[
+      if (largeTitle && heading != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+          child: DefaultTextStyle(
+            style: theme.textTheme.headlineLarge!,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            child: heading,
           ),
-        if (subtitle != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-            child: Text(
-              subtitle!,
-              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
+        ),
+      if (subtitle != null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+          child: Text(
+            subtitle!,
+            style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
-        if (hero case final h?)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: HeroCard(child: h),
-          ),
-        Expanded(child: body),
-        ?bottom,
-      ],
+        ),
+      if (hero case final h?)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: HeroCard(child: h),
+        ),
+    ];
+    final content = LayoutBuilder(
+      builder: (context, box) {
+        // Teléfono en horizontal: el título y la tarjeta no dejan alto para
+        // la lista; van en una columna al costado.
+        final side = top.isNotEmpty && box.maxWidth > box.maxHeight && box.maxHeight < _shortHeight;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            bar,
+            if (side)
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: box.maxWidth * _sideShare,
+                      child: SingleChildScrollView(
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: top),
+                      ),
+                    ),
+                    Expanded(child: body),
+                  ],
+                ),
+              )
+            else ...[
+              ...top,
+              Expanded(child: body),
+            ],
+            ?bottom,
+          ],
+        );
+      },
     );
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: light ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light,
@@ -337,6 +369,8 @@ class AppTabBar extends StatelessWidget {
   const AppTabBar({super.key, required this.items});
   final List<TabItem> items;
 
+  static const _maxLabelScale = 1.3;
+
   @override
   Widget build(BuildContext context) {
     final s = Theme.of(context).colorScheme;
@@ -370,12 +404,20 @@ class AppTabBar extends StatelessWidget {
                             children: [
                               Icon(item.icon, size: 25, color: item.selected ? s.onSurface : s.onSurfaceVariant),
                               const SizedBox(height: 3),
-                              Text(
-                                item.label,
-                                style: t.labelMedium?.copyWith(
-                                  fontSize: 11,
-                                  color: item.selected ? s.onSurface : s.onSurfaceVariant,
-                                  fontWeight: item.selected ? FontWeight.w600 : FontWeight.w500,
+                              // Con la letra grande del sistema el nombre crece
+                              // hasta un tope y nunca se parte (como en iPhone).
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  item.label,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  textScaler: MediaQuery.textScalerOf(context).clamp(maxScaleFactor: _maxLabelScale),
+                                  style: t.labelMedium?.copyWith(
+                                    fontSize: 11,
+                                    color: item.selected ? s.onSurface : s.onSurfaceVariant,
+                                    fontWeight: item.selected ? FontWeight.w600 : FontWeight.w500,
+                                  ),
                                 ),
                               ),
                             ],

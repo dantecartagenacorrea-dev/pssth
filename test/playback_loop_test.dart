@@ -81,6 +81,15 @@ Future<(TtsAudioHandler, Directory)> handlerWith(
 // Con margen: en la corrida completa (varios archivos a la vez) 20 ms no alcanzaban.
 Future<void> settle() => Future.delayed(const Duration(milliseconds: 100));
 
+/// Espera (hasta 4 s) a que se cumpla [done]: guardar la posición toca el
+/// disco y, con todas las pruebas corriendo a la vez, un tiempo fijo a veces
+/// no alcanzaba (la prueba del temporizador fallaba de vez en cuando).
+Future<void> until(bool Function() done) async {
+  for (var i = 0; i < 40 && !done(); i++) {
+    await settle();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -88,16 +97,16 @@ void main() {
     final engine = SlowEngine();
     final (h, tmp) = await handlerWith(engine, ['Uno.', 'Dos.', 'Tres.']);
     unawaited(h.play());
-    await settle();
+    await until(() => engine.pending.length == 1);
     await h.pause();
     unawaited(h.play()); // reanuda antes de que la frase anterior termine
-    await settle();
+    await until(() => engine.spoken.length == 2);
     // Termina la frase vieja (la del bucle pausado): no debe avanzar por su cuenta.
     engine.finishCurrent();
     await settle();
     expect(engine.spoken, ['Uno.', 'Uno.']);
     engine.finishCurrent(); // termina la frase del bucle vigente
-    await settle();
+    await until(() => engine.spoken.length == 3);
     expect(engine.spoken, ['Uno.', 'Uno.', 'Dos.']);
     expect(h.chunkIndex, 1);
     await h.stop();
@@ -108,13 +117,13 @@ void main() {
     final engine = SlowEngine()..failing.add('Dos.');
     final (h, tmp) = await handlerWith(engine, ['Uno.', 'Dos.', 'Tres.']);
     unawaited(h.play());
-    await settle();
+    await until(() => engine.pending.length == 1);
     engine.finishCurrent(); // Uno.
-    await settle();
+    await until(() => engine.spoken.length == 3);
     expect(engine.spoken, ['Uno.', 'Dos.', 'Tres.']);
     expect(h.snapshot.value.message, isNull);
     engine.finishCurrent(); // Tres.
-    await settle();
+    await until(() => !h.snapshot.value.playing);
     tmp.deleteSync(recursive: true);
   });
 
@@ -133,12 +142,12 @@ void main() {
     final (h, tmp) = await handlerWith(engine, ['A.', 'B.', 'C.', 'D.'], onePerPage: true);
     h.chapters = const [Chapter(title: 'Uno', pageIndex: 0), Chapter(title: 'Dos', pageIndex: 2)];
     unawaited(h.play());
-    await settle();
+    await until(() => engine.pending.length == 1);
     h.setSleepAtChapterEnd();
     engine.finishCurrent(); // A.
-    await settle();
+    await until(() => engine.spoken.length == 2 && engine.pending.length == 1);
     engine.finishCurrent(); // B.: el capítulo termina
-    await settle();
+    await until(() => !h.snapshot.value.playing);
     expect(engine.spoken, ['A.', 'B.']);
     expect(h.snapshot.value.playing, isFalse);
     expect(h.chunkIndex, 2); // al seguir, empieza el capítulo siguiente
@@ -152,10 +161,10 @@ void main() {
     Comfort.skipCitations.value = true;
     addTearDown(() => Comfort.skipCitations.value = false);
     unawaited(h.play());
-    await settle();
+    await until(() => engine.spoken.isNotEmpty);
     expect(engine.spoken, ['El poder corrompe.']);
     engine.finishCurrent();
-    await settle();
+    await until(() => !h.snapshot.value.playing);
     tmp.deleteSync(recursive: true);
   });
 }

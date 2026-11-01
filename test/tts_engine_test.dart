@@ -10,6 +10,9 @@ class FakeEngine extends TtsEngine {
   bool failSpeak;
   final List<String> locales;
   final bool renders;
+
+  /// Textos cuyo audio todavía no está listo (voz natural sintetizando).
+  final notReady = <String>{};
   final rendered = <String>[];
   final spoken = <String>[];
   final prefetched = <List<String>>[];
@@ -33,6 +36,8 @@ class FakeEngine extends TtsEngine {
   Future<void> setLanguage(String locale) async => calls.add('lang:$locale');
   @override
   void prefetch(List<String> upcoming) => prefetched.add(upcoming);
+  @override
+  Future<bool> canSpeakNow(String text) async => !notReady.contains(text);
   @override
   Future<void> setRate(double r) async => rate = r;
   @override
@@ -227,5 +232,33 @@ void main() {
     await e.setVoice((await e.voices()).first);
     e.prefetch(['b']);
     expect(p.prefetched, [['b']]);
+  });
+
+  test('mientras la voz natural prepara un fragmento, lo lee la del sistema (nunca en silencio)', () async {
+    final p = FakeEngine('neural')..notReady.add('uno');
+    final f = FakeEngine('apple');
+    final e = FallbackTtsEngine(primary: p, fallback: f);
+    await e.init();
+    await e.speak('uno');
+    e.prefetch(['dos']);
+    await e.speak('dos');
+    expect(f.spoken, ['uno']);
+    expect(p.spoken, ['dos']);
+    expect(p.prefetched, [['dos']]); // la natural sigue preparando lo que viene
+    expect(e.usingFallback, isFalse);
+  });
+
+  test('si la voz natural oculta voces, la lista se actualiza y se avisa', () async {
+    final p = FakeEngine('neural', locales: ['es-ES']), f = FakeEngine('apple');
+    final e = FallbackTtsEngine(primary: p, fallback: f);
+    final avisos = <String>[];
+    e.onVoicesChanged = avisos.add;
+    await e.init();
+    expect((await e.voices()).map((v) => v.name), contains('neural-es-ES'));
+    p.locales.clear();
+    p.onVoicesChanged?.call('no alcanzan');
+    await Future<void>.delayed(Duration.zero);
+    expect((await e.voices()).map((v) => v.name), ['apple-es-ES']);
+    expect(avisos, ['no alcanzan']);
   });
 }

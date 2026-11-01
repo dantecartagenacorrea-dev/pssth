@@ -75,11 +75,13 @@ void main() {
     }
     File('${d.path}/dict/jieba.dict.utf8').createSync(recursive: true);
     Directory('${tmp.path}/qwen3').createSync();
+    Directory('${tmp.path}/piper-ald').createSync();
     await store.removeRetired();
     final left = d.listSync().map((e) => e.uri.pathSegments.lastWhere((s) => s.isNotEmpty)).toSet();
     expect(left, {...kokoroEsModel.requiredFiles, 'lexicon-us-en.txt', 'lexicon-zh.txt'});
     expect(store.isInstalled(kokoroEsModel), isTrue);
     expect(Directory('${tmp.path}/qwen3').existsSync(), isFalse);
+    expect(Directory('${tmp.path}/piper-ald').existsSync(), isFalse);
   });
 
   test('solo los modelos de voz obligan a releer las voces', () {

@@ -36,6 +36,24 @@ List<T> rankVoices<T>(
   return list;
 }
 
+/// Cuántas voces del sistema se ofrecen: con Dora, Alex y Claude suman seis.
+const kSystemVoiceLimit = 3;
+
+/// Las [kSystemVoiceLimit] mejores voces del sistema en español; las de
+/// otros idiomas no se ofrecen.
+List<T> topSystemVoices<T>(
+  Iterable<T> voices, {
+  required String Function(T) name,
+  required String Function(T) locale,
+  String? Function(T)? quality,
+}) =>
+    rankVoices<T>(
+      voices.where((v) => locale(v).toLowerCase().startsWith('es')),
+      name: name,
+      locale: locale,
+      quality: quality,
+    ).take(kSystemVoiceLimit).toList();
+
 /// ¿Funciona sin conexión esta voz del sistema? Android informa por voz si
 /// sus datos no están descargados ("notInstalled" en [features]) y si
 /// necesita Internet ([network] = "1"). Sin esos datos (iOS), sí.

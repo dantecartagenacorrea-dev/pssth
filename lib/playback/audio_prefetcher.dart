@@ -43,6 +43,9 @@ class AudioPrefetcher {
     });
   }
 
+  /// ¿Ya está el audio de [text] en la caché?
+  Future<bool> isReady(String text) => cache.has(_key(text));
+
   Future<File> _load(String key, String text) async {
     if (!await cache.has(key)) {
       final data = await engine.synthesize(text);

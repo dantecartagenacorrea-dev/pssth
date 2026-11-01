@@ -183,11 +183,9 @@ class _VoicesScreenState extends State<VoicesScreen> {
             'Necesita un teléfono reciente; si va lento, PSSTH! vuelve solo a la voz del sistema.',
           ),
           const SizedBox(height: 8),
-          _modelTile(piperAldModel, 'Voz latinoamericana clara y firme, de acento mexicano neutro. Sin conexión.'),
-          const SizedBox(height: 8),
           _modelTile(
             piperClaudeModel,
-            'Otra voz latinoamericana de acento mexicano neutro, de mayor calidad. Sin conexión.',
+            'Voz latinoamericana de acento mexicano neutro, clara y firme. Sin conexión.',
           ),
           if (Platform.isIOS) ...[
             const SizedBox(height: 8),

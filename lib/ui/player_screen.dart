@@ -37,6 +37,11 @@ class PlayerScreen extends StatelessWidget {
   /// Opción del temporizador: pausar al terminar el capítulo.
   static const _chapterEnd = -1;
 
+  /// Más bajo que esto y apaisado (teléfono en horizontal), el lector va en
+  /// dos columnas; [_sideWidth] es el ancho de la de los controles.
+  static const _shortHeight = 520.0;
+  static const _sideWidth = 400.0;
+
   // Con los colores que se eligieron en Aspecto (negro o blanco).
   @override
   Widget build(BuildContext context) => _ChromeVisibility(
@@ -176,148 +181,169 @@ class PlayerScreen extends StatelessWidget {
       builder: (context, state, _) {
         final theme = Theme.of(context);
         final gray = theme.colorScheme.secondary;
-        return Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxWidth: contentWidth(context)),
+        final header = _Fade(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Fade(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          state.pageCount <= 0 ? 'Página —' : 'Página ${state.pageIndex + 1} de ${state.pageCount}',
-                          style: theme.textTheme.bodyMedium?.copyWith(color: gray),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          state.title.isEmpty ? entry.name : state.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.headlineMedium,
-                        ),
-                        const SizedBox(height: 12),
-                        // Lo más usado para estudiar, a la vista (antes solo en ⋮).
-                        _StudyActions(
-                          onSearch: () => showSearchSheet(context, handler),
-                          onSummary: () => showSummarySheet(context, handler, entry),
-                          onQuiz: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => QuizScreen(handler: handler, entry: entry),
-                            ),
-                          ),
-                        ),
-                      ],
+                Text(
+                  state.pageCount <= 0 ? 'Página —' : 'Página ${state.pageIndex + 1} de ${state.pageCount}',
+                  style: theme.textTheme.bodyMedium?.copyWith(color: gray),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  state.title.isEmpty ? entry.name : state.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 12),
+                // Lo más usado para estudiar, a la vista (antes solo en ⋮).
+                _StudyActions(
+                  onSearch: () => showSearchSheet(context, handler),
+                  onSummary: () => showSummarySheet(context, handler, entry),
+                  onQuiz: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => QuizScreen(handler: handler, entry: entry),
                     ),
                   ),
                 ),
-                // Los controles flotan sobre el texto: el polvo de letras pasa por detrás.
-                Expanded(
-                  child: Stack(
+              ],
+            ),
+          ),
+        );
+        Widget text({required double bottom}) => SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(20, 18, 20, bottom),
+          child: state.message == null && state.currentText.isNotEmpty
+              ? _ReadingView(handler: handler, index: handler.chunkIndex)
+              : Text(
+                  state.message ?? 'Toca Reproducir para escuchar.',
+                  style: theme.textTheme.bodyLarge?.copyWith(color: gray),
+                ),
+        );
+        // Los controles en la tarjeta oscura, como un reproductor de Apple.
+        final controls = _Fade(
+          child: HeroCard(
+            child: Builder(
+              builder: (context) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(2),
+                    child: LinearProgressIndicator(minHeight: 4, value: state.hasText ? state.progress : 0),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Positioned.fill(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(20, 18, 20, 300),
-                          child: state.message == null && state.currentText.isNotEmpty
-                              ? _ReadingView(handler: handler, index: handler.chunkIndex)
-                              : Text(
-                                  state.message ?? 'Toca Reproducir para escuchar.',
-                                  style: theme.textTheme.bodyLarge?.copyWith(color: gray),
-                                ),
+                      IconButton(
+                        tooltip: 'Página anterior',
+                        onPressed: state.hasText ? handler.previousPage : null,
+                        icon: const Icon(CupertinoIcons.backward_end_fill, size: 26),
+                      ),
+                      IconButton(
+                        tooltip: 'Frase anterior',
+                        onPressed: state.hasText ? handler.skipToPrevious : null,
+                        icon: const Icon(CupertinoIcons.gobackward, size: 28),
+                      ),
+                      _PlayButton(
+                        playing: state.playing,
+                        enabled: state.hasText,
+                        onTap: () => state.playing ? handler.pause() : handler.play(),
+                      ),
+                      IconButton(
+                        tooltip: 'Frase siguiente',
+                        onPressed: state.hasText ? handler.skipToNext : null,
+                        icon: const Icon(CupertinoIcons.goforward, size: 28),
+                      ),
+                      IconButton(
+                        tooltip: 'Página siguiente',
+                        onPressed: state.hasText ? handler.nextPage : null,
+                        icon: const Icon(CupertinoIcons.forward_end_fill, size: 26),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _Pill(
+                          label: 'Velocidad',
+                          value: speedLabel(state.speed),
+                          onTap: () => _pickSpeed(context, state),
                         ),
                       ),
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: _Fade(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                            // Los controles en la tarjeta oscura, como un reproductor de Apple.
-                            child: HeroCard(
-                              child: Builder(
-                                builder: (context) => Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(2),
-                                      child: LinearProgressIndicator(
-                                        minHeight: 4,
-                                        value: state.hasText ? state.progress : 0,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        IconButton(
-                                          tooltip: 'Página anterior',
-                                          onPressed: state.hasText ? handler.previousPage : null,
-                                          icon: const Icon(CupertinoIcons.backward_end_fill, size: 26),
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Frase anterior',
-                                          onPressed: state.hasText ? handler.skipToPrevious : null,
-                                          icon: const Icon(CupertinoIcons.gobackward, size: 28),
-                                        ),
-                                        _PlayButton(
-                                          playing: state.playing,
-                                          enabled: state.hasText,
-                                          onTap: () => state.playing ? handler.pause() : handler.play(),
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Frase siguiente',
-                                          onPressed: state.hasText ? handler.skipToNext : null,
-                                          icon: const Icon(CupertinoIcons.goforward, size: 28),
-                                        ),
-                                        IconButton(
-                                          tooltip: 'Página siguiente',
-                                          onPressed: state.hasText ? handler.nextPage : null,
-                                          icon: const Icon(CupertinoIcons.forward_end_fill, size: 26),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: _Pill(
-                                            label: 'Velocidad',
-                                            value: speedLabel(state.speed),
-                                            onTap: () => _pickSpeed(context, state),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: _Pill(
-                                            label: 'Idioma',
-                                            value: languageName(handler.documentLanguage ?? 'es'),
-                                            onTap: () => _pickLanguage(context),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Expanded(
-                                          child: _Pill(
-                                            label: 'Voz',
-                                            value: _voiceLabel(state),
-                                            onTap: () => _pickVoice(context, state),
-                                            onLongPress: () => _showVoiceHelp(context, state),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _Pill(
+                          label: 'Idioma',
+                          value: languageName(handler.documentLanguage ?? 'es'),
+                          onTap: () => _pickLanguage(context),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _Pill(
+                          label: 'Voz',
+                          value: _voiceLabel(state),
+                          onTap: () => _pickVoice(context, state),
+                          onLongPress: () => _showVoiceHelp(context, state),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                ],
+              ),
+            ),
+          ),
+        );
+        return Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: contentWidth(context)),
+            child: LayoutBuilder(
+              builder: (context, box) {
+                // Teléfono en horizontal: no hay alto para el texto y los
+                // controles uno sobre otro; el texto va a la izquierda y los
+                // controles, al lado (primero, para no tener que bajar a
+                // buscarlos), con el título debajo.
+                if (box.maxWidth > box.maxHeight && box.maxHeight < _shortHeight) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Expanded(child: text(bottom: 24)),
+                      SizedBox(
+                        width: _sideWidth,
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.fromLTRB(0, 0, 12, 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [controls, const SizedBox(height: 12), header],
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    header,
+                    // Los controles flotan sobre el texto: el polvo de letras pasa por detrás.
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          Positioned.fill(child: text(bottom: 300)),
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 16), child: controls),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         );
@@ -580,7 +606,7 @@ class _ReadingViewState extends State<_ReadingView> {
 
   // Al cambiar el tamaño de la letra o el espacio, el texto se mueve: se
   // vuelve a poner a la vista la frase que suena.
-  final _style = Listenable.merge([Comfort.textSize, Comfort.lineHeight, Comfort.legible]);
+  final _style = Listenable.merge([Comfort.textSize, Comfort.lineHeight, Comfort.font]);
 
   @override
   void initState() {
@@ -752,8 +778,17 @@ class _Pill extends StatelessWidget {
   /// Más angosta que esto, el nombre va sobre el valor.
   static const _narrow = 150.0;
 
+  /// Con la letra grande del sistema crece hasta aquí: más grande, las tres
+  /// píldoras solo mostrarían «Velo…», «Espa…».
+  static const _maxTextScale = 1.3;
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => MediaQuery.withClampedTextScaling(
+    maxScaleFactor: _maxTextScale,
+    child: Builder(builder: _pill),
+  );
+
+  Widget _pill(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final gray = scheme.secondary;
     final name = Text(
@@ -776,7 +811,14 @@ class _Pill extends StatelessWidget {
         onPressed: onTap,
         onLongPress: onLongPress,
         child: box.maxWidth < _narrow
-            ? Column(mainAxisSize: MainAxisSize.min, children: [name, shown])
+            ? Column(
+                mainAxisSize: MainAxisSize.min,
+                // El nombre se achica antes que cortarse («Velocid…»).
+                children: [
+                  FittedBox(fit: BoxFit.scaleDown, child: name),
+                  shown,
+                ],
+              )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [

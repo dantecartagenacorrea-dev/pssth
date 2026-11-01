@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/activity.dart';
 import '../core/perf_log.dart';
 import 'model_store.dart';
 
@@ -89,7 +90,7 @@ class ModelQueue extends ChangeNotifier {
 
   Future<bool> _install(ModelSpec m) async {
     try {
-      await store.install(m);
+      await Activity.run('Bajando voces', () => store.install(m));
       if (isVoiceModel(m)) await onInstalled();
       perfLog('modelo instalado en segundo plano: ${m.id}');
       return true;

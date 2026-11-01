@@ -94,4 +94,19 @@ class BookmarkStore {
     _all.removeWhere((b) => b.documentId == documentId);
     await _save();
   }
+
+  /// Todos los marcadores (para sincronizar).
+  Future<List<Bookmark>> all() async {
+    await _load();
+    return List.unmodifiable(_all);
+  }
+
+  /// Deja exactamente [list] (lo que quedó al sincronizar), en un guardado.
+  Future<void> replaceAll(List<Bookmark> list) async {
+    await _load();
+    _all
+      ..clear()
+      ..addAll(list);
+    await _save();
+  }
 }

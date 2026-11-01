@@ -20,4 +20,16 @@ void main() {
     // iOS no informa nada de eso: todas sirven.
     expect(isUsableSystemVoice(), isTrue);
   });
+  test('del sistema quedan solo las 3 mejores voces en español', () {
+    final voces = [
+      ('en-us-x-iob-local', 'en-US'),
+      ('es-ES-language', 'es-ES'),
+      ('es-es-x-eed-local', 'es-ES'),
+      ('es-us-x-sfb-local', 'es-US'),
+      ('es-us-x-esd-local', 'es_US'),
+      ('fr-fr-x-frd-local', 'fr-FR'),
+    ];
+    final r = topSystemVoices<(String, String)>(voces, name: (v) => v.$1, locale: (v) => v.$2);
+    expect(r.map((v) => v.$1).toList(), ['es-us-x-sfb-local', 'es-us-x-esd-local', 'es-es-x-eed-local']);
+  });
 }

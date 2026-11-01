@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../domain/library_entry.dart';
@@ -106,6 +108,7 @@ class LibraryStore {
           final existing = await f.readAsBytes();
           if (_sameBytes(existing, bytes)) {
             e.lastOpenedIso = DateTime.now().toIso8601String();
+            e.contentHash ??= sha256.convert(bytes).toString();
             _data.entries.remove(e);
             _data.entries.insert(0, e);
             await _save();
@@ -129,6 +132,7 @@ class LibraryStore {
       lastOpenedIso: DateTime.now().toIso8601String(),
       kind: kind,
       scanned: scanned,
+      contentHash: sha256.convert(bytes).toString(),
     );
     _data.entries.removeWhere((e) => e.id == id);
     _data.entries.insert(0, entry);
@@ -144,6 +148,23 @@ class LibraryStore {
       n++;
     }
     return '$n';
+  }
+
+  /// Calcula la huella de los documentos que no la tienen (los importados
+  /// antes de existir la sincronización). Fuera del hilo de la pantalla: un
+  /// PDF grande tarda.
+  Future<void> ensureHashes() async {
+    var changed = false;
+    for (final e in List.of(_data.entries)) {
+      if (e.contentHash != null) continue;
+      final path = e.storedPath;
+      try {
+        if (!await File(path).exists()) continue;
+        e.contentHash = await Isolate.run(() => sha256.convert(File(path).readAsBytesSync()).toString());
+        changed = true;
+      } catch (_) {}
+    }
+    if (changed) await _save();
   }
 
   static bool _sameBytes(List<int> a, List<int> b) {
@@ -225,6 +246,27 @@ class LibraryStore {
         }
       }
     } catch (_) {}
+  }
+
+  /// Avance traído de otro aparato: dónde iba, terminado, favorito y cuándo
+  /// se abrió. No cambia el orden ni el archivo.
+  Future<void> applySynced(
+    String id, {
+    required int pageIndex,
+    required int chunkIndex,
+    required bool finished,
+    required bool favorite,
+    required String? lastOpenedIso,
+  }) async {
+    final e = byId(id);
+    if (e == null) return;
+    e
+      ..pageIndex = pageIndex
+      ..chunkIndex = chunkIndex
+      ..finished = finished
+      ..favorite = favorite
+      ..lastOpenedIso = lastOpenedIso ?? e.lastOpenedIso;
+    await _save();
   }
 
   LibraryEntry? byId(String id) {

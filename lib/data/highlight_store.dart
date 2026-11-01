@@ -130,4 +130,19 @@ class HighlightStore {
     _all.removeWhere((h) => h.documentId == documentId);
     await _save();
   }
+
+  /// Todos los subrayados (para sincronizar).
+  Future<List<Highlight>> all() async {
+    await _load();
+    return List.unmodifiable(_all);
+  }
+
+  /// Deja exactamente [list] (lo que quedó al sincronizar), en un guardado.
+  Future<void> replaceAll(List<Highlight> list) async {
+    await _load();
+    _all
+      ..clear()
+      ..addAll(list);
+    await _save();
+  }
 }

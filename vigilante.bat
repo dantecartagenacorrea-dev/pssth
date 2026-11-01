@@ -8,12 +8,12 @@ if exist run.flag (
   del /f /q run.flag
   if exist run.flag (
     echo No pude borrar run.flag; omito para no repetir en bucle.
-    timeout /t 30 /nobreak >nul
+    %SystemRoot%\System32\timeout.exe /t 30 /nobreak >nul
     goto loop
   )
   echo [%time%] Ejecutando verificar.bat
   call verificar.bat
   echo [%time%] Listo.
 )
-timeout /t 3 /nobreak >nul
+%SystemRoot%\System32\timeout.exe /t 3 /nobreak >nul
 goto loop

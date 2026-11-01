@@ -10,10 +10,21 @@ on:
         description: "Subir a TestFlight (si no, solo compila sin firmar)"
         type: boolean
         default: true
+      mac:
+        description: "Mac: arm64 (más rápido) o intel (si arm64 queda en cola mucho rato)"
+        type: choice
+        options: [arm64, intel]
+        default: arm64
+      revisar:
+        description: "Correr también análisis y pruebas (ya se corren en el PC; en Mac cuestan x10)"
+        type: boolean
+        default: false
 jobs:
   build:
-    # Intel: los Mac arm64 (macos-latest) no estaban disponibles por capacidad.
-    runs-on: macos-15-intel
+    # arm64 compila bastante más rápido que Intel por el mismo precio por minuto.
+    # En octubre de 2026 arm64 quedaba sin capacidad: si pasa, elegir "intel".
+    # El tiempo en cola no se cobra.
+    runs-on: ${{ inputs.mac == 'intel' && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -29,12 +40,27 @@ jobs:
           # Misma versión que en el PC: una más nueva trae reglas del analizador
           # que aquí no se ven y la compilación falla.
           flutter-version: 3.47.9
+          # Guarda Flutter entre compilaciones: no se baja cada vez.
+          cache: true
+      - name: Guardar paquetes y Pods entre compilaciones
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            ios/Pods
+          key: ios-${{ runner.arch }}-${{ hashFiles('pubspec.lock', 'ios/Podfile') }}
       - run: flutter pub get
       - run: dart run flutter_launcher_icons
-      - run: flutter analyze
-      - run: flutter test
-      - name: Compilar (sin firma) y preparar Pods
+      - if: ${{ inputs.revisar }}
+        run: flutter analyze
+      - if: ${{ inputs.revisar }}
+        run: flutter test
+      - name: Compilar sin firma (solo si no se sube)
+        if: ${{ !inputs.subir }}
         run: flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
+      - name: Preparar el proyecto sin compilar (la firma compila una sola vez)
+        if: ${{ inputs.subir }}
+        run: flutter build ios --release --config-only --build-number=${{ github.run_number }}
       - name: Firmar y subir a TestFlight
         if: ${{ inputs.subir }}
         env:

@@ -13,6 +13,7 @@ class LibraryEntry {
     this.finished = false,
     this.language,
     this.scanned = false,
+    this.contentHash,
   });
 
   final String id;
@@ -34,6 +35,11 @@ class LibraryEntry {
 
   /// Idioma elegido a mano ('es', 'en'…); null = detectarlo automáticamente.
   String? language;
+
+  /// Huella del contenido al importarlo (SHA-256): el mismo archivo da la
+  /// misma huella en cualquier aparato, así se reconoce al sincronizar. No
+  /// cambia si después se edita. null hasta que se calcula.
+  String? contentHash;
 
   double get progress {
     if (pageCount <= 0) {
@@ -60,6 +66,7 @@ class LibraryEntry {
     'finished': finished,
     'language': language,
     if (scanned) 'scanned': true,
+    if (contentHash != null) 'hash': contentHash,
   };
 
   factory LibraryEntry.fromJson(Map<String, dynamic> json) {
@@ -77,6 +84,7 @@ class LibraryEntry {
       finished: json['finished'] as bool? ?? false,
       language: json['language'] as String?,
       scanned: json['scanned'] as bool? ?? false,
+      contentHash: json['hash'] as String?,
     );
   }
 }
@@ -86,9 +94,7 @@ class LibraryData {
 
   final List<LibraryEntry> entries;
 
-  Map<String, dynamic> toJson() => {
-    'entries': entries.map((e) => e.toJson()).toList(),
-  };
+  Map<String, dynamic> toJson() => {'entries': entries.map((e) => e.toJson()).toList()};
 
   factory LibraryData.fromJson(Map<String, dynamic> json) {
     final raw = json['entries'];

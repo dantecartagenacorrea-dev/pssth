@@ -33,6 +33,10 @@ abstract class TtsEngine {
   /// Error asíncrono del motor (p. ej. motor del sistema no disponible).
   void Function(String message)? onError;
 
+  /// La lista de voces cambió sola (p. ej. se ocultaron voces que este equipo
+  /// no alcanza a leer); [message] explica por qué, para mostrarlo.
+  void Function(String message)? onVoicesChanged;
+
   Future<void> init();
   Future<List<VoiceOption>> voices();
   Future<void> setVoice(VoiceOption voice);
@@ -46,6 +50,15 @@ abstract class TtsEngine {
   /// Pista de los fragmentos que vienen después (motores que sintetizan audio
   /// los preparan; el resto lo ignora).
   void prefetch(List<String> upcoming) {}
+
+  /// Deja listo el audio de [text] con [voice] sin cambiar la voz que suena:
+  /// al terminar, cambiar a esa voz y leer [text] empieza al instante. Los
+  /// motores que hablan sin sintetizar antes (el del sistema) no esperan nada.
+  Future<void> prepare(VoiceOption voice, String text) async {}
+
+  /// ¿Puede empezar a sonar [text] ya, sin esperar a que se sintetice? Los
+  /// motores que hablan directo (el del sistema) siempre pueden.
+  Future<bool> canSpeakNow(String text) async => true;
 
   /// Sintetiza [text] en un archivo de audio en [path] (sin reproducirlo) y
   /// devuelve la ruta real escrita (la extensión puede cambiar según el motor:

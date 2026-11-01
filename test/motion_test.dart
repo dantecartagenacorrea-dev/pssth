@@ -9,14 +9,26 @@ void main() {
   test('el fondo, la dispersión y la letra se recuerdan', () async {
     await Comfort.setPaper(Paper.white);
     await Comfort.setScatter(false);
-    await Comfort.setLegible(true);
+    await Comfort.setFont(ReadingFont.book);
     Comfort.paper.value = Paper.black;
     Comfort.scatter.value = true;
-    Comfort.legible.value = false;
+    Comfort.font.value = ReadingFont.normal;
     await Comfort.load();
     expect(Comfort.paper.value, Paper.white);
     expect(Comfort.scatter.value, isFalse);
-    expect(Comfort.legible.value, isTrue);
+    expect(Comfort.font.value, ReadingFont.book);
+    expect(Comfort.readingFont, Comfort.bookFamily);
+  });
+
+  test('quien tenía la letra muy legible la conserva', () async {
+    SharedPreferences.setMockInitialValues({'legible_font': true});
+    await Comfort.load();
+    expect(Comfort.font.value, ReadingFont.legible);
+    expect(Comfort.readingFont, Comfort.legibleFamily);
+    SharedPreferences.setMockInitialValues({});
+    await Comfort.load();
+    expect(Comfort.font.value, ReadingFont.normal);
+    expect(Comfort.readingFont, isNull);
   });
 
   test('sin nada guardado: fondo negro con dispersión', () async {

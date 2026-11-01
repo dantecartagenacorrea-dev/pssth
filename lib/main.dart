@@ -16,12 +16,15 @@ import 'package:path_provider/path_provider.dart';
 import 'core/crash_log.dart';
 import 'data/bookmark_store.dart';
 import 'data/highlight_store.dart';
+import 'data/listening_store.dart';
 import 'data/library_store.dart';
 import 'data/model_queue.dart';
 import 'data/model_store.dart';
 import 'data/temp_cleanup.dart';
 import 'data/pronunciation_store.dart';
 import 'data/settings_store.dart';
+import 'data/sync_service.dart';
+import 'services/sync_controller.dart';
 import 'data/audio_cache.dart';
 import 'playback/engines/apple_tts_engine.dart';
 import 'playback/engines/fallback_tts_engine.dart';
@@ -29,6 +32,7 @@ import 'playback/engines/kokoro_engine.dart';
 import 'playback/tts_audio_handler.dart';
 import 'ui/swarm.dart';
 import 'ui/swarm_transition.dart';
+import 'ui/activity_badge.dart';
 import 'ui/dot_field.dart';
 import 'ui/intro_screen.dart';
 import 'ui/library_screen.dart';
@@ -69,6 +73,19 @@ Future<void> main() async {
   final pronunciationStore = PronunciationStore(File('${libraryStore.root.path}/pronunciation.json'));
   final bookmarkStore = BookmarkStore(File('${libraryStore.root.path}/bookmarks.json'));
   HighlightStore.instance = HighlightStore(File('${libraryStore.root.path}/highlights.json'));
+  ListeningStore.instance = ListeningStore(File('${libraryStore.root.path}/listening.json'));
+  // Sincronizar con el Google Drive de la persona (si entró con su cuenta).
+  SyncController.instance = SyncController(
+    library: libraryStore,
+    service: SyncService(
+      file: File('${libraryStore.root.path}/sync.json'),
+      library: libraryStore,
+      bookmarks: bookmarkStore,
+      highlights: HighlightStore.instance!,
+      pronunciation: pronunciationStore,
+      listening: ListeningStore.instance!,
+    ),
+  );
 
   // Voz natural (opcional): modelo en <documentos>/models/kokoro; sin él solo hay voces del sistema.
   final modelStore = ModelStore(Directory('${docs.path}/models'));
@@ -78,7 +95,6 @@ Future<void> main() async {
       cache: AudioCache(Directory('${cacheDir.path}/tts_audio')),
       piper: [
         for (final (m, name, voice) in [
-          (piperAldModel, 'es_MX-ald-medium', 'Ald'),
           (piperClaudeModel, 'es_MX-claude-high', 'Claude'),
         ])
           (
@@ -127,6 +143,10 @@ Future<void> main() async {
     unawaited(ModelQueue.instance.start());
     // Temporales viejos y restos de la IA quitada (no frena el arranque).
     unawaited(cleanTemporary(cacheDir).then((b) => mark('temporales: ${b ~/ (1024 * 1024)} MB liberados')));
+    // Sincroniza al abrir (si ya había entrado) y cada vez que se sale de la app.
+    final sync = SyncController.instance!;
+    unawaited(sync.start());
+    AppLifecycleListener(onHide: () => unawaited(sync.syncNow()));
   });
   startFrameStats(); // solo en la versión de medición
   runApp(
@@ -218,6 +238,8 @@ class LectorPdfApp extends StatelessWidget {
                 Positioned.fill(child: still ? const SizedBox.shrink() : const DotField()),
                 ?child,
                 if (!still) const Positioned.fill(child: SwarmView()),
+                // Lo que la app hace en segundo plano, arriba y discreto.
+                const Positioned.fill(child: ActivityBadge()),
               ],
             ),
           ),
