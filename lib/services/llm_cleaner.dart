@@ -126,6 +126,37 @@ class LlmCleaner {
     }
   }
 
+  /// Modelo de la computadora que puede ver imágenes.
+  static const visionModel = 'qwen2.5vl:7b';
+
+  /// Guarda la dirección de la computadora sin tocar lo demás.
+  Future<void> saveUrl(String address) => save(url: address, model: model, enabled: enabled);
+
+  /// Transcribe una página con la IA de la computadora ([jpeg]: la foto). null si no
+  /// respondió: quien llama sigue con el lector común.
+  Future<String?> readPage(List<int> jpeg) async {
+    if (url.isEmpty) return null;
+    try {
+      final r = await _post('/api/generate', {
+        'model': visionModel,
+        'stream': false,
+        'prompt':
+            'Transcribe exactly all the Spanish text in this document, line by line. '
+            'Do not translate, correct or add anything. Reply only with the text. '
+            'If the image has no text, reply only: NONE.',
+        'images': [base64Encode(jpeg)],
+        'options': {'temperature': 0, 'num_predict': 3000},
+      }, timeout: const Duration(minutes: 4));
+      return r?['response'] as String?;
+    } on IOException {
+      return null;
+    } on TimeoutException {
+      return null;
+    } on FormatException {
+      return null;
+    }
+  }
+
   /// Respuesta en JSON con la forma de [schema] (resúmenes y preguntas de
   /// estudio con la IA de la computadora). null si el servidor no respondió.
   Future<Object?> generateJson(String system, String prompt, Map<String, dynamic> schema) async {

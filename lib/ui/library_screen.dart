@@ -35,16 +35,20 @@ import '../domain/date_label.dart';
 import '../domain/language_detector.dart';
 import '../domain/library_entry.dart';
 import '../domain/link_finder.dart';
+import '../domain/retyped_pdf.dart';
+import '../domain/scan_filters.dart';
 import '../domain/scanned_pdf.dart';
 import '../domain/text_chunk.dart';
 import '../domain/text_normalizer.dart';
 import '../ocr/ocr_engine.dart';
 import '../platform/document_scanner.dart';
+import '../platform/formula_engine.dart' show FormulaEngineException;
+import '../platform/page_unwarp.dart';
 import '../platform/native_text.dart';
 import '../platform/open_file_bridge.dart';
 import '../platform/speech_transcriber.dart';
 import '../platform/whisper_transcriber.dart';
-import 'math_screen.dart';
+import 'calculator_screen.dart';
 import 'scan_review_screen.dart';
 import 'swarm_transition.dart';
 import '../playback/tts_audio_handler.dart';
@@ -460,13 +464,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
           tabs: [
             const TabItem(icon: CupertinoIcons.house_fill, label: 'Biblioteca', onTap: null, selected: true),
             TabItem(
-              icon: CupertinoIcons.number,
-              label: 'Matemáticas',
+              icon: CupertinoIcons.plus_slash_minus,
+              label: 'Calculadora',
               onTap: _busy
                   ? null
-                  : () => Navigator.of(
-                      context,
-                    ).push(MaterialPageRoute(builder: (_) => MathScreen(handler: widget.handler))),
+                  : () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => CalculatorScreen(handler: widget.handler, modelStore: widget.modelStore),
+                      ),
+                    ),
             ),
             TabItem(icon: CupertinoIcons.waveform, label: 'Voces', onTap: _openVoices),
             TabItem(icon: CupertinoIcons.gear, label: 'Ajustes', onTap: _showSettings),
@@ -552,6 +558,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   tooltip: 'Escanear a PDF',
                   onTap: _busy ? null : _scanToPdf,
                 ),
+                if (Platform.isAndroid)
+                  HeroPill(
+                    icon: CupertinoIcons.wand_stars,
+                    label: 'Hoja arrugada',
+                    tooltip: 'Aplanar y limpiar una hoja arrugada',
+                    onTap: _busy ? null : _scanWrinkled,
+                  ),
                 HeroPill(
                   icon: CupertinoIcons.mic,
                   label: 'Grabar',
@@ -972,26 +985,136 @@ class _LibraryScreenState extends State<LibraryScreen> {
       return;
     }
     if (paths.isEmpty || !mounted) return;
+    await _reviewAndSave(paths);
+  }
+
+  /// Hoja arrugada: el escáner común entrega la hoja ya recortada y así no se puede
+  /// aplanar, por eso aquí se usa la foto directa, con la hoja entera a la vista.
+  Future<void> _scanWrinkled() async {
+    final store = widget.modelStore;
+    if (!store.isInstalled(unwarpModel)) {
+      final megabytes = (unwarpModel.sizeBytes / 1000000).round();
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Aplanador de hojas'),
+          content: Text('Endereza las hojas arrugadas, sin internet. Se baja una sola vez ($megabytes MB).'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Ahora no')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Bajar')),
+          ],
+        ),
+      );
+      if (accepted != true || !mounted) return;
+      setState(() {
+        _busy = true;
+        _busyLabel = 'Bajando el aplanador…';
+      });
+      try {
+        await store.install(unwarpModel);
+      } on ModelInstallException catch (error) {
+        if (mounted) showSafeMessage(context, error);
+        return;
+      } finally {
+        if (mounted) setState(() => _busy = false);
+      }
+      if (!mounted) return;
+    }
+    final dir = Directory('${(await getTemporaryDirectory()).path}/hojas');
+    await dir.create(recursive: true);
+    final model = '${store.dirFor(unwarpModel).path}/inference.onnx';
+    final paths = <String>[];
+    var notFlattened = false;
+    while (mounted) {
+      final source = await _askWrinkledPhoto(paths.length);
+      if (source == null || !mounted) break;
+      final picked = await ImagePicker().pickImage(source: source, imageQuality: 95);
+      if (picked == null || !mounted) continue;
+      setState(() {
+        _busy = true;
+        _busyLabel = 'Aplanando la hoja…';
+      });
+      final out = '${dir.path}/hoja_${DateTime.now().microsecondsSinceEpoch}.jpg';
+      try {
+        await unwarpPage(picked.path, model, out);
+        paths.add(out);
+      } on FormulaEngineException {
+        notFlattened = true;
+        paths.add(picked.path);
+      } on FormatException {
+        notFlattened = true;
+      } on FileSystemException {
+        notFlattened = true;
+      }
+      if (mounted) setState(() => _busy = false);
+    }
+    if (paths.isEmpty || !mounted) return;
+    if (notFlattened) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText('Alguna página no se pudo aplanar.')));
+    }
+    await _reviewAndSave(paths);
+  }
+
+  /// De dónde sale la página siguiente; null si ya no hay más.
+  Future<ImageSource?> _askWrinkledPhoto(int done) => showDialog<ImageSource>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(done == 0 ? 'Hoja arrugada' : '$done ${done == 1 ? 'página lista' : 'páginas listas'}'),
+      content: Text(
+        done == 0
+            ? 'Pon la hoja sobre una mesa y que se vea entera en la foto, con buena luz. Las firmas y los sellos se conservan.'
+            : '¿Agregas otra página?',
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: Text(done == 0 ? 'Cancelar' : 'Listo')),
+        TextButton(onPressed: () => Navigator.pop(context, ImageSource.gallery), child: const Text('Desde Fotos')),
+        FilledButton(onPressed: () => Navigator.pop(context, ImageSource.camera), child: const Text('Tomar foto')),
+      ],
+    ),
+  );
+
+  Future<void> _reviewAndSave(List<String> paths) async {
+    await LlmCleaner.instance.load();
+    if (!mounted) return;
     final now = DateTime.now();
     try {
       // Elegir cómo limpiar las páginas (B&N, Mejorar…) viendo cómo quedan.
-      final clean = await Navigator.of(
-        context,
-      ).push<List<CleanPage>>(MaterialPageRoute(builder: (_) => ScanReviewScreen(paths: paths)));
-      if (clean == null || clean.isEmpty || !mounted) return;
+      final review = await Navigator.of(context).push<ScanReview>(
+        MaterialPageRoute(
+          builder: (_) => ScanReviewScreen(
+            paths: paths,
+            recognize: (path) async => (await _native.recognizeLines(path)).lines,
+            readWithAi: LlmCleaner.instance.url.isEmpty
+                ? null
+                : (path) async {
+                    try {
+                      return await LlmCleaner.instance.readPage(await photoForAi(path));
+                    } on FileSystemException {
+                      return null;
+                    } on FormatException {
+                      return null;
+                    }
+                  },
+          ),
+        ),
+      );
+      if (review == null || review.pages.isEmpty || !mounted) return;
+      final clean = review.pages;
       final pages = <ScannedPage>[];
       for (var i = 0; i < clean.length; i++) {
         setState(() {
           _busy = true;
           _busyLabel = 'Reconociendo texto… página ${i + 1} de ${clean.length}';
         });
-        var lines = const <ScannedLine>[];
-        try {
-          // El texto se lee en la foto original (más detalle); la posición es
-          // la misma en la página limpia porque se mide en fracciones.
-          lines = (await _native.recognizeLines(paths[i])).lines;
-        } catch (_) {
-          // Sin texto reconocido, la página va igual (solo la imagen).
+        var lines = review.retyped?[i] ?? const <ScannedLine>[];
+        if (review.retyped == null) {
+          try {
+            // El texto se lee en la foto original (más detalle); la posición es
+            // la misma en la página limpia porque se mide en fracciones.
+            lines = (await _native.recognizeLines(review.paths[i])).lines;
+          } catch (_) {
+            // Sin texto reconocido, la página va igual (solo la imagen).
+          }
         }
         pages.add((jpeg: clean[i].jpeg, width: clean[i].width, height: clean[i].height, lines: lines));
       }
@@ -1004,20 +1127,35 @@ class _LibraryScreenState extends State<LibraryScreen> {
         _busyLabel = 'Armando el PDF…';
       });
       final fileName = safePdfFileName(name, now);
-      final bytes = await buildScannedPdf(pages, title: fileName.substring(0, fileName.length - 4));
+      final base = fileName.substring(0, fileName.length - 4);
+      final bytes = await buildScannedPdf(pages, title: base);
       final dir = Directory('${(await getTemporaryDirectory()).path}/escaneos');
       await dir.create(recursive: true);
-      final file = File('${dir.path}/$fileName');
-      await file.writeAsBytes(bytes, flush: true);
       // Queda también en PSSTH!, en «Escaneados»: se puede abrir, escuchar y
       // volver a compartir.
       await widget.libraryStore.importFile(originalName: fileName, bytes: bytes, scanned: true);
+      // «Como nuevo» es una transcripción: la copia con la foto queda al lado.
+      final newName = review.retyped == null ? null : '$base (como nuevo).pdf';
+      final newBytes = newName == null ? null : await buildRetypedPdf(pages, title: '$base (como nuevo)', ink: review.ink);
+      if (newName != null && newBytes != null) {
+        await widget.libraryStore.importFile(originalName: newName, bytes: newBytes, scanned: true);
+      }
+      final file = File('${dir.path}/${newName ?? fileName}');
+      await file.writeAsBytes(newBytes ?? bytes, flush: true);
       if (!mounted) return;
       setState(() {
         _busy = false;
         _showScans = true;
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText('«$fileName» quedó en Escaneados.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: SwarmText(
+            newName == null
+                ? '«$fileName» quedó en Escaneados.'
+                : '«$newName» y la copia con la foto quedaron en Escaneados.',
+          ),
+        ),
+      );
       await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {'path': file.path});
     } catch (error) {
       if (mounted) showSafeMessage(context, error);
