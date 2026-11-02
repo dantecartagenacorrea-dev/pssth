@@ -202,10 +202,13 @@ String showExpr(Expr e) {
   };
 }
 
+bool _isFraction(Expr e) => (e is Bin && e.op == '/') || (e is Num && !e.value.isInteger);
+
 /// En notación matemática (LaTeX), para dibujarla como en un cuaderno:
 /// fracciones apiladas, exponentes arriba, raíces con su techo.
 String texExpr(Expr e) {
   int prec(Expr c) => switch (c) {
+        Bin(op: '/', :final left, :final right) when _isFraction(left) || _isFraction(right) => 2,
         Bin(op: '/') => 5, // la fracción apilada no necesita paréntesis
         _ => _prec(c),
       };
@@ -218,6 +221,9 @@ String texExpr(Expr e) {
     Pct(:final child) => '${wrap(child, 5)}\\%',
     Sqrt(:final child) => '\\sqrt{${texExpr(child)}}',
     Bin(op: '^', :final left, :final right) => '{${wrap(left, 5)}}^{${texExpr(right)}}',
+    // ⅔ ÷ ⅘ se lee mejor con su signo que como una torre de cuatro pisos.
+    Bin(op: '/', :final left, :final right) when _isFraction(left) || _isFraction(right) =>
+      '${wrap(left, 2)} \\div ${wrap(right, 3)}',
     Bin(op: '/', :final left, :final right) => '\\frac{${texExpr(left)}}{${texExpr(right)}}',
     Bin(op: '*', :final left, :final right) when (right is Var || right is Sqrt || (right is Bin && right.op == '^' && right.left is Var)) && isNumber(left) =>
       '${wrap(left, 2)}${texExpr(right)}',

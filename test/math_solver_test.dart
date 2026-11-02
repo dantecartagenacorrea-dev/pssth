@@ -156,4 +156,69 @@ void main() {
     expect(Rational.parse('0,125').toString(), '1/8');
     expect(simplifySqrt(BigInt.from(72)), (BigInt.from(6), BigInt.from(2)));
   });
+
+  group('lo que se lee en una foto', () {
+    test('un ejercicio que espera la respuesta se entiende', () {
+      expect(mathLinesIn('3/4 + 1/2 ='), ['3/4 + 1/2']);
+      expect(mathLinesIn('(3 + 4) × 2 = ?'), ['(3 + 4) × 2']);
+      expect(solveMath(mathLinesIn('(3 + 4) x 2 =').single).answer, '14');
+    });
+
+    test('quita lo que no es el ejercicio', () {
+      expect(mathLinesIn('Resuelve: 2x + 3 = 11'), ['2x + 3 = 11']);
+      expect(mathLinesIn('Halla x: 2x + 3 = 11'), ['2x + 3 = 11']);
+      expect(mathLinesIn('Calcula 3 + 4'), ['3 + 4']);
+      expect(mathLinesIn('1) 2 + 3'), ['2 + 3']);
+      expect(mathLinesIn('a) 2 + 3'), ['2 + 3']);
+      expect(mathLinesIn('x - y = 1,'), ['x - y = 1']);
+    });
+
+    test('un decimal no pierde su coma', () {
+      expect(mathLinesIn('2,5 + 1,5'), ['2,5 + 1,5']);
+    });
+
+    test('las funciones se reconocen', () {
+      expect(mathLinesIn('sen(30) + 1 ='), ['sen(30) + 1']);
+      expect(mathLinesIn('log(100)'), ['log(100)']);
+    });
+
+    test('un título sigue sin ser un ejercicio', () {
+      expect(mathLinesIn('Capítulo 3 de álgebra'), isEmpty);
+      expect(mathLinesIn('Página 12'), isEmpty);
+      expect(mathLinesIn('Ejercicios:'), isEmpty);
+      expect(mathLinesIn('http://sitio.com/a-1'), isEmpty);
+    });
+  });
+
+  group('fórmulas para graficar en una foto', () {
+    test('las reconoce con o sin «y =»', () {
+      expect(formulaLinesIn('y = 2x + 1'), ['y = 2x + 1']);
+      expect(formulaLinesIn('f(x) = x² - 4'), ['f(x) = x² - 4']);
+      expect(formulaLinesIn('Grafica: y = sen(x)'), ['y = sen(x)']);
+      expect(formulaLinesIn('Grafica y = 1/x'), ['y = 1/x']);
+      expect(formulaLinesIn('x² - 4'), ['x² - 4']);
+      expect(formulaLinesIn('y = 3'), ['y = 3']);
+    });
+
+    test('un cuadrado mal leído no se vuelve una multiplicación', () {
+      expect(formulaLinesIn('y=x*- 4'), ['y=x²- 4']);
+      expect(formulaLinesIn('y = x°+ 1'), ['y = x²+ 1']);
+      expect(formulaLinesIn('y = x*'), ['y = x²']);
+      expect(mathLinesIn('x*- 5x + 6 = 0'), ['x²- 5x + 6 = 0']);
+      expect(formulaLinesIn('y = 2*x'), ['y = 2*x'], reason: 'una multiplicación de verdad no cambia');
+      expect(formulaLinesIn('y = x*3'), ['y = x*3']);
+    });
+
+    test('varias, en su orden', () {
+      expect(formulaLinesIn('y = x\nTítulo del capítulo\ny = 2x'), ['y = x', 'y = 2x']);
+    });
+
+    test('lo demás no se grafica', () {
+      expect(formulaLinesIn('2x + 3 = 11'), isEmpty);
+      expect(formulaLinesIn('Ejercicios de álgebra'), isEmpty);
+      expect(formulaLinesIn('3 + 4'), isEmpty);
+      expect(formulaLinesIn('x'), isEmpty);
+      expect(formulaLinesIn(''), isEmpty);
+    });
+  });
 }

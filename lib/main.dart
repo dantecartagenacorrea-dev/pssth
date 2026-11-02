@@ -37,6 +37,28 @@ import 'ui/dot_field.dart';
 import 'ui/intro_screen.dart';
 import 'ui/library_screen.dart';
 
+const _pix2textLicense = '''MIT License
+
+Copyright (c) 2022 BreezeDeus
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.''';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Los errores quedan anotados en el aparato (no se envían solos).
@@ -44,6 +66,10 @@ Future<void> main() async {
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(['Atkinson Hyperlegible'], await rootBundle.loadString('assets/fonts/OFL.txt'));
     yield LicenseEntryWithLineBreaks(['Inter'], await rootBundle.loadString('assets/fonts/Inter-OFL.txt'));
+    yield const LicenseEntryWithLineBreaks(['Pix2Text MFR (lector de fórmulas)'], _pix2textLicense);
+    yield const LicenseEntryWithLineBreaks([
+      'UVDoc (aplanador de hojas)',
+    ], 'UVDoc, PaddlePaddle. Apache License 2.0: https://www.apache.org/licenses/LICENSE-2.0');
   });
   // Medición de fluidez en un equipo real: solo con --dart-define=MEDIR=true.
   if (kMedir) _logFrameTimings();
@@ -94,9 +120,7 @@ Future<void> main() async {
       modelDir: modelStore.dirFor(kokoroEsModel).path,
       cache: AudioCache(Directory('${cacheDir.path}/tts_audio')),
       piper: [
-        for (final (m, name, voice) in [
-          (piperClaudeModel, 'es_MX-claude-high', 'Claude'),
-        ])
+        for (final (m, name, voice) in [(piperClaudeModel, 'es_MX-claude-high', 'Claude')])
           (
             voice: VoiceOption(name: '$voice (natural)', locale: 'es-MX', quality: 'natural'),
             onnx: '${modelStore.dirFor(m).path}/$name.onnx',

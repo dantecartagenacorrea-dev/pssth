@@ -70,14 +70,7 @@ const kokoroEsModel = ModelSpec(
   // Datos de espeak-ng (GPL): el paquete los trae, pero la app ya no los usa.
   // Tampoco el diccionario de chino (dict, fst) ni el léxico británico: la voz
   // solo carga el léxico de inglés de EE. UU. y el de chino (≈20 MB menos).
-  prune: [
-    'espeak-ng-data',
-    'dict',
-    'lexicon-gb-en.txt',
-    'phone-zh.fst',
-    'number-zh.fst',
-    'date-zh.fst',
-  ],
+  prune: ['espeak-ng-data', 'dict', 'lexicon-gb-en.txt', 'phone-zh.fst', 'number-zh.fst', 'date-zh.fst'],
 );
 
 // Solo los tres archivos que usa la app (los mismos del paquete de sherpa-onnx,
@@ -155,14 +148,77 @@ final piperClaudeModel = _piperVoice(
 );
 final piperVoiceModels = [piperClaudeModel];
 
+const _formulaRelease = 'https://github.com/dantecartagenacorrea-dev/pssth/releases/download/formula-model-v1';
+
+/// Lee fórmulas de una foto: Pix2Text MFR 1.5 (MIT, © 2022 BreezeDeus) con los
+/// pesos reducidos a 8 bits, publicado en los lanzamientos de este repositorio.
+/// Se baja solo si se pide: no entra en la cola automática.
+const formulaModel = ModelSpec(
+  id: 'formula-int8',
+  title: 'Lector de fórmulas',
+  url: _formulaRelease,
+  sizeBytes: 23119577 + 8507280 + 113168,
+  sha256: '',
+  extractedDir: '',
+  requiredFiles: ['encoder_model.onnx', 'decoder_model.onnx', 'tokenizer.json'],
+  files: [
+    ModelFile(
+      'encoder_model.onnx',
+      '$_formulaRelease/formula-encoder-int8.onnx',
+      23119577,
+      'd8470acbf0a8735cc3b42084d30e0fd5f261996dcc28ce8c0b8dcb4d86cde2d2',
+    ),
+    ModelFile(
+      'decoder_model.onnx',
+      '$_formulaRelease/formula-decoder-int8.onnx',
+      8507280,
+      '1747fe9355da3d5f2216be31c94fe1ec81fdff1b614ff0e854ba0dc82977f171',
+    ),
+    ModelFile(
+      'tokenizer.json',
+      '$_formulaRelease/formula-tokenizer.json',
+      113168,
+      '4ffbeb2143e6a38324bb6111b7a8109530d38a076a8439aa5777535f0a32758a',
+    ),
+  ],
+);
+
+const _unwarpRepo = 'https://huggingface.co/PaddlePaddle/UVDoc_onnx/resolve/3bcf535371727d11e783101f79a504c68848aae3';
+
+/// Aplana la foto de una hoja arrugada: UVDoc (Apache-2.0). Se baja solo si se pide.
+const unwarpModel = ModelSpec(
+  id: 'unwarp',
+  title: 'Aplanador de hojas',
+  url: _unwarpRepo,
+  sizeBytes: 31684150,
+  sha256: '',
+  extractedDir: '',
+  requiredFiles: ['inference.onnx'],
+  files: [
+    ModelFile(
+      'inference.onnx',
+      '$_unwarpRepo/inference.onnx',
+      31684150,
+      '54cab30dc2cf347b4f3d6971c833b1c3d84f5ef17280f1f6d15796bff20e63d6',
+    ),
+  ],
+);
+
 /// Todos los modelos que se pueden instalar en este equipo, en el orden de
 /// Voces y modelos. La cola de descargas automáticas usa solo algunos
 /// ([ModelQueue.all]); retomar descargas pendientes, todos.
 /// Los que traen voces: al instalarlos o quitarlos hay que releer las voces
 /// (releerlas corta la frase que se está preparando; con Whisper no hace falta).
-bool isVoiceModel(ModelSpec m) => m.id != whisperBaseModel.id;
+bool isVoiceModel(ModelSpec m) => m.id != whisperBaseModel.id && m.id != formulaModel.id && m.id != unwarpModel.id;
 
-List<ModelSpec> get optionalModels => [kokoroEsModel, ...piperVoiceModels, whisperBaseModel];
+List<ModelSpec> get optionalModels => [
+  kokoroEsModel,
+  ...piperVoiceModels,
+  whisperBaseModel,
+  // En iPhone todavía no hay cómo correrlo: no se ofrece.
+  if (Platform.isAndroid) formulaModel,
+  if (Platform.isAndroid) unwarpModel,
+];
 
 enum ModelPhase { downloading, verifying, extracting, done }
 
@@ -237,8 +293,9 @@ class ModelStore extends ChangeNotifier {
 
   /// Modelos que la app ya no usa: la IA chica de estudio (Qwen3, 330 MB)
   /// se quitó porque no respetaba el formato de resúmenes y preguntas; la voz
-  /// Piper Ald (62 MB), porque la app deja solo seis voces.
-  static const _retired = ['qwen3', 'piper-ald'];
+  /// Piper Ald (62 MB), porque la app deja solo seis voces; el lector de fórmulas
+  /// sin reducir (120 MB), porque el de 32 MB acierta igual.
+  static const _retired = ['qwen3', 'piper-ald', 'formula'];
 
   /// Borra lo que quedó instalado de [_retired] y, en los modelos ya
   /// instalados, lo que [ModelSpec.prune] dice que no se usa (las instalaciones

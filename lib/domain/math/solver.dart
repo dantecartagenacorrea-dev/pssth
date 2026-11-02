@@ -1,4 +1,5 @@
 import 'expr.dart';
+import 'formula.dart' show parseFormula;
 import 'graph.dart';
 import 'rational.dart';
 
@@ -57,12 +58,69 @@ class MathSolution {
 /// enlaces. Vacío si no hay ninguna.
 List<String> mathLinesIn(String ocrText) => [
       for (final raw in ocrText.split('\n'))
-        if (_looksLikeMath(raw)) raw.trim(),
+        if (cleanMathLine(raw) case final line when _looksLikeMath(line)) line,
     ];
+
+/// ¿Trae palabras, además de la cuenta? Entonces es un enunciado, no una fórmula.
+bool hasWords(String ocrText) => RegExp(r'[a-záéíóúñ]{3,}', caseSensitive: false)
+    .allMatches(ocrText)
+    .any((m) => !RegExp(r'^(sen|sin|cos|tan|log|abs|exp|ra[ií]z)$', caseSensitive: false).hasMatch(m[0]!));
+
+/// De lo que se leyó en una foto, las fórmulas que se pueden graficar.
+List<String> formulaLinesIn(String ocrText) => [
+      for (final raw in ocrText.split('\n'))
+        if (cleanMathLine(raw) case final line when _isGraphable(line)) line,
+    ];
+
+bool _isGraphable(String line) {
+  if (line.isEmpty) return false;
+  final named = RegExp(r'^(y|f\(x\))\s*=', caseSensitive: false).hasMatch(line);
+  if (!named && !RegExp(r'[-+*/^²³√(\d]').hasMatch(line)) return false;
+  try {
+    return parseFormula(line).usesX || named;
+  } on MathError {
+    return false;
+  }
+}
+
+/// Deja solo el ejercicio de una línea de libro: sin «1)», sin «Resuelve:» ni
+/// «Calcula», y sin el «=» o el «= ?» que espera la respuesta.
+String cleanMathLine(String raw) {
+  final line = raw
+      .trim()
+      .replaceFirst(RegExp(r'^\(?(\d{1,2}|[a-z])[).]\s+', caseSensitive: false), '')
+      .replaceFirst(RegExp(r'^[^:=\d]*[a-záéíóúñ]{3,}[^:=\d]*:\s*', caseSensitive: false), '')
+      .replaceFirst(
+        RegExp(r'^(?:(?!sen|sin|cos|tan|log|ln|ra[ií]z|abs|exp)[a-záéíóúñ]{3,}[\s,]+)+', caseSensitive: false),
+        '',
+      )
+      .replaceFirst(RegExp(r'[\s,.;:]*(=\s*\??)?[\s,.;:]*$'), '');
+  // Un «x*» o «x°» sin nada que multiplicar es el «x²» mal leído.
+  final fixed = line.replaceAllMapped(
+    RegExp(r'([xXy)])\s*[*°ºª]\s*(?=[-+−–=)]|$)'),
+    (m) => '${m[1]}²',
+  );
+  // Sin «=» no hay incógnita: la x entre dos valores es el signo «por» mal leído.
+  if (fixed.contains('=')) return fixed;
+  return fixed.replaceAllMapped(RegExp(r'([\d)])\s*[xX]\s*(?=[\d(])'), (m) => '${m[1]} × ');
+}
+
+/// Una cuenta con funciones: no tiene pasos, pero la calculadora le da valor.
+bool _isFunctionMath(String line) {
+  if (!RegExp(r'\d').hasMatch(line) || !RegExp(r'sen|sin|cos|tan|log|ln|π|\bpi\b', caseSensitive: false).hasMatch(line)) {
+    return false;
+  }
+  try {
+    return !parseFormula(line).usesX;
+  } on MathError {
+    return false;
+  }
+}
 
 bool _looksLikeMath(String raw) {
   final line = raw.trim();
   if (line.isEmpty || line.contains('/') && RegExp(r'[a-z]{3,}/', caseSensitive: false).hasMatch(line)) return false;
+  if (_isFunctionMath(line)) return true;
   final norm = normalizeMath(line);
   if (!RegExp(r'\d').hasMatch(norm) && !norm.contains('x')) return false;
   if (!RegExp(r'[-+*/^=√%]').hasMatch(norm) && !RegExp(r'\d[xy]').hasMatch(norm)) return false;

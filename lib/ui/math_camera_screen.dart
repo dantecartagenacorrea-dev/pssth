@@ -13,7 +13,8 @@ const _frame = Rect.fromLTWH(0.06, 0.32, 0.88, 0.26);
 
 /// Cámara dentro de la app, como en las apps de matemáticas: se encuadra solo
 /// el ejercicio en el recuadro y la foto se recorta a él (así no se lee el
-/// resto de la hoja). Devuelve la ruta de la foto recortada, o null.
+/// resto de la hoja). Devuelve la foto recortada y la entera (por si en el
+/// recuadro no quedó nada que leer), o null.
 class MathCameraScreen extends StatefulWidget {
   const MathCameraScreen({super.key});
 
@@ -46,9 +47,11 @@ class _MathCameraScreenState extends State<MathCameraScreen> {
       setState(() => _camera = cam);
     } on CameraException catch (e) {
       if (mounted) {
-        setState(() => _error = e.code == 'CameraAccessDenied'
-            ? 'Sin permiso de cámara. Actívalo en Ajustes.'
-            : 'No se pudo abrir la cámara. Ciérrala en otras apps e inténtalo de nuevo.');
+        setState(
+          () => _error = e.code == 'CameraAccessDenied'
+              ? 'Sin permiso de cámara. Actívalo en Ajustes.'
+              : 'No se pudo abrir la cámara. Ciérrala en otras apps e inténtalo de nuevo.',
+        );
       }
     }
   }
@@ -68,12 +71,7 @@ class _MathCameraScreenState extends State<MathCameraScreen> {
       final dir = await getTemporaryDirectory();
       final out = '${dir.path}/ejercicio_${DateTime.now().millisecondsSinceEpoch}.jpg';
       await Isolate.run(() => _cropToFrame(shot.path, out));
-      try {
-        await File(shot.path).delete();
-      } on FileSystemException {
-        // la foto original es temporal: si no se borra, no pasa nada
-      }
-      if (mounted) Navigator.pop(context, out);
+      if (mounted) Navigator.pop(context, (cropped: out, full: shot.path));
     } on CameraException {
       if (mounted) setState(() => _error = 'No se pudo tomar la foto. Inténtalo de nuevo.');
     } finally {
@@ -93,7 +91,10 @@ class _MathCameraScreenState extends State<MathCameraScreen> {
             Expanded(
               child: Center(
                 child: switch ((cam, _error)) {
-                  (_, final String error) => Padding(padding: const EdgeInsets.all(24), child: Text(error, textAlign: TextAlign.center)),
+                  (_, final String error) => Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(error, textAlign: TextAlign.center),
+                  ),
                   (final CameraController c?, _) => CameraPreview(c, child: const _FrameOverlay()),
                   _ => const CircularProgressIndicator(),
                 },
@@ -124,28 +125,30 @@ class _FrameOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
-        builder: (context, box) {
-          final r = Rect.fromLTWH(
-            _frame.left * box.maxWidth,
-            _frame.top * box.maxHeight,
-            _frame.width * box.maxWidth,
-            _frame.height * box.maxHeight,
-          );
-          return Stack(children: [
-            Positioned.fill(child: CustomPaint(painter: _FramePainter(r))),
-            Positioned(
-              left: 0,
-              right: 0,
-              top: r.top - 40,
-              child: const Text(
-                'Encuadra solo el ejercicio',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ]);
-        },
+    builder: (context, box) {
+      final r = Rect.fromLTWH(
+        _frame.left * box.maxWidth,
+        _frame.top * box.maxHeight,
+        _frame.width * box.maxWidth,
+        _frame.height * box.maxHeight,
       );
+      return Stack(
+        children: [
+          Positioned.fill(child: CustomPaint(painter: _FramePainter(r))),
+          Positioned(
+            left: 0,
+            right: 0,
+            top: r.top - 40,
+            child: const Text(
+              'Encuadra solo el ejercicio',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 class _FramePainter extends CustomPainter {

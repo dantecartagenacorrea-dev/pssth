@@ -65,7 +65,7 @@ class _GraphPainter extends CustomPainter {
     canvas.clipRect(Offset.zero & size);
 
     final gridPaint = Paint()..color = grid;
-    final stepX = _niceStep(w.maxX - w.minX), stepY = _niceStep(w.maxY - w.minY);
+    final stepX = niceGraphStep(w.maxX - w.minX), stepY = niceGraphStep(w.maxY - w.minY);
     for (var x = (w.minX / stepX).ceil() * stepX; x <= w.maxX; x += stepX) {
       canvas.drawLine(at(x, w.minY), at(x, w.maxY), gridPaint);
     }
@@ -121,16 +121,16 @@ class _GraphPainter extends CustomPainter {
     tp.dispose();
   }
 
-  /// Paso de cuadrícula "redondo" (1, 2, 5, 10…) para unos 8 cuadros.
-  static double _niceStep(double span) {
-    final raw = span / 8;
-    final mag = math.pow(10, (math.log(raw) / math.ln10).floor()).toDouble();
-    for (final m in [1, 2, 5, 10]) {
-      if (raw <= m * mag) return m * mag;
-    }
-    return 10 * mag;
-  }
-
   @override
   bool shouldRepaint(_GraphPainter old) => old.graph != graph;
+}
+
+/// Paso de cuadrícula "redondo" (1, 2, 5, 10…) para unos 8 cuadros.
+double niceGraphStep(double span) {
+  final raw = span / 8;
+  final mag = math.pow(10, (math.log(raw) / math.ln10).floor()).toDouble();
+  for (final m in [1, 2, 5, 10]) {
+    if (raw <= m * mag) return m * mag;
+  }
+  return 10 * mag;
 }

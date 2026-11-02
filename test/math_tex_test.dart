@@ -50,4 +50,15 @@ void main() {
     }
     expect(errors, isEmpty);
   });
+
+  group('dibujar una división de fracciones', () {
+    test('lleva su signo, no una torre', () {
+      expect(solveMath('(2/3) ÷ (4/5)').problemLatex, r'\frac{2}{3} \div \frac{4}{5}');
+      expect(solveMath('(1/2) ÷ 3').problemLatex, r'\frac{1}{2} \div 3');
+    });
+
+    test('una fracción común sigue apilada', () {
+      expect(solveMath('3/4 + 1/2').problemLatex, r'\frac{3}{4} + \frac{1}{2}');
+    });
+  });
 }
