@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show MethodChannel, PlatformException;
+import 'package:flutter/services.dart' show MethodChannel, PlatformException, rootBundle;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
@@ -36,6 +36,7 @@ import '../domain/language_detector.dart';
 import '../domain/library_entry.dart';
 import '../domain/link_finder.dart';
 import '../domain/retyped_pdf.dart';
+import '../domain/spanish_words.dart';
 import '../domain/scan_filters.dart';
 import '../domain/scanned_pdf.dart';
 import '../domain/text_chunk.dart';
@@ -1084,6 +1085,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
           builder: (_) => ScanReviewScreen(
             paths: paths,
             recognize: (path) async => (await _native.recognizeLines(path)).lines,
+            loadWords: () async {
+              final data = await rootBundle.load('assets/words/spanish_words.bin');
+              return SpanishWords(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
+            },
             readWithAi: LlmCleaner.instance.url.isEmpty
                 ? null
                 : (path) async {
@@ -1134,14 +1139,17 @@ class _LibraryScreenState extends State<LibraryScreen> {
       // Queda también en PSSTH!, en «Escaneados»: se puede abrir, escuchar y
       // volver a compartir.
       await widget.libraryStore.importFile(originalName: fileName, bytes: bytes, scanned: true);
-      // «Como nuevo» es una transcripción: la copia con la foto queda al lado.
-      final newName = review.retyped == null ? null : '$base (como nuevo).pdf';
-      final newBytes = newName == null ? null : await buildRetypedPdf(pages, title: '$base (como nuevo)', ink: review.ink);
+      // «Transcribir» es una transcripción: la copia con la foto queda al lado.
+      final newName = review.retyped == null ? null : '$base (transcrito).pdf';
+      final newBytes = newName == null
+          ? null
+          : await buildRetypedPdf(pages, title: '$base (transcrito)', ink: review.ink);
       if (newName != null && newBytes != null) {
         await widget.libraryStore.importFile(originalName: newName, bytes: newBytes, scanned: true);
       }
-      final file = File('${dir.path}/${newName ?? fileName}');
-      await file.writeAsBytes(newBytes ?? bytes, flush: true);
+      // Lo que se envía es la copia fiel; la transcripción queda en Escaneados.
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(bytes, flush: true);
       if (!mounted) return;
       setState(() {
         _busy = false;

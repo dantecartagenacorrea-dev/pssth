@@ -6,7 +6,7 @@ import '../domain/retype_ink.dart';
 import '../domain/retype_text.dart';
 import '../domain/scanned_pdf.dart';
 
-/// «Como nuevo»: cada renglón de la foto con lo que se leyó justo debajo, para
+/// «Transcribir»: cada renglón de la foto con lo que se leyó justo debajo, para
 /// compararlos y corregir antes de armar la hoja nueva.
 class RetypeEditor extends StatelessWidget {
   const RetypeEditor({
@@ -102,9 +102,9 @@ class RetypeEditor extends StatelessWidget {
             child: Text(
               'La calidad depende de la foto: mientras más nítida, legible y entendible, mejor saldrá. '
               '${doubtful == 0 ? '' : 'Hay $doubtful ${doubtful == 1 ? 'renglón dudoso' : 'renglones dudosos'}, en naranja. '}'
-              '${readByAi ? 'Leído con la IA de tu computadora, que también puede equivocarse. ' : ''}'
+              '${readByAi ? 'Leído con la IA de tu computadora, que también puede equivocarse. ' : 'Leído sin IA: puede haber errores que no salen en naranja. '}'
               'Compara cada renglón con la foto, sobre todo nombres y números. '
-              'Saldrá como recién impreso, con las mismas palabras. Es una transcripción: '
+              'Saldrá como texto nuevo, con estas palabras. Es una transcripción: '
               'la copia con la foto queda al lado.',
               style: theme.textTheme.bodySmall,
             ),

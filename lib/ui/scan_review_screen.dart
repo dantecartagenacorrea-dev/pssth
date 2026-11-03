@@ -8,6 +8,7 @@ import '../domain/read_lines_align.dart';
 import '../domain/retype_ink.dart';
 import '../domain/scan_filters.dart';
 import '../domain/scanned_pdf.dart';
+import '../domain/spanish_words.dart';
 import 'fragment_image.dart';
 import 'retype_editor.dart';
 import 'swarm_transition.dart';
@@ -17,7 +18,7 @@ import 'premium.dart';
 typedef CleanPage = ({Uint8List jpeg, int width, int height});
 
 /// Lo que se decidió al revisar: las fotos que quedaron, en orden, sus páginas
-/// limpias y, si se pidió «Como nuevo», los renglones ya comparados de cada una,
+/// limpias y, si se pidió «Transcribir», los renglones ya comparados de cada una,
 /// con sus negritas y las firmas y sellos que van.
 typedef ScanReview = ({
   List<String> paths,
@@ -27,9 +28,9 @@ typedef ScanReview = ({
 });
 
 /// Revisión de lo escaneado: se giran, ordenan o quitan páginas, se elige cómo
-/// limpiarlas viendo cómo queda, o «Como nuevo» para reescribirlas, y se confirma. Devuelve la revisión, en orden, o null si se cancela.
+/// limpiarlas viendo cómo queda, o «Transcribir» para reescribirlas, y se confirma. Devuelve la revisión, en orden, o null si se cancela.
 class ScanReviewScreen extends StatefulWidget {
-  const ScanReviewScreen({super.key, required this.paths, required this.recognize, this.readWithAi});
+  const ScanReviewScreen({super.key, required this.paths, required this.recognize, this.readWithAi, this.loadWords});
 
   final List<String> paths;
 
@@ -39,6 +40,9 @@ class ScanReviewScreen extends StatefulWidget {
   /// Lee la foto con la IA de la computadora; null si no se pudo. Sin esto se usa
   /// solo el lector común.
   final Future<String?> Function(String path)? readWithAi;
+
+  /// El diccionario con que se revisa lo leído sin IA.
+  final Future<SpanishWords> Function()? loadWords;
 
   @override
   State<ScanReviewScreen> createState() => _ScanReviewScreenState();
@@ -110,6 +114,14 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
       read = aligned.doubts;
       guessed = aligned.guessed;
       byAi = true;
+    } else {
+      // Sin diccionario la hoja sale igual, solo que sin revisar.
+      final words = await widget.loadWords?.call().then<SpanishWords?>((w) => w).catchError((Object _) => null);
+      if (words != null) {
+        final checked = checkSpelling(lines, words);
+        lines = checked.lines;
+        read = checked.doubts;
+      }
     }
     // Un renglón de lugar estimado no puede reclamar la tinta que le caiga encima.
     final placed = [
@@ -339,7 +351,7 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
                       onSelected: _finishing ? null : (_) => _choose(f),
                     ),
                   ChoiceChip(
-                    label: const Text('Como nuevo'),
+                    label: const Text('Transcribir'),
                     selected: _retype,
                     onSelected: _finishing ? null : (_) => setState(() => _retype = true),
                   ),

@@ -6,10 +6,40 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:lector_pdf/domain/scanned_pdf.dart';
+import 'package:lector_pdf/domain/spanish_words.dart';
 import 'package:lector_pdf/ui/scan_review_screen.dart';
 
 void main() {
-  testWidgets('«Como nuevo» deja corregir lo leído y lo entrega con sus páginas', (tester) async {
+  testWidgets('lo leído sin IA sale revisado con el diccionario', (tester) async {
+    final dir = await tester.runAsync(() => Directory.systemTemp.createTemp('revisar'));
+    addTearDown(() => tester.runAsync(() => dir!.delete(recursive: true)));
+    final path = '${dir!.path}/hoja.jpg';
+    await tester.runAsync(
+      () => File(path).writeAsBytes(Uint8List.fromList(img.encodeJpg(img.Image(width: 200, height: 300)))),
+    );
+    final words = SpanishWords.build(['fue', 'a', 'pedir', 'el', 'auxilio']);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanReviewScreen(
+          paths: [path],
+          recognize: (_) async => const <ScannedLine>[
+            (text: 'fue a pecir el auxilio', left: 0.1, top: 0.2, width: 0.5, height: 0.05),
+          ],
+          loadWords: () async => words,
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    await tester.tap(find.text('Transcribir'));
+    for (var i = 0; i < 10; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(tester.widget<TextField>(find.byType(TextField)).controller!.text, 'fue a pedir el auxilio');
+    expect(find.textContaining('Hay 1 renglón dudoso'), findsOneWidget);
+  });
+
+  testWidgets('«Transcribir» deja corregir lo leído y lo entrega con sus páginas', (tester) async {
     final dir = await tester.runAsync(() => Directory.systemTemp.createTemp('revisar'));
     addTearDown(() => tester.runAsync(() => dir!.delete(recursive: true)));
     final path = '${dir!.path}/hoja.jpg';
@@ -52,10 +82,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    await tester.tap(find.text('Como nuevo'));
+    await tester.tap(find.text('Transcribir'));
     await tester.pump();
     await settle();
     expect(find.textContaining('La calidad depende de la foto'), findsOneWidget);
+    expect(find.textContaining('Leído sin IA'), findsOneWidget);
     // De arriba abajo, aunque el lector los entregue en otro orden.
     final fields = find.byType(TextField);
     expect(fields, findsNWidgets(2));

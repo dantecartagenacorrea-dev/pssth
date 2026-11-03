@@ -80,6 +80,7 @@ flutter:
   assets:
     - assets/branding/
     - assets/fonts/OFL.txt
+    - assets/words/
 
   # Letra muy legible opcional (Braille Institute, licencia OFL).
   fonts:
