@@ -78,7 +78,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/branding/
     - assets/fonts/OFL.txt
     - assets/words/
 

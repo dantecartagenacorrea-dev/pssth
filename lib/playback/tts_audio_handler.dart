@@ -503,6 +503,8 @@ class TtsAudioHandler extends BaseAudioHandler {
         if (speech.trim().isNotEmpty) {
           await _tts.stop();
           await _applyChunkLanguage(_index);
+          // Se pausó mientras tanto (p. ej. para leer una pregunta): no debe sonar encima.
+          if (!_speaking || my != _playGen) break;
           _tts.prefetch([
             for (var k = _index + 1; k <= _index + 2 && k < _chunks.length; k++) _spoken(_chunks[k].speech),
           ]);
@@ -711,8 +713,9 @@ class TtsAudioHandler extends BaseAudioHandler {
 
   /// Lee frases sueltas (p. ej. el resumen) una a una, sin cambiar la posición
   /// del documento. Frase a frase para que la voz natural empiece pronto en
-  /// vez de sintetizar todo de golpe. Devuelve un mensaje si no pudo leer.
-  Future<String?> speakAside(List<String> parts) async {
+  /// vez de sintetizar todo de golpe. Con [sameVoice], todo lo lee la misma voz aunque
+  /// tarde en empezar. Devuelve un mensaje si no pudo leer.
+  Future<String?> speakAside(List<String> parts, {bool sameVoice = false}) async {
     await setup();
     final my = ++_asideGen;
     await pause();
@@ -724,8 +727,8 @@ class TtsAudioHandler extends BaseAudioHandler {
         _asideText = parts[i];
         asideWord.value = null;
         asideIndex.value = i;
-        _tts.prefetch([if (i + 1 < parts.length) parts[i + 1]]);
-        await _tts.speak(parts[i]);
+        _tts.prefetch(parts.skip(i + 1).take(sameVoice ? 2 : 1).toList());
+        await (sameVoice ? _tts.speakSameVoice(parts[i]) : _tts.speak(parts[i]));
       }
       return null;
     } catch (e) {

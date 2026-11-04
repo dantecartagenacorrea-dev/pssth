@@ -16,7 +16,6 @@ import '../playback/tts_audio_handler.dart';
 import 'exercise_photo.dart';
 import 'formula_model_offer.dart';
 import 'math_graph_view.dart' show niceGraphStep;
-import 'swarm_transition.dart';
 
 /// Graficador: se escriben hasta cuatro fórmulas y se ven juntas. El plano se
 /// arrastra y se acerca con dos dedos, y las curvas se pueden escuchar.
@@ -216,7 +215,7 @@ class _FormulaGraphViewState extends State<FormulaGraphView> {
       await deleteExercisePhoto(photo);
     }
     if (message != null && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText(message)));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -257,7 +256,7 @@ class _FormulaGraphViewState extends State<FormulaGraphView> {
     final error = await widget.handler.speakAside(said);
     if (!mounted) return;
     setState(() => _reading = false);
-    if (error != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText(error)));
+    if (error != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
   }
 
   @override

@@ -2,8 +2,6 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'swarm_transition.dart';
-
 /// Guía corta de la primera vez (3 pasos): qué se puede abrir, cómo se
 /// escucha y cómo se estudia. Solo a quien empieza con la biblioteca vacía.
 class FirstRunGuide {
@@ -36,7 +34,7 @@ class FirstRunGuide {
     if (prefs.getBool(_seenKey) ?? false) return;
     await prefs.setBool(_seenKey, true);
     if (!isNewUser || !context.mounted) return;
-    await showSwarmDialog<void>(context: context, builder: (_) => const _GuideDialog());
+    await showDialog<void>(context: context, builder: (_) => const _GuideDialog());
   }
 }
 

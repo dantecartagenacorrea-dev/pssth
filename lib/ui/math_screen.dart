@@ -17,7 +17,6 @@ import '../platform/formula_model_reader.dart';
 import '../platform/fraction_reader.dart';
 import '../platform/native_text.dart';
 import '../playback/tts_audio_handler.dart';
-import 'swarm_transition.dart';
 
 /// Resolver ejercicios de matemáticas del colegio con un motor exacto (no con
 /// la IA, que se equivoca en las cuentas): cuentas, ecuaciones de 1.º y 2.º
@@ -231,7 +230,7 @@ class _MathSolveViewState extends State<MathSolveView> {
     final error = await widget.handler.speakAside(s.spoken());
     if (!mounted) return;
     setState(() => _reading = false);
-    if (error != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText(error)));
+    if (error != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
   }
 
   @override

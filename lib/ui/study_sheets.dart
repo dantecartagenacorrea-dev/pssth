@@ -10,7 +10,7 @@ import '../domain/study.dart';
 import '../domain/summarizer.dart' show studySummaryExtractive;
 import '../platform/study_ai.dart';
 import '../playback/tts_audio_handler.dart';
-import 'swarm_transition.dart';
+import 'floating_panel.dart';
 import 'player_sheets.dart' show downloadSummary;
 
 /// Páginas del documento abierto (o su texto entero como una sola página) y
@@ -41,7 +41,7 @@ class StudyScopePicker extends StatelessWidget {
 /// Resumen con la IA del equipo: por partes, mostrando el avance, y al final
 /// conceptos clave, ideas principales y un resumen breve.
 Future<void> showStudySummarySheet(BuildContext context, TtsAudioHandler handler, LibraryEntry entry) =>
-    showSwarmSheet<void>(
+    showFloatingSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (_) => SafeArea(
@@ -185,7 +185,7 @@ class _StudySummaryState extends State<_StudySummary> {
     final error = await widget.handler.speakAside(lines);
     if (!mounted) return;
     setState(() => _reading = false);
-    if (error != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText(error)));
+    if (error != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
   }
 
   @override
@@ -240,9 +240,7 @@ class _StudySummaryState extends State<_StudySummary> {
             if (_error != null) Text(_error!, style: t.bodyMedium),
             if (result != null) ...[
               Flexible(
-                child: SwarmArrival(
-                  child: _SummaryView(summary: result, handler: widget.handler, listening: _reading),
-                ),
+                child: _SummaryView(summary: result, handler: widget.handler, listening: _reading),
               ),
               if (!_running)
                 Wrap(

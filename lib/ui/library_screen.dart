@@ -51,7 +51,7 @@ import '../platform/speech_transcriber.dart';
 import '../platform/whisper_transcriber.dart';
 import 'calculator_screen.dart';
 import 'scan_review_screen.dart';
-import 'swarm_transition.dart';
+import 'floating_panel.dart';
 import '../playback/tts_audio_handler.dart';
 import '../services/llm_cleaner.dart';
 import 'first_run_guide.dart';
@@ -138,7 +138,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final queue = ModelQueue.instance;
     if (queue.consent != null || queue.missing.isEmpty || !mounted) return;
     final mb = (queue.missingBytes / (1024 * 1024)).round();
-    final yes = await showSwarmDialog<bool>(
+    final yes = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -239,7 +239,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ModelQueue.instance.prioritize(whisperBaseModel);
       if (!mounted) return;
       // Sin transcripción la grabación queda solo como audio: se avisa antes.
-      final choice = await showSwarmDialog<String>(
+      final choice = await showDialog<String>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Falta la transcripción'),
@@ -355,7 +355,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final log = await CrashLog.instance?.read() ?? '';
     if (!mounted) return;
     if (log.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: SwarmText('No hay errores registrados.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No hay errores registrados.')));
       return;
     }
     try {
@@ -373,7 +373,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   Future<void> _confirmDelete(LibraryEntry entry) async {
-    final ok = await showSwarmDialog<bool>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar de la biblioteca'),
@@ -704,7 +704,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// Favorito, editar y eliminar, en una hoja (en la lista solo se ve el avance).
   Future<void> _entryOptions(LibraryEntry entry) async {
-    final choice = await showSwarmSheet<String>(
+    final choice = await showFloatingSheet<String>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
@@ -752,7 +752,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   /// Ajustes: todo lo que antes estaba en el menú de arriba.
   Future<void> _showSettings() async {
-    final v = await showSwarmSheet<String>(
+    final v = await showFloatingSheet<String>(
       context: context,
       // Con la letra grande del sistema la lista no cabe: se desplaza.
       builder: (ctx) => SafeArea(
@@ -886,7 +886,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Future<bool> _askOpenLink(Uri link) async {
     final video = youtubeVideoId(link) != null;
-    final open = await showSwarmDialog<bool>(
+    final open = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(video ? 'Video de YouTube en la foto' : 'Enlace en la foto'),
@@ -1051,7 +1051,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
     if (paths.isEmpty || !mounted) return;
     if (notFlattened) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText('Alguna página no se pudo aplanar.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Alguna página no se pudo aplanar.')));
     }
     await _reviewAndSave(paths);
   }
@@ -1157,7 +1157,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: SwarmText(
+          content: Text(
             newName == null
                 ? '«$fileName» quedó en Escaneados.'
                 : '«$newName» y la copia con la foto quedaron en Escaneados.',
@@ -1181,7 +1181,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Future<String?> _askScanName(String suggested) async {
     final controller = TextEditingController(text: suggested)
       ..selection = TextSelection(baseOffset: 0, extentOffset: suggested.length);
-    final name = await showSwarmDialog<String>(
+    final name = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nombre del PDF'),
@@ -1205,7 +1205,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     // Sin leer el portapapeles por código: en iOS eso pide permiso cada vez.
     // El usuario pega en el campo (mantener pulsado → Pegar).
     final controller = TextEditingController();
-    final raw = await showSwarmDialog<String>(
+    final raw = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Pegar enlace'),
@@ -1405,7 +1405,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       setState(() {});
       await Navigator.of(context).push(
         MaterialPageRoute(
-          settings: const RouteSettings(name: SwarmTransitionsBuilder.solidBackground),
           builder: (_) => PlayerScreen(handler: widget.handler, entry: updated, bookmarkStore: widget.bookmarkStore),
         ),
       );
@@ -1507,7 +1506,7 @@ Future<void> _showLlmSettings(BuildContext context) async {
   var on = llm.enabled;
   String? status;
   if (!context.mounted) return;
-  await showSwarmDialog<void>(
+  await showDialog<void>(
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setS) => AlertDialog(
@@ -1603,15 +1602,14 @@ class _EmptyLibrary extends StatelessWidget {
   }
 }
 
-/// Fondo (negro o blanco), dispersión de letras y letra muy legible.
-Future<void> showComfortSheet(BuildContext context) => showSwarmSheet<void>(
+/// Fondo (negro o blanco) y letra muy legible.
+Future<void> showComfortSheet(BuildContext context) => showFloatingSheet<void>(
   context: context,
   isScrollControlled: true,
   builder: (ctx) => SafeArea(
     child: ListenableBuilder(
       listenable: Listenable.merge([
         Comfort.paper,
-        Comfort.scatter,
         Comfort.font,
         Comfort.textSize,
         Comfort.lineHeight,
@@ -1642,19 +1640,6 @@ Future<void> showComfortSheet(BuildContext context) => showSwarmSheet<void>(
                         subtitle: Text(p.detail),
                       ),
                   ],
-                ),
-              ),
-              const Divider(),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: Comfort.scatter.value,
-                onChanged: Comfort.setScatter,
-                title: const Text('Dispersión de letras'),
-                subtitle: Text(
-                  Comfort.scatter.value && MediaQuery.of(ctx).disableAnimations
-                      ? 'El sistema pide reducir el movimiento: la app queda quieta.'
-                      : 'Las pantallas se forman desde un enjambre de letras y el fondo se mueve. '
-                            'Apagada, la pantalla es lisa y todo aparece de una vez.',
                 ),
               ),
               const Divider(),

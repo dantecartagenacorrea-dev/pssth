@@ -9,9 +9,7 @@ import '../domain/retype_ink.dart';
 import '../domain/scan_filters.dart';
 import '../domain/scanned_pdf.dart';
 import '../domain/spanish_words.dart';
-import 'fragment_image.dart';
 import 'retype_editor.dart';
-import 'swarm_transition.dart';
 import 'premium.dart';
 
 /// Página limpia lista para el PDF.
@@ -219,7 +217,7 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: SwarmText('No se pudo preparar la página. Inténtalo de nuevo.')));
+    ).showSnackBar(SnackBar(content: Text('No se pudo preparar la página. Inténtalo de nuevo.')));
   }
 
   void _delete() {
@@ -279,7 +277,7 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
       setState(() => _finishing = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: SwarmText('No se pudo preparar la página. Inténtalo de nuevo.')));
+      ).showSnackBar(SnackBar(content: Text('No se pudo preparar la página. Inténtalo de nuevo.')));
     }
   }
 
@@ -326,8 +324,7 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
                                     ),
                                   );
                           }
-                          // La hoja se arma desde la dispersión, como las letras.
-                          return InteractiveViewer(maxScale: 5, child: FragmentImage(jpeg: page.jpeg));
+                          return InteractiveViewer(maxScale: 5, child: _PageImage(page.jpeg));
                         },
                       ),
               ),
@@ -497,4 +494,25 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
       );
     },
   );
+}
+
+/// La hoja escaneada, entera y quieta.
+class _PageImage extends StatelessWidget {
+  const _PageImage(this.jpeg);
+  final Uint8List jpeg;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final image = Image.memory(jpeg, gaplessPlayback: true);
+    // Sobre el fondo blanco una hoja blanca no se distingue: borde fino.
+    if (theme.brightness == Brightness.dark) return Center(child: image);
+    return Center(
+      child: DecoratedBox(
+        position: DecorationPosition.foreground,
+        decoration: BoxDecoration(border: Border.all(color: theme.colorScheme.primary.withValues(alpha: 0.22))),
+        child: image,
+      ),
+    );
+  }
 }

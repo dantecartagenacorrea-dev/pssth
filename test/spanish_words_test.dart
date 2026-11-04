@@ -71,6 +71,45 @@ void main() {
     expect(r.doubts, isEmpty);
   });
 
+  test('entre dos posibles gana la palabra de todos los días: «gue» es «que»', () {
+    final r = check(['para gue no seamos muchos', 'de la casa TUe a la plaza']);
+    expect(r.texts, ['para que no seamos muchos', 'de la casa fue a la plaza']);
+    expect(r.doubts, {0, 1});
+  });
+
+  test('una letra de otro alfabeto se lee como la nuestra', () {
+    final r = check(['admita la mişma denuncia ante el juez']);
+    expect(r.texts.single, 'admita la misma denuncia ante el juez');
+  });
+
+  test('una raya de la arruga leída como letra al empezar la palabra', () {
+    final r = check(['retrovisores,jentre otros de esta forma']);
+    expect(r.texts.single, 'retrovisores, entre otros de esta forma');
+    expect(r.doubts, {0});
+  });
+
+  test('la puntuación suelta típica', () {
+    final r = check([
+      'se dispusieron a sustraer-las placas',
+      'por lo expuesto al Art 285 del CPP',
+      "OTROSI'2°.- Solicito que se proceda",
+      'las personas, , de la turba',
+    ]);
+    expect(r.texts, [
+      'se dispusieron a sustraer las placas',
+      'por lo expuesto al Art. 285 del CPP',
+      'OTROSI 2°.- Solicito que se proceda',
+      'las personas, de la turba',
+    ]);
+    expect(r.doubts, isEmpty);
+  });
+
+  test('la puntuación que sí va no se toca', () {
+    const lines = ['curso teórico-práctico de Bs. 2,500 para f(x,y) y otros', 'la casa de los abuelos en la plaza'];
+    final r = check(lines);
+    expect(r.texts, lines);
+  });
+
   test('una hoja en otro idioma no se toca', () {
     const lines = ['the quick brown fox jumps over the lazy dog', 'this sheet should stay exactly as it reads'];
     final r = check(lines);

@@ -12,7 +12,6 @@ import '../domain/study.dart';
 import '../platform/study_ai.dart';
 import '../playback/tts_audio_handler.dart';
 import 'study_sheets.dart';
-import 'swarm_transition.dart';
 import 'premium.dart';
 
 /// Preguntas de estudio sobre el documento, al estilo Duolingo: rondas de 10,
@@ -113,7 +112,7 @@ class _QuizScreenState extends State<QuizScreen> {
     if (parts.isEmpty || (_localOnly && local.isEmpty)) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: SwarmText('No hay suficiente texto en esta parte para hacer preguntas.')));
+      ).showSnackBar(SnackBar(content: Text('No hay suficiente texto en esta parte para hacer preguntas.')));
       return;
     }
     setState(() {
@@ -193,7 +192,7 @@ class _QuizScreenState extends State<QuizScreen> {
   }
 
   void _say(List<String> lines) {
-    if (_aloud) unawaited(widget.handler.speakAside(lines));
+    if (_aloud) unawaited(widget.handler.speakAside(lines, sameVoice: true));
   }
 
   /// La pregunta que aparece se lee una vez (también la que llega mientras se
@@ -252,55 +251,52 @@ class _QuizScreenState extends State<QuizScreen> {
   Widget _setup(BuildContext context) {
     final t = Theme.of(context).textTheme;
     if (_checking) return const Center(child: CircularProgressIndicator());
-    // Llega después de revisar qué IA hay: se forma con el enjambre.
-    return SwarmArrival(
-      child: ListView(
-        children: [
-          Text(widget.entry.name, style: t.titleMedium),
-          const SizedBox(height: 4),
-          Text(
-            _unavailable != null
-                ? 'Sin IA: preguntas de completar la frase, sacadas del texto. Para preguntas que lo '
-                      'entienden: $_unavailable'
-                : _localOnly
-                ? 'Preguntas de completar la frase, sacadas del texto al instante. Cambian en cada ronda.'
-                : '${_engine?.label ?? ''} Las primeras salen al instante del texto. Cambian en cada ronda.',
-            style: t.bodySmall,
-          ),
-          const SizedBox(height: 20),
-          Text('Cuántas preguntas', style: t.titleSmall),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final n in _sizes)
-                ChoiceChip(label: Text('$n'), selected: _size == n, onSelected: (_) => setState(() => _size = n)),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text('Nivel', style: t.titleSmall),
-          Wrap(
-            spacing: 8,
-            children: [
-              for (final l in QuizLevel.values)
-                ChoiceChip(
-                  label: Text('${l.label} · ${l.points} pts'),
-                  selected: _level == l,
-                  onSelected: (_) => setState(() => _level = l),
-                ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text('Sobre qué parte', style: t.titleSmall),
-          StudyScopePicker(value: _scope, pageCount: _source.$1.length, onChanged: (s) => setState(() => _scope = s)),
-          const SizedBox(height: 24),
-          FilledButton.icon(onPressed: _start, icon: const Icon(CupertinoIcons.play_fill), label: const Text('Empezar')),
-          if (_points case final p?) ...[
-            const SizedBox(height: 24),
-            Text('En este documento: ${p.document} puntos · mejor racha ${p.bestStreak}', style: t.bodyMedium),
-            Text('Total acumulado: ${p.total} puntos', style: t.bodyMedium),
+    return ListView(
+      children: [
+        Text(widget.entry.name, style: t.titleMedium),
+        const SizedBox(height: 4),
+        Text(
+          _unavailable != null
+              ? 'Sin IA: preguntas de completar la frase, sacadas del texto. Para preguntas que lo '
+                    'entienden: $_unavailable'
+              : _localOnly
+              ? 'Preguntas de completar la frase, sacadas del texto al instante. Cambian en cada ronda.'
+              : '${_engine?.label ?? ''} Las primeras salen al instante del texto. Cambian en cada ronda.',
+          style: t.bodySmall,
+        ),
+        const SizedBox(height: 20),
+        Text('Cuántas preguntas', style: t.titleSmall),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final n in _sizes)
+              ChoiceChip(label: Text('$n'), selected: _size == n, onSelected: (_) => setState(() => _size = n)),
           ],
+        ),
+        const SizedBox(height: 16),
+        Text('Nivel', style: t.titleSmall),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final l in QuizLevel.values)
+              ChoiceChip(
+                label: Text('${l.label} · ${l.points} pts'),
+                selected: _level == l,
+                onSelected: (_) => setState(() => _level = l),
+              ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text('Sobre qué parte', style: t.titleSmall),
+        StudyScopePicker(value: _scope, pageCount: _source.$1.length, onChanged: (s) => setState(() => _scope = s)),
+        const SizedBox(height: 24),
+        FilledButton.icon(onPressed: _start, icon: const Icon(CupertinoIcons.play_fill), label: const Text('Empezar')),
+        if (_points case final p?) ...[
+          const SizedBox(height: 24),
+          Text('En este documento: ${p.document} puntos · mejor racha ${p.bestStreak}', style: t.bodyMedium),
+          Text('Total acumulado: ${p.total} puntos', style: t.bodyMedium),
         ],
-      ),
+      ],
     );
   }
 
@@ -324,8 +320,7 @@ class _QuizScreenState extends State<QuizScreen> {
     }
     final q = _questions[_index];
     final total = _generating ? _size : _questions.length;
-    // Cada pregunta nueva se forma con el enjambre.
-    return SwarmArrival(key: ValueKey(_index), child: _question(context, q, total));
+    return KeyedSubtree(key: ValueKey(_index), child: _question(context, q, total));
   }
 
   Widget _question(BuildContext context, QuizQuestion q, int total) {

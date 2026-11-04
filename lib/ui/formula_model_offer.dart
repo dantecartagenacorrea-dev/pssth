@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 
 import '../data/model_store.dart';
-import 'swarm_transition.dart';
 
 /// Ofrece bajar el lector de fórmulas mientras no esté instalado: es opcional y
 /// solo lo baja quien lo pide. Instalado, no se muestra.
@@ -20,7 +19,7 @@ class _FormulaModelOfferState extends State<FormulaModelOffer> {
     try {
       await widget.store.install(formulaModel);
     } on ModelInstallException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText(e.message)));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 

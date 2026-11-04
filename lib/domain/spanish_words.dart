@@ -61,11 +61,12 @@ const _minKnownShare = 0.6;
     final cut = i > 0 && lines[i - 1].text.trimRight().endsWith('-');
     var doubtful = false;
     var isFirst = true;
-    final text = line.text.replaceAllMapped(_token, (m) {
+    final source = _tidyPunctuation(line.text);
+    final text = source.replaceAllMapped(_token, (m) {
       final first = isFirst;
       isFirst = false;
       final word = m[0]!;
-      final after = line.text.substring(m.end);
+      final after = source.substring(m.end);
       if (!_isCheckable(word, after) || (first && cut)) return word;
       checked++;
       final plain = plainWord(word);
@@ -73,10 +74,9 @@ const _minKnownShare = 0.6;
         known++;
         return _tidy(word, first);
       }
-      final found = _candidates(plain).where(words.contains).toSet();
       doubtful = true;
-      if (found.length != 1) return word;
-      final fixed = found.single;
+      final fixed = _onlyChoice(_candidates(plain).where(words.contains).toSet());
+      if (fixed == null) return word;
       return first && _isUpper(word[0]) ? fixed[0].toUpperCase() + fixed.substring(1) : fixed;
     });
     if (doubtful) doubts.add(i);
@@ -85,6 +85,53 @@ const _minKnownShare = 0.6;
   if (checked == 0 || known / checked < _minKnownShare) return (lines: lines, doubts: const {});
   return (lines: out, doubts: doubts);
 }
+
+/// Una sola palabra posible, o una sola de las de todos los días: «gue» también podría
+/// ser otra, pero es «que».
+String? _onlyChoice(Set<String> found) {
+  if (found.length == 1) return found.single;
+  final common = found.where(_everyday.contains);
+  return common.length == 1 ? common.single : null;
+}
+
+const _everyday = {
+  'a',
+  'al',
+  'con',
+  'de',
+  'del',
+  'el',
+  'en',
+  'es',
+  'fue',
+  'la',
+  'las',
+  'lo',
+  'los',
+  'mi',
+  'no',
+  'para',
+  'por',
+  'que',
+  'se',
+  'su',
+  'una',
+  'y',
+};
+
+/// Lo que una arruga o el lector agregan: «otros,entre», «, ,», «OTROSI'2°», «Art 285», «sustraer-las».
+String _tidyPunctuation(String text) => text
+    .replaceAllMapped(_commaInside, (m) => '${m[1]}, ')
+    .replaceAll(_doubleComma, ',')
+    .replaceAllMapped(_markBeforeNumber, (m) => '${m[1]} ')
+    .replaceAllMapped(_articleNoDot, (m) => '${m[1]}. ')
+    .replaceAllMapped(_dashBeforeSmallWord, (m) => '${m[1]} ${m[2]}');
+
+final _commaInside = RegExp(r'(\p{L}{3,}),(?=\p{L})', unicode: true);
+final _doubleComma = RegExp(r',\s*,');
+final _markBeforeNumber = RegExp(r"(\p{L})'(?=\d)", unicode: true);
+final _articleNoDot = RegExp(r'\b([Aa]rt) (?=\d)');
+final _dashBeforeSmallWord = RegExp(r'(\p{L}{3,})-(las|los|la|lo|el|de|del|en|con|que|por|y|a)(?=\s|$)', unicode: true);
 
 final _token = RegExp(r'[\p{L}\p{N}|]+', unicode: true);
 final _anyLower = RegExp(r'\p{Ll}', unicode: true);
@@ -106,21 +153,42 @@ bool _isUpper(String letter) => letter != letter.toLowerCase();
 
 /// «estoS» es «estos», y una letra con una marca que el español no usa es la de la tilde.
 String _tidy(String word, bool first) {
-  var out = word;
-  _foreignMarks.forEach((tilde, marks) => out = out.replaceAll(RegExp('[$marks]'), tilde));
+  final out = _ourLetters(word);
   final rest = out.substring(1);
   if (rest == rest.toLowerCase()) return out;
   return first && _isUpper(out[0]) ? out[0] + rest.toLowerCase() : out.toLowerCase();
 }
 
 const _foreignMarks = {'á': 'àäâã', 'é': 'èëê', 'í': 'ìïî', 'ó': 'òöôõ', 'ú': 'ùû'};
+const _otherAlphabets = {
+  'a': 'āą',
+  'c': 'ćĉč',
+  'e': 'ėęě',
+  'g': 'ğ',
+  'i': 'ı',
+  'l': 'ł',
+  'n': 'ńň',
+  'o': 'ōő',
+  'r': 'ř',
+  's': 'şš',
+  't': 'ţť',
+  'u': 'ūű',
+  'z': 'žź',
+};
 const _withoutTilde = {'á': 'a', 'é': 'e', 'í': 'i', 'ó': 'o', 'ú': 'u', 'ü': 'u'};
 
 /// En minúsculas y sin tildes, como está la lista. La ñ no se quita: «año» no es «ano».
 String plainWord(String word) {
-  var out = word.toLowerCase();
-  _foreignMarks.forEach((tilde, marks) => out = out.replaceAll(RegExp('[$marks]'), tilde));
+  var out = _ourLetters(word.toLowerCase());
   _withoutTilde.forEach((tilde, plain) => out = out.replaceAll(tilde, plain));
+  return out;
+}
+
+String _ourLetters(String word) {
+  var out = word;
+  for (final table in [_foreignMarks, _otherAlphabets]) {
+    table.forEach((ours, others) => out = out.replaceAll(RegExp('[$others]'), ours));
+  }
   return out;
 }
 
@@ -150,8 +218,12 @@ const _couldBe = {
 const _joined = {'rn': 'm', 'm': 'rn', 'cl': 'd', 'd': 'cl'};
 const _oftenLost = 'cilrteu';
 
+/// Una raya de la arruga junto a la palabra se lee como una de estas.
+const _strayStart = 'jli|1';
+const _minWithStray = 4;
+
 Set<String> _candidates(String word) {
-  final out = <String>{};
+  final out = <String>{if (word.length >= _minWithStray && _strayStart.contains(word[0])) word.substring(1)};
   for (var i = 0; i < word.length; i++) {
     final head = word.substring(0, i);
     for (final other in (_couldBe[word[i]] ?? '').split('')) {

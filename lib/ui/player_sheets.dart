@@ -15,9 +15,9 @@ import '../domain/library_entry.dart';
 import '../domain/search.dart';
 import '../playback/tts_audio_handler.dart';
 import 'study_sheets.dart';
-import 'swarm_transition.dart';
+import 'floating_panel.dart';
 
-void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: SwarmText(m)));
+void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));
 
 /// El aviso de un error: el mensaje propio si es nuestro ([AppException]);
 /// si no, [fallback] (nunca el texto técnico de la excepción).
@@ -25,7 +25,7 @@ String _say(Object error, String fallback) => error is AppException ? error.mess
 
 Future<void> showChaptersSheet(BuildContext context, TtsAudioHandler handler) {
   final chapters = handler.chapters;
-  return showSwarmSheet(
+  return showFloatingSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
@@ -50,7 +50,7 @@ Future<void> showChaptersSheet(BuildContext context, TtsAudioHandler handler) {
 }
 
 Future<void> showSearchSheet(BuildContext context, TtsAudioHandler handler) {
-  return showSwarmSheet(
+  return showFloatingSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => _SearchSheet(handler: handler),
@@ -83,7 +83,10 @@ class _SearchSheetState extends State<_SearchSheet> {
                 padding: const EdgeInsets.all(12),
                 child: TextField(
                   autofocus: true,
-                  decoration: const InputDecoration(prefixIcon: Icon(CupertinoIcons.search), hintText: 'Buscar en el texto'),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(CupertinoIcons.search),
+                    hintText: 'Buscar en el texto',
+                  ),
                   onChanged: (v) => setState(() {
                     _query = v;
                     _hits = searchChunks(chunks, v);
@@ -132,7 +135,7 @@ Future<void> showBookmarksSheet(
   final list = await store.forDocument(entry.id);
   final gone = <String>{}; // borrados en este panel, que todavía se pueden deshacer
   if (!context.mounted) return;
-  await showSwarmSheet(
+  await showFloatingSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
@@ -201,7 +204,7 @@ Future<void> highlightCurrent(BuildContext context, TtsAudioHandler handler) asy
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: const SwarmText('Frase subrayada'),
+      content: const Text('Frase subrayada'),
       action: SnackBarAction(label: 'Agregar nota', onPressed: () => editHighlightNote(context, h)),
     ),
   );
@@ -253,7 +256,7 @@ Future<void> editHighlightNote(BuildContext context, Highlight h) async {
 Future<void> showHighlightsSheet(BuildContext context, TtsAudioHandler handler, LibraryEntry entry) async {
   final store = HighlightStore.instance;
   if (store == null) return;
-  await showSwarmSheet(
+  await showFloatingSheet(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
@@ -386,7 +389,7 @@ Future<void> downloadSummary(
   LibraryEntry entry,
   List<String> frases,
 ) async {
-  final comoAudio = await showSwarmSheet<bool>(
+  final comoAudio = await showFloatingSheet<bool>(
     context: context,
     builder: (ctx) => SafeArea(
       child: Column(
@@ -465,7 +468,7 @@ Future<void> showShareAudioSheet(BuildContext context, TtsAudioHandler handler, 
     _snack(context, 'No hay texto para compartir.');
     return;
   }
-  final wholePage = await showSwarmSheet<bool>(
+  final wholePage = await showFloatingSheet<bool>(
     context: context,
     builder: (ctx) => SafeArea(
       child: Column(

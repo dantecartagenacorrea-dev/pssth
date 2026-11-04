@@ -1,9 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lector_pdf/playback/engines/fallback_tts_engine.dart';
 import 'package:lector_pdf/playback/tts_engine.dart';
 
 class FakeEngine extends TtsEngine {
-  FakeEngine(this.id, {this.failInit = false, this.failSpeak = false, this.locales = const ['es-ES'], this.renders = true});
+  FakeEngine(
+    this.id, {
+    this.failInit = false,
+    this.failSpeak = false,
+    this.locales = const ['es-ES'],
+    this.renders = true,
+  });
   @override
   final String id;
   final bool failInit;
@@ -28,8 +36,7 @@ class FakeEngine extends TtsEngine {
   }
 
   @override
-  Future<List<VoiceOption>> voices() async =>
-      [for (final l in locales) VoiceOption(name: '$id-$l', locale: l)];
+  Future<List<VoiceOption>> voices() async => [for (final l in locales) VoiceOption(name: '$id-$l', locale: l)];
   @override
   Future<void> setVoice(VoiceOption voice) async => calls.add('voice:${voice.name}');
   @override
@@ -231,7 +238,9 @@ void main() {
     e.prefetch(['a']);
     await e.setVoice((await e.voices()).first);
     e.prefetch(['b']);
-    expect(p.prefetched, [['b']]);
+    expect(p.prefetched, [
+      ['b'],
+    ]);
   });
 
   test('mientras la voz natural prepara un fragmento, lo lee la del sistema (nunca en silencio)', () async {
@@ -244,7 +253,9 @@ void main() {
     await e.speak('dos');
     expect(f.spoken, ['uno']);
     expect(p.spoken, ['dos']);
-    expect(p.prefetched, [['dos']]); // la natural sigue preparando lo que viene
+    expect(p.prefetched, [
+      ['dos'],
+    ]); // la natural sigue preparando lo que viene
     expect(e.usingFallback, isFalse);
   });
 
@@ -261,4 +272,121 @@ void main() {
     expect((await e.voices()).map((v) => v.name), ['apple-es-ES']);
     expect(avisos, ['no alcanzan']);
   });
+
+  group('la misma voz en toda la lectura', () {
+    test('espera el audio de la voz natural en vez de cubrir con la del sistema', () async {
+      final p = FakeEngine('neural'), f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+      p.notReady.add('pregunta');
+      await e.speakSameVoice('pregunta');
+      expect(p.spoken, ['pregunta']);
+      expect(f.spoken, isEmpty);
+    });
+
+    test('si la voz natural falla, sigue la del sistema: no se queda callada', () async {
+      final p = FakeEngine('neural', failSpeak: true), f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+      await e.speakSameVoice('pregunta');
+      expect(f.spoken, ['pregunta']);
+    });
+
+    test('si este equipo no alcanza a leer con ella, no la espera', () async {
+      final p = _NotWorthWaiting('neural'), f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+      p.notReady.add('pregunta');
+      await e.speakSameVoice('pregunta');
+      expect(f.spoken, ['pregunta']);
+      expect(p.spoken, isEmpty);
+    });
+
+    test('la lectura normal sigue sin esperar: la cubre la del sistema', () async {
+      final p = FakeEngine('neural'), f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+      p.notReady.add('frase');
+      await e.speak('frase');
+      expect(f.spoken, ['frase']);
+    });
+  });
+
+  group('una sola voz a la vez', () {
+    test('detener mientras se mira si el audio está listo: esa frase ya no suena', () async {
+      final p = _GatedEngine('neural'), f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+      p.notReady.add('vieja');
+      final old = e.speak('vieja');
+      await e.stop();
+      p.gate.complete();
+      await old;
+      expect(f.spoken, isEmpty, reason: 'sonaría encima de lo que se lea después');
+      expect(p.spoken, isEmpty);
+    });
+
+    test('una frase pedida después deja sin efecto a la que todavía esperaba', () async {
+      final p = _GatedEngine('neural'), f = FakeEngine('apple');
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+      p.notReady.add('vieja');
+      final old = e.speak('vieja');
+      p.gateOff = true;
+      await e.speak('nueva');
+      p.gate.complete();
+      await old;
+      expect(f.spoken, isEmpty);
+      expect(p.spoken, ['nueva']);
+    });
+
+    test('la voz del sistema calla a la natural antes de hablar, y al revés', () async {
+      final log = <String>[];
+      final p = _LogEngine('neural', log), f = _LogEngine('apple', log);
+      final e = FallbackTtsEngine(primary: p, fallback: f);
+      await e.init();
+
+      p.notReady.add('sin audio');
+      await e.speak('sin audio');
+      expect(log, ['neural:stop', 'apple:speak']);
+
+      log.clear();
+      await e.speak('con audio');
+      expect(log, ['apple:stop', 'neural:speak']);
+    });
+  });
+}
+
+class _NotWorthWaiting extends FakeEngine {
+  _NotWorthWaiting(super.id);
+  @override
+  bool get worthWaiting => false;
+}
+
+/// Se queda mirando si el audio está listo hasta que la prueba lo suelte.
+class _GatedEngine extends FakeEngine {
+  _GatedEngine(super.id);
+  final gate = Completer<void>();
+  bool gateOff = false;
+  @override
+  Future<bool> canSpeakNow(String text) async {
+    if (!gateOff) await gate.future;
+    return super.canSpeakNow(text);
+  }
+}
+
+class _LogEngine extends FakeEngine {
+  _LogEngine(super.id, this.log);
+  final List<String> log;
+  @override
+  Future<void> speak(String text) async {
+    log.add('$id:speak');
+    await super.speak(text);
+  }
+
+  @override
+  Future<void> stop() async {
+    log.add('$id:stop');
+    await super.stop();
+  }
 }

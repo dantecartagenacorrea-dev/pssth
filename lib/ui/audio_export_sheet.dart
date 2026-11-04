@@ -10,9 +10,9 @@ import '../domain/chapter_detector.dart';
 import '../domain/library_entry.dart';
 import '../playback/range_audio_export.dart';
 import '../playback/tts_audio_handler.dart';
-import 'swarm_transition.dart';
+import 'floating_panel.dart';
 
-void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: SwarmText(m)));
+void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));
 
 /// Páginas [from]..[to] (incluidas, desde 0) y cómo se llaman en el archivo.
 typedef _Range = ({int from, int to, String label});
@@ -29,7 +29,7 @@ Future<void> showAudioExportSheet(BuildContext context, TtsAudioHandler handler,
   final lastPage = handler.chunks.last.pageIndex;
   final chapters = handler.chapters;
   final here = _chapterAt(chapters, current.pageIndex);
-  final range = await showSwarmSheet<_Range>(
+  final range = await showFloatingSheet<_Range>(
     context: context,
     isScrollControlled: true,
     builder: (ctx) => SafeArea(
@@ -92,10 +92,14 @@ int? _chapterAt(List<Chapter> chapters, int page) {
 
 _Range _chapterRange(List<Chapter> chapters, int i, int lastPage) {
   final to = i + 1 < chapters.length ? chapters[i + 1].pageIndex - 1 : lastPage;
-  return (from: chapters[i].pageIndex, to: to < chapters[i].pageIndex ? chapters[i].pageIndex : to, label: chapters[i].title);
+  return (
+    from: chapters[i].pageIndex,
+    to: to < chapters[i].pageIndex ? chapters[i].pageIndex : to,
+    label: chapters[i].title,
+  );
 }
 
-Future<int?> _pickChapter(BuildContext context, List<Chapter> chapters) => showSwarmSheet<int>(
+Future<int?> _pickChapter(BuildContext context, List<Chapter> chapters) => showFloatingSheet<int>(
   context: context,
   isScrollControlled: true,
   builder: (ctx) => SafeArea(

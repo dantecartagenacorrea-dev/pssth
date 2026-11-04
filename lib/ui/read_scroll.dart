@@ -5,17 +5,16 @@ import 'package:flutter/services.dart';
 import '../core/motion.dart';
 import '../domain/text_chunk.dart';
 import '../playback/tts_audio_handler.dart';
-import 'swarm_transition.dart';
+import 'floating_panel.dart';
 
 /// Rollo de lo ya leído: todo el texto desde el comienzo hasta la frase que
 /// suena, en orden y por página, para repasarlo, seleccionar y copiar.
 /// Se abre mostrando lo último leído.
 Future<void> showReadScroll(BuildContext context, TtsAudioHandler handler) {
   final read = readSoFar(handler.chunks, handler.chunkIndex);
-  return showSwarmSheet<void>(
+  return showFloatingSheet<void>(
     context: context,
     isScrollControlled: true,
-    showDragHandle: true,
     builder: (ctx) => DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.85,
@@ -77,7 +76,7 @@ class _ReadScrollState extends State<_ReadScroll> {
     final all = widget.pages.map((p) => p.$2).join('\n\n');
     await Clipboard.setData(ClipboardData(text: all));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText('Texto leído copiado.')));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Texto leído copiado.')));
   }
 
   @override
@@ -119,7 +118,10 @@ class _ReadScrollState extends State<_ReadScroll> {
                           children: [
                             Text('Página $page', style: theme.textTheme.labelSmall),
                             const SizedBox(height: 6),
-                            Text(text, style: theme.textTheme.bodyLarge?.copyWith(height: 1.55, fontFamily: Comfort.readingFont)),
+                            Text(
+                              text,
+                              style: theme.textTheme.bodyLarge?.copyWith(height: 1.55, fontFamily: Comfort.readingFont),
+                            ),
                           ],
                         ),
                       );

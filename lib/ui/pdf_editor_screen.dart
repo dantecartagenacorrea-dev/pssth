@@ -8,10 +8,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../data/pdf_editor.dart';
-import 'swarm_transition.dart';
+import 'floating_panel.dart';
 import 'premium.dart';
 
-void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: SwarmText(m)));
+void _snack(BuildContext c, String m) => ScaffoldMessenger.of(c).showSnackBar(SnackBar(content: Text(m)));
 
 /// Herramientas para marcar la página.
 enum _Tool {
@@ -110,7 +110,7 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
   Future<void> _save() async {
     final ed = _ed;
     if (ed == null) return;
-    final share = await showSwarmSheet<bool>(
+    final share = await showFloatingSheet<bool>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(

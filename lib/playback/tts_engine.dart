@@ -60,6 +60,13 @@ abstract class TtsEngine {
   /// motores que hablan directo (el del sistema) siempre pueden.
   Future<bool> canSpeakNow(String text) async => true;
 
+  /// Como [speak], pero sin que otra voz cubra la espera: la misma voz lee todo, aunque
+  /// tarde en empezar. Solo [FallbackTtsEngine] tiene otra voz con qué cubrirla.
+  Future<void> speakSameVoice(String text) => speak(text);
+
+  /// ¿Tiene sentido esperar a esta voz? No, si este equipo no alcanza a leer con ella.
+  bool get worthWaiting => true;
+
   /// Sintetiza [text] en un archivo de audio en [path] (sin reproducirlo) y
   /// devuelve la ruta real escrita (la extensión puede cambiar según el motor:
   /// .wav en Android/Kokoro, .caf en iOS). `null` = el motor no sabe hacerlo.

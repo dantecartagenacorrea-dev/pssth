@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../data/model_store.dart';
 import '../platform/native_text.dart';
-import 'swarm_transition.dart';
 import 'premium.dart';
 
 /// Voces y modelos opcionales. Todo se descarga una vez y funciona sin conexión.
@@ -87,7 +86,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
   }
 
   Future<void> _remove(ModelSpec m) async {
-    final ok = await showSwarmDialog<bool>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('¿Eliminar "${m.title}"?'),
@@ -183,10 +182,7 @@ class _VoicesScreenState extends State<VoicesScreen> {
             'Necesita un teléfono reciente; si va lento, PSSTH! vuelve solo a la voz del sistema.',
           ),
           const SizedBox(height: 8),
-          _modelTile(
-            piperClaudeModel,
-            'Voz latinoamericana de acento mexicano neutro, clara y firme. Sin conexión.',
-          ),
+          _modelTile(piperClaudeModel, 'Voz latinoamericana de acento mexicano neutro, clara y firme. Sin conexión.'),
           if (Platform.isIOS) ...[
             const SizedBox(height: 8),
             Card(

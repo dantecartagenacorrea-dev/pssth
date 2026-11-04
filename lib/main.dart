@@ -30,11 +30,7 @@ import 'playback/engines/apple_tts_engine.dart';
 import 'playback/engines/fallback_tts_engine.dart';
 import 'playback/engines/kokoro_engine.dart';
 import 'playback/tts_audio_handler.dart';
-import 'ui/swarm.dart';
-import 'ui/swarm_transition.dart';
 import 'ui/activity_badge.dart';
-import 'ui/dot_field.dart';
-import 'ui/intro_screen.dart';
 import 'ui/library_screen.dart';
 
 const _pix2textLicense = '''MIT License
@@ -155,13 +151,9 @@ Future<void> main() async {
   engine.onFallback = (_) => handler.notice('La voz natural no respondió: sigo con la voz del sistema.');
   // La voz se prepara mientras ya se ve la entrada (no frena la primera imagen).
   unawaited(handler.setup().then((_) => mark('voz lista')));
-  Swarm.instance.handler = handler;
 
   WidgetsBinding.instance.addPostFrameCallback((_) {
     mark('primer cuadro');
-    // Las letras del enjambre se dibujan después de la primera imagen: la
-    // entrada no las necesita y prepararlas tomaba más de un segundo.
-    unawaited(Swarm.instance.init().then((_) => mark('enjambre')));
     // Modelos que se bajaron con la app cerrada (gestor de descargas) se
     // instalan solos; con permiso, sigue bajando lo que falta.
     unawaited(ModelQueue.instance.start());
@@ -211,9 +203,9 @@ class LectorPdfApp extends StatelessWidget {
 
   static const _transitions = PageTransitionsTheme(
     builders: {
-      TargetPlatform.android: SwarmTransitionsBuilder(),
-      TargetPlatform.iOS: SwarmTransitionsBuilder(),
-      TargetPlatform.macOS: SwarmTransitionsBuilder(),
+      TargetPlatform.android: _FadeTransitions(),
+      TargetPlatform.iOS: _FadeTransitions(),
+      TargetPlatform.macOS: _FadeTransitions(),
     },
   );
   static final _themes = {
@@ -223,45 +215,30 @@ class LectorPdfApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: Listenable.merge([Comfort.paper, Comfort.scatter]),
-      builder: (context, _) => _app(Comfort.paper.value, Comfort.scatter.value),
-    );
+    return ListenableBuilder(listenable: Comfort.paper, builder: (context, _) => _app(Comfort.paper.value));
   }
 
-  Widget _app(Paper paper, bool scatter) {
+  Widget _app(Paper paper) {
     final base = _themes[paper]!;
     // La letra muy legible es solo para el texto que se lee (Comfort.readingFont);
     // la interfaz conserva la letra de Apple/Inter.
     final theme = base;
     return MaterialApp(
       title: 'PSSTH!',
-      // Toda la app sobre un solo fondo (de puntos, con la dispersión); al
-      // entrar y salir, las pantallas se desintegran y se reconstruyen.
       theme: theme,
       darkTheme: theme,
       themeMode: paper == Paper.white ? ThemeMode.light : ThemeMode.dark,
-      // El enjambre de letras vuela por encima de todas las pantallas.
       builder: (context, child) {
-        // Sin dispersión es como si el sistema pidiera reducir el movimiento:
-        // cada animación ya sabe aparecer de una vez.
+        // Fondo liso y quieto: como si el sistema pidiera reducir
+        // el movimiento, cada animación aparece de una vez.
         final media = MediaQuery.of(context);
-        final still = !scatter || media.disableAnimations;
-        Swarm.instance
-          ..calm = still
-          ..ink = theme.colorScheme.primary;
         return MediaQuery(
-          data: media.copyWith(disableAnimations: still),
+          data: media.copyWith(disableAnimations: true),
           child: ColoredBox(
             color: theme.colorScheme.surface,
             child: Stack(
               children: [
-                // Un solo fondo de puntos para todas las pantallas. Siempre
-                // ocupa su lugar: si entrara y saliera de la lista, al cambiar
-                // el ajuste se perdería la pantalla abierta.
-                Positioned.fill(child: still ? const SizedBox.shrink() : const DotField()),
                 ?child,
-                if (!still) const Positioned.fill(child: SwarmView()),
                 // Lo que la app hace en segundo plano, arriba y discreto.
                 const Positioned.fill(child: ActivityBadge()),
               ],
@@ -269,18 +246,36 @@ class LectorPdfApp extends StatelessWidget {
           ),
         );
       },
-      home: IntroScreen(
-        next: (_) => LibraryScreen(
-          handler: handler,
-          libraryStore: libraryStore,
-          settingsStore: settingsStore,
-          bookmarkStore: bookmarkStore,
-          pronunciationStore: pronunciationStore,
-          modelStore: modelStore,
-          onModelsChanged: onModelsChanged,
-        ),
+      home: LibraryScreen(
+        handler: handler,
+        libraryStore: libraryStore,
+        settingsStore: settingsStore,
+        bookmarkStore: bookmarkStore,
+        pronunciationStore: pronunciationStore,
+        modelStore: modelStore,
+        onModelsChanged: onModelsChanged,
       ),
     );
+  }
+}
+
+/// Las pantallas cambian con un fundido; la primera aparece de una vez.
+class _FadeTransitions extends PageTransitionsBuilder {
+  const _FadeTransitions();
+
+  @override
+  Duration get transitionDuration => const Duration(milliseconds: 700);
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (route.settings.name == Navigator.defaultRouteName) return child;
+    return FadeTransition(opacity: animation, child: child);
   }
 }
 

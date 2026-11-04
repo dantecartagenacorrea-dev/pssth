@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -20,9 +21,9 @@ class RecEngine extends TtsEngine {
   Future<void> init() async {}
   @override
   Future<List<VoiceOption>> voices() async => const [
-        VoiceOption(name: 'Mónica', locale: 'es-ES', quality: 'enhanced'),
-        VoiceOption(name: 'Samantha', locale: 'en-US', quality: 'enhanced'),
-      ];
+    VoiceOption(name: 'Mónica', locale: 'es-ES', quality: 'enhanced'),
+    VoiceOption(name: 'Samantha', locale: 'en-US', quality: 'enhanced'),
+  ];
   @override
   Future<void> setVoice(VoiceOption voice) async => calls.add('voice:${voice.name}');
   @override
@@ -48,7 +49,8 @@ class RecEngine extends TtsEngine {
 }
 
 const es1 = 'La casa estaba en el centro del pueblo y todos los vecinos conocían a sus dueños desde hacía años.';
-const en = 'The house was in the middle of the town and all of the neighbors knew the owners from the years that they had lived there.';
+const en =
+    'The house was in the middle of the town and all of the neighbors knew the owners from the years that they had lived there.';
 const es2 = 'Por la tarde los niños jugaban en la plaza mientras los mayores hablaban de la cosecha y del tiempo.';
 
 void main() {
@@ -110,13 +112,59 @@ void main() {
     expect(h.shareText(), '');
     final entry = LibraryEntry(id: 'd', name: 'd.txt', storedPath: '', pageCount: 2, totalChunks: 3);
     await store.upsert(entry);
-    await h.loadDocument(entry: entry, chunks: [
-      TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 0, text: 'Uno.'),
-      TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 1, text: 'Dos.'),
-      TextChunk(documentId: 'd', pageIndex: 1, chunkIndex: 0, text: 'Tres.'),
-    ]);
+    await h.loadDocument(
+      entry: entry,
+      chunks: [
+        TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 0, text: 'Uno.'),
+        TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 1, text: 'Dos.'),
+        TextChunk(documentId: 'd', pageIndex: 1, chunkIndex: 0, text: 'Tres.'),
+      ],
+    );
     expect(h.shareText(), 'Uno.');
     expect(h.shareText(wholePage: true), 'Uno. Dos.');
+    tmp.deleteSync(recursive: true);
+  });
+
+  test('pausar mientras se cambia de idioma: esa frase ya no suena encima de lo que se lea aparte', () async {
+    SharedPreferences.setMockInitialValues({});
+    final tmp = Directory.systemTemp.createTempSync('lib');
+    final store = LibraryStore();
+    await store.initAt(tmp);
+    final engine = _GatedLanguageEngine();
+    final h = TtsAudioHandler(libraryStore: store, settingsStore: SettingsStore(), engine: engine);
+    await h.setup();
+    final entry = LibraryEntry(id: 'd', name: 'd.txt', storedPath: '', pageCount: 1, totalChunks: 3);
+    await store.upsert(entry);
+    await h.loadDocument(
+      entry: entry,
+      chunks: [
+        TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 0, text: es1),
+        TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 1, text: en),
+        TextChunk(documentId: 'd', pageIndex: 0, chunkIndex: 2, text: es2),
+      ],
+    );
+    await h.applyDocumentLanguage('es');
+    engine.waiting = Completer<void>();
+    final playing = h.play();
+    await engine.entered.future;
+    await h.pause();
+    engine.waiting!.complete();
+    await playing;
+    expect(engine.spoken, isNot(contains(en)));
+    tmp.deleteSync(recursive: true);
+  });
+
+  test('con la misma voz, cada frase se pide sin cubrirla y se preparan las dos que siguen', () async {
+    SharedPreferences.setMockInitialValues({});
+    final tmp = Directory.systemTemp.createTempSync('lib');
+    final store = LibraryStore();
+    await store.initAt(tmp);
+    final engine = _SameVoiceEngine();
+    final h = TtsAudioHandler(libraryStore: store, settingsStore: SettingsStore(), engine: engine);
+    await h.setup();
+    expect(await h.speakAside([es1, en, es2], sameVoice: true), isNull);
+    expect(engine.sameVoice, [es1, en, es2]);
+    expect(engine.prefetched.first, [en, es2]);
     tmp.deleteSync(recursive: true);
   });
 
@@ -139,6 +187,26 @@ void main() {
   });
 
   naturalVoiceTests();
+}
+
+class _GatedLanguageEngine extends RecEngine {
+  Completer<void>? waiting;
+  final entered = Completer<void>();
+  @override
+  Future<void> setVoice(VoiceOption voice) async {
+    final gate = waiting;
+    if (gate != null && !gate.isCompleted) {
+      if (!entered.isCompleted) entered.complete();
+      await gate.future;
+    }
+    await super.setVoice(voice);
+  }
+}
+
+class _SameVoiceEngine extends RecEngine {
+  final sameVoice = <String>[];
+  @override
+  Future<void> speakSameVoice(String text) async => sameVoice.add(text);
 }
 
 class FailEngine extends RecEngine {

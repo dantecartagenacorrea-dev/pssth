@@ -18,7 +18,8 @@ typedef PiperVoice = ({VoiceOption voice, String onnx, String tokens});
 /// latinoamericanas. Offline, sin servidores. Sintetiza por fragmentos, guarda
 /// el audio en caché y prepara los siguientes.
 class KokoroEngine extends TtsEngine implements SynthesizingEngine {
-  KokoroEngine({required this.modelDir, required this.cache, this.piper = const []});
+  KokoroEngine({required this.modelDir, required this.cache, this.piper = const [], AudioPlayer? player})
+    : _player = player ?? AudioPlayer();
 
   /// Voces Piper (cada una se ofrece si su modelo está instalado).
   final List<PiperVoice> piper;
@@ -41,7 +42,7 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
 
   KokoroWorker? _worker;
   Future<KokoroWorker>? _starting;
-  final AudioPlayer _player = AudioPlayer();
+  final AudioPlayer _player;
   int _speaker = 28;
 
   /// La voz Piper elegida (null: Kokoro). Su modelo se carga al elegirla y
@@ -78,11 +79,11 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   String get id => 'kokoro';
 
   AudioPrefetcher get _pf => _prefetcher ??= AudioPrefetcher(
-        engine: this,
-        cache: cache,
-        voice: _cacheVoice(_piperVoice, _speaker),
-        speed: _speed,
-      );
+    engine: this,
+    cache: cache,
+    voice: _cacheVoice(_piperVoice, _speaker),
+    speed: _speed,
+  );
 
   static String _cacheVoice(PiperVoice? p, int speaker) => p == null ? 'sid$speaker' : 'piper-${p.voice.name}';
 
@@ -131,10 +132,10 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
 
   @override
   Future<List<VoiceOption>> voices() async => [
-        if (isInstalled(modelDir) && !_kokoroHidden) ..._voices.keys,
-        for (final p in piper)
-          if (_piperInstalled(p)) p.voice,
-      ];
+    if (isInstalled(modelDir) && !_kokoroHidden) ..._voices.keys,
+    for (final p in piper)
+      if (_piperInstalled(p)) p.voice,
+  ];
 
   @override
   Future<void> setVoice(VoiceOption voice) async {
@@ -159,9 +160,12 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     _piperOnnx = p.onnx;
     final next = KokoroWorker.startPiper(p.onnx, p.tokens);
     _piperWorker = next;
-    next.then((_) {}, onError: (_) {
-      if (identical(_piperWorker, next)) _piperWorker = null; // se reintenta la próxima vez
-    });
+    next.then(
+      (_) {},
+      onError: (_) {
+        if (identical(_piperWorker, next)) _piperWorker = null; // se reintenta la próxima vez
+      },
+    );
     // La voz anterior se cierra cuando termina lo que ya estaba sintetizando:
     // cerrarla a mitad dejaba esa frase (y toda la fila detrás) sin respuesta.
     final pending = _queue;
@@ -244,7 +248,9 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
       if (_slow >= 2) _tooSlow = true;
     }
     if (kDebugMode) {
-      debugPrint('[lector] kokoro sintetizó ${text.length} car. en ${sw.elapsedMilliseconds} ms (${wav.length ~/ 1024} KB)');
+      debugPrint(
+        '[lector] kokoro sintetizó ${text.length} car. en ${sw.elapsedMilliseconds} ms (${wav.length ~/ 1024} KB)',
+      );
     }
     return wav;
   }
@@ -268,6 +274,10 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     if (my != _gen) return; // se pidió detener/otro fragmento mientras se sintetizaba
     StreamSubscription<Duration>? levels;
     try {
+      // Al terminar un audio el reproductor sigue «tocando», y así play() vuelve al
+      // instante: la frase siguiente se pisaba con esta o con la voz del sistema.
+      if (_player.playing) await _player.stop();
+      if (my != _gen) return;
       await _player.setFilePath(file.path);
       if (my != _gen) return;
       levels = await _followLevel(file, text);
@@ -319,6 +329,9 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   /// Sin audio listo, [speak] esperaría la síntesis (en un equipo lento, más
   /// de un minuto en silencio). Si no hay con qué sintetizar o es demasiado
   /// lento, sí: [speak] falla y se pasa a la voz del sistema con aviso.
+  @override
+  bool get worthWaiting => !(_piperVoice == null && _kokoroHidden);
+
   @override
   Future<bool> canSpeakNow(String text) async {
     if (_piperVoice == null && _kokoroHidden) return false; // sigue la voz del sistema

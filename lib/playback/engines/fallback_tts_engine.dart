@@ -9,11 +9,7 @@ import '../tts_engine.dart';
 /// - Si [primary] no está instalado o falla (al iniciar, al sintetizar...), se
 ///   pasa automáticamente a [fallback] sin cortar la escucha.
 class FallbackTtsEngine extends TtsEngine {
-  FallbackTtsEngine({
-    required this.primary,
-    required this.fallback,
-    this.startWithPrimary = true,
-  }) {
+  FallbackTtsEngine({required this.primary, required this.fallback, this.startWithPrimary = true}) {
     _active = startWithPrimary ? primary : fallback;
   }
 
@@ -263,15 +259,35 @@ class FallbackTtsEngine extends TtsEngine {
     }
   }
 
+  /// Cambia con cada speak/stop/pause: una frase que todavía esperaba ya no debe sonar
+  /// encima de la nueva, y nunca hablan las dos voces a la vez.
+  int _speakGen = 0;
+
   /// Regla de la app: nunca en silencio. Si la voz natural todavía no tiene
   /// listo el audio de [text], ese fragmento lo lee la voz del sistema
   /// mientras la natural prepara los siguientes; vuelve en cuanto tenga uno.
   @override
-  Future<void> speak(String text) async {
-    if (!usingFallback && _fallbackReady && !await _primaryReadyFor(text)) {
+  Future<void> speak(String text) => _speak(text, wait: false);
+
+  /// Espera el audio de la voz natural en vez de cubrir con la del sistema. Si esa voz
+  /// falla o este equipo no alcanza a leer con ella, sigue la del sistema.
+  @override
+  Future<void> speakSameVoice(String text) => _speak(text, wait: primary.worthWaiting);
+
+  Future<void> _speak(String text, {required bool wait}) async {
+    final my = ++_speakGen;
+    final notReady = !wait && !usingFallback && _fallbackReady && !await _primaryReadyFor(text);
+    if (my != _speakGen) return;
+    if (notReady) {
+      try {
+        await primary.stop();
+      } catch (_) {}
+      if (my != _speakGen) return;
       await fallback.speak(text);
       return;
     }
+    await _stopOther();
+    if (my != _speakGen) return;
     try {
       await _active.speak(text);
     } catch (e) {
@@ -310,12 +326,14 @@ class FallbackTtsEngine extends TtsEngine {
 
   @override
   Future<void> pause() async {
+    _speakGen++;
     await _stopOther();
     await _active.pause();
   }
 
   @override
   Future<void> stop() async {
+    _speakGen++;
     await _stopOther();
     await _active.stop();
   }

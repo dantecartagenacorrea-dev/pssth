@@ -2,7 +2,6 @@ import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 
 import '../data/pronunciation_store.dart';
-import 'swarm_transition.dart';
 import 'premium.dart';
 
 class PronunciationScreen extends StatefulWidget {
@@ -27,7 +26,7 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
   Future<void> _add() async {
     final written = TextEditingController();
     final spoken = TextEditingController();
-    final ok = await showSwarmDialog<bool>(
+    final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Nueva pronunciación'),

@@ -8,7 +8,7 @@ class _FakeHandler implements TtsAudioHandler {
   final said = <String>[];
 
   @override
-  Future<String?> speakAside(List<String> sentences) async {
+  Future<String?> speakAside(List<String> sentences, {bool sameVoice = false}) async {
     said.addAll(sentences);
     return null;
   }
@@ -102,7 +102,9 @@ void main() {
     addTearDown(request.dispose);
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: FormulaGraphView(handler: _FakeHandler(), request: request)),
+        home: Scaffold(
+          body: FormulaGraphView(handler: _FakeHandler(), request: request),
+        ),
       ),
     );
     request.value = 'y = 2x + 1';

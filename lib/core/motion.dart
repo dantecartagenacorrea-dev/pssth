@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Color del fondo de toda la app (las letras van del color contrario).
@@ -37,7 +36,6 @@ enum ReadingFont {
 class Comfort {
   Comfort._();
   static const _paperKey = 'paper';
-  static const _scatterKey = 'scatter';
   static const _fontKey = 'reading_font';
 
   /// Ajuste anterior (sí o no a la letra muy legible): solo para leerlo.
@@ -50,14 +48,8 @@ class Comfort {
   static const _readingModeKey = 'reading_mode';
 
   /// Ajuste anterior (Completo, Suave o Quieto): solo para leerlo una vez.
-  static const _oldMotionKey = 'motion';
 
   static final paper = ValueNotifier(Paper.black);
-
-  /// Dispersión de letras: las pantallas se forman desde un enjambre de
-  /// letras y el fondo se mueve. Apagada, la pantalla es lisa y todo aparece
-  /// de una vez (también si el sistema pide reducir el movimiento).
-  static final scatter = ValueNotifier(true);
 
   /// Letra del texto que se lee: la de la interfaz, una pensada para leer
   /// mejor (Atkinson Hyperlegible) o una de libro.
@@ -100,9 +92,6 @@ class Comfort {
   static Future<void> load() async {
     final p = await SharedPreferences.getInstance();
     paper.value = Paper.values.asNameMap()[p.getString(_paperKey)] ?? Paper.black;
-    // Quien tenía "Completo" sigue con la dispersión; "Suave" o "Quieto", sin.
-    final old = p.getString(_oldMotionKey);
-    scatter.value = p.getBool(_scatterKey) ?? (old == null || old == 'completo');
     // Quien tenía la letra muy legible la conserva.
     font.value =
         ReadingFont.values.asNameMap()[p.getString(_fontKey)] ??
@@ -150,17 +139,8 @@ class Comfort {
     await (await SharedPreferences.getInstance()).setString(_paperKey, value.name);
   }
 
-  static Future<void> setScatter(bool on) async {
-    scatter.value = on;
-    await (await SharedPreferences.getInstance()).setBool(_scatterKey, on);
-  }
-
   static Future<void> setFont(ReadingFont value) async {
     font.value = value;
     await (await SharedPreferences.getInstance()).setString(_fontKey, value.name);
   }
 }
-
-/// ¿Quieto el fondo (puntos, letras que flotan al leer)? Sin dispersión la
-/// app avisa que no hay animaciones, igual que cuando lo pide el sistema.
-bool calmOf(BuildContext context) => MediaQuery.disableAnimationsOf(context);

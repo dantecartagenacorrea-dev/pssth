@@ -20,9 +20,9 @@ import 'player_sheets.dart';
 import 'premium.dart';
 import 'quiz_screen.dart';
 import 'read_scroll.dart';
-import 'ether_text.dart';
+import 'reading_text.dart';
 import 'library_screen.dart' show showComfortSheet;
-import 'swarm_transition.dart';
+import 'floating_panel.dart';
 
 /// La velocidad como se escribe en español: "1,3×".
 String speedLabel(double speed) => '${speed.toStringAsFixed(1).replaceAll('.', ',')}×';
@@ -87,7 +87,7 @@ class PlayerScreen extends StatelessWidget {
   /// Todo lo que no está a la vista, con su ícono, en una hoja.
   Future<void> _showMore(BuildContext context) async {
     final sleepOn = handler.sleepEndsAt.value != null || handler.sleepAtChapterEnd.value;
-    final v = await showSwarmSheet<String>(
+    final v = await showFloatingSheet<String>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => SafeArea(
@@ -144,7 +144,7 @@ class PlayerScreen extends StatelessWidget {
   }
 
   Future<void> _showSleep(BuildContext context) async {
-    final minutes = await showSwarmSheet<int>(
+    final minutes = await showFloatingSheet<int>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
@@ -363,9 +363,8 @@ class PlayerScreen extends StatelessWidget {
   /// aplica al soltar: se oye enseguida cómo queda.
   Future<void> _pickSpeed(BuildContext context, PlayerSnapshot state) async {
     var speed = state.speed;
-    await showSwarmSheet<void>(
+    await showFloatingSheet<void>(
       context: context,
-      showDragHandle: true,
       builder: (ctx) => SafeArea(
         child: StatefulBuilder(
           builder: (ctx, setSheet) {
@@ -411,9 +410,8 @@ class PlayerScreen extends StatelessWidget {
   Future<void> _pickLanguage(BuildContext context) async {
     final manual = handler.manualLanguage;
     final langs = handler.availableLanguages.toList()..sort((a, b) => languageName(a).compareTo(languageName(b)));
-    final v = await showSwarmSheet<String>(
+    final v = await showFloatingSheet<String>(
       context: context,
-      showDragHandle: true,
       isScrollControlled: true,
       builder: (ctx) => SafeArea(
         child: ConstrainedBox(
@@ -449,9 +447,8 @@ class PlayerScreen extends StatelessWidget {
     final uses = await store.loadVoiceUses();
     if (!context.mounted) return;
     final hasNatural = state.voices.any((v) => v.quality == 'natural');
-    final v = await showSwarmSheet<String>(
+    final v = await showFloatingSheet<String>(
       context: context,
-      showDragHandle: true,
       isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSheet) {
@@ -560,7 +557,7 @@ class PlayerScreen extends StatelessWidget {
         : 'Ajustes → Sistema (o Accesibilidad) → Salida de texto a voz → '
               'Motor de Google → Instalar datos de voz → Español → descarga una voz de alta calidad (gratis). '
               'Después elígela aquí en "Voz".';
-    showSwarmDialog<void>(
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Mejorar la voz'),
@@ -586,7 +583,7 @@ class PlayerScreen extends StatelessWidget {
 
 void showSafeMessage(BuildContext context, Object error) {
   final text = error is AppException ? error.message : 'Ocurrió un problema. Inténtalo de nuevo.';
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: SwarmText(text)));
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 }
 
 /// Varios fragmentos alrededor del que se lee, para seguir el texto: el actual
@@ -685,7 +682,7 @@ class _ReadingViewState extends State<_ReadingView> {
               final rel => Stack(
                 children: [
                   Text(chunks[i].text, style: hidden),
-                  EtherText(handler: widget.handler, text: chunks[i].text, style: base, relation: rel),
+                  ReadingText(handler: widget.handler, text: chunks[i].text, style: base, relation: rel),
                 ],
               ),
             },
