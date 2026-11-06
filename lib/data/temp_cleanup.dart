@@ -10,6 +10,7 @@ const _retiredPrefixes = ['qwen3'];
 /// todavía los está leyendo.
 const _tempPrefixes = [
   'audio_exportado',
+  'compartir_',
   'escaneos',
   'escaneo',
   'file_picker',

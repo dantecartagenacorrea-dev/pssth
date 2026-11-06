@@ -471,7 +471,7 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
             children: [
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
-              Text(widget.readWithAi == null ? 'Leyendo la página…' : 'Leyendo con la IA de tu computadora…'),
+              Text(widget.readWithAi == null ? 'Leyendo la página…' : 'Leyendo con IA…'),
             ],
           ),
         );

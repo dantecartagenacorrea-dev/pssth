@@ -36,9 +36,11 @@ void main() {
         final body = jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, dynamic>;
         final texto = ((body['messages'] as List).last as Map)['content'] as String;
         pedidas.add(texto);
-        req.response.write(jsonEncode({
-          'message': {'content': '$texto (ok)'},
-        }));
+        req.response.write(
+          jsonEncode({
+            'message': {'content': '$texto (ok)'},
+          }),
+        );
       }
       await req.response.close();
     });
@@ -60,9 +62,11 @@ void main() {
       } else {
         chats++;
         req.response.statusCode = chats == 1 ? 200 : 500;
-        req.response.write(jsonEncode({
-          'message': {'content': 'Texto corregido de la página.'},
-        }));
+        req.response.write(
+          jsonEncode({
+            'message': {'content': 'Texto corregido de la página.'},
+          }),
+        );
       }
       await req.response.close();
     });
@@ -87,14 +91,18 @@ void main() {
           final texto = ((body['messages'] as List).last as Map)['content'] as String;
           pedidas.add(texto);
           if (body.containsKey('format')) {
-            req.response.write(jsonEncode({
-              'message': {'content': '{"ok":true}'},
-            }));
+            req.response.write(
+              jsonEncode({
+                'message': {'content': '{"ok":true}'},
+              }),
+            );
           } else {
             await Future<void>.delayed(const Duration(seconds: 3)); // página lenta
-            req.response.write(jsonEncode({
-              'message': {'content': '$texto (ok)'},
-            }));
+            req.response.write(
+              jsonEncode({
+                'message': {'content': '$texto (ok)'},
+              }),
+            );
           }
         }
         await req.response.close();
@@ -115,5 +123,72 @@ void main() {
     expect(await cleaning, [(0, 'Página cero. (ok)'), (1, 'Página uno. (ok)')]);
     expect(pedidas, ['Página cero.', 'estudio', 'Página cero.', 'Página uno.']);
     await server.close(force: true);
+  });
+
+  Future<Map<String, dynamic>> summaryRequest(List<String> installed) async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    Map<String, dynamic>? chat;
+    server.listen((req) async {
+      if (req.uri.path == '/api/tags') {
+        req.response.write(
+          jsonEncode({
+            'models': [
+              for (final name in installed) {'name': name},
+            ],
+          }),
+        );
+      } else {
+        chat = jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, dynamic>;
+        req.response.write(
+          jsonEncode({
+            'message': {'content': '{"ok":true}'},
+          }),
+        );
+      }
+      await req.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+    llm.url = 'http://127.0.0.1:${server.port}';
+    expect(await llm.summaryJson('s', 'clase', {}), {'ok': true});
+    return chat!;
+  }
+
+  test('el resumen usa el mejor modelo que la computadora tenga, con lugar para una clase larga', () async {
+    final chat = await summaryRequest([LlmCleaner.summaryModels.last, LlmCleaner.summaryModels.first, llm.model]);
+    expect(chat['model'], LlmCleaner.summaryModels.first);
+    expect((chat['options'] as Map)['num_ctx'], LlmCleaner.summaryContext);
+    expect(chat['think'], false);
+  });
+
+  test('si el modelo rechaza el pedido sin razonamiento, repite sin esa opción', () async {
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    final thinks = <Object?>[];
+    server.listen((req) async {
+      if (req.uri.path == '/api/tags') {
+        req.response.write(jsonEncode({'models': []}));
+      } else {
+        final body = jsonDecode(await utf8.decoder.bind(req).join()) as Map<String, dynamic>;
+        thinks.add(body['think']);
+        if (body.containsKey('think')) {
+          req.response.statusCode = 400;
+        } else {
+          req.response.write(
+            jsonEncode({
+              'message': {'content': '{"ok":true}'},
+            }),
+          );
+        }
+      }
+      await req.response.close();
+    });
+    addTearDown(() => server.close(force: true));
+    llm.url = 'http://127.0.0.1:${server.port}';
+    expect(await llm.summaryJson('s', 'clase', {}), {'ok': true});
+    expect(thinks, [false, null]);
+  });
+
+  test('sin Nemotron, el resumen usa el modelo elegido', () async {
+    final chat = await summaryRequest(['otro:1b']);
+    expect(chat['model'], llm.model);
   });
 }

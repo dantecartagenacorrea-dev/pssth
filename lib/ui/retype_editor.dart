@@ -102,7 +102,7 @@ class RetypeEditor extends StatelessWidget {
             child: Text(
               'La calidad depende de la foto: mientras más nítida, legible y entendible, mejor saldrá. '
               '${doubtful == 0 ? '' : 'Hay $doubtful ${doubtful == 1 ? 'renglón dudoso' : 'renglones dudosos'}, en naranja. '}'
-              '${readByAi ? 'Leído con la IA de tu computadora, que también puede equivocarse. ' : 'Leído sin IA: puede haber errores que no salen en naranja. '}'
+              '${readByAi ? 'Leído con IA, que también puede equivocarse. ' : 'Leído sin IA: puede haber errores que no salen en naranja. '}'
               'Compara cada renglón con la foto, sobre todo nombres y números. '
               'Saldrá como texto nuevo, con estas palabras. Es una transcripción: '
               'la copia con la foto queda al lado.',

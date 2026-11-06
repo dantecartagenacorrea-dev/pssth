@@ -17,6 +17,12 @@ class LlmCleaner {
   static const _onKey = 'llm_on';
   static const defaultModel = 'qwen2.5-coder:14b';
 
+  /// Los que mejor resumieron una clase real (2026-11-04), del mejor al siguiente.
+  static const summaryModels = ['nemotron-3.5-bolt:e4b', 'nemotron-3-nano:latest'];
+
+  /// Para que quepa una clase larga: Ollama recorta sin avisar lo que no entra.
+  static const summaryContext = 32768;
+
   String url = '';
   String model = defaultModel;
   bool enabled = false;
@@ -157,16 +163,46 @@ class LlmCleaner {
     }
   }
 
+  /// Resumen en JSON con el primero de [summaryModels] que la computadora tenga;
+  /// si no, con el modelo elegido. null si el servidor no respondió.
+  Future<Object?> summaryJson(String system, String prompt, Map<String, dynamic> schema) async {
+    final tags = await _post('/api/tags', null, timeout: const Duration(seconds: 5), get: true);
+    final installed = (tags?['models'] as List?)?.whereType<Map>().map((m) => m['name']) ?? const [];
+    final useModel = summaryModels.where(installed.contains).firstOrNull ?? model;
+    const options = {'temperature': 0.1, 'num_ctx': summaryContext, 'num_predict': 8000};
+    const timeout = Duration(minutes: 15);
+    // Sin razonar en voz alta: gasta la respuesta y a veces no deja el JSON. Los
+    // modelos que no tienen esa opción rechazan el pedido, y va sin ella.
+    return await generateJson(
+          system,
+          prompt,
+          schema,
+          useModel: useModel,
+          options: options,
+          timeout: timeout,
+          think: false,
+        ) ??
+        await generateJson(system, prompt, schema, useModel: useModel, options: options, timeout: timeout);
+  }
+
   /// Respuesta en JSON con la forma de [schema] (resúmenes y preguntas de
   /// estudio con la IA de la computadora). null si el servidor no respondió.
-  Future<Object?> generateJson(String system, String prompt, Map<String, dynamic> schema) async {
+  Future<Object?> generateJson(
+    String system,
+    String prompt,
+    Map<String, dynamic> schema, {
+    String? useModel,
+    Map<String, Object> options = const {'temperature': 0.3},
+    Duration timeout = const Duration(minutes: 4),
+    bool? think,
+  }) async {
     _studying++;
     if (_cleaning != null) {
       _interrupted = true;
       _cleaning!.close(force: true);
     }
     try {
-      return await _generateJson(system, prompt, schema);
+      return await _generateJson(system, prompt, schema, useModel ?? model, options, timeout, think);
     } finally {
       if (--_studying == 0) {
         _studyDone?.complete();
@@ -175,17 +211,26 @@ class LlmCleaner {
     }
   }
 
-  Future<Object?> _generateJson(String system, String prompt, Map<String, dynamic> schema) async {
+  Future<Object?> _generateJson(
+    String system,
+    String prompt,
+    Map<String, dynamic> schema,
+    String useModel,
+    Map<String, Object> options,
+    Duration timeout,
+    bool? think,
+  ) async {
     final r = await _post('/api/chat', {
-      'model': model,
+      'model': useModel,
       'stream': false,
+      'think': ?think,
       'format': schema,
-      'options': {'temperature': 0.3},
+      'options': options,
       'messages': [
         {'role': 'system', 'content': system},
         {'role': 'user', 'content': prompt},
       ],
-    }, timeout: const Duration(minutes: 4));
+    }, timeout: timeout);
     final content = (r?['message'] as Map?)?['content'] as String?;
     return content == null ? null : jsonDecode(content);
   }

@@ -164,6 +164,19 @@ class _VoicesScreenState extends State<VoicesScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const Card(
+            child: ListTile(
+              leading: Icon(CupertinoIcons.lightbulb),
+              title: Text('Recomendación: instala lo que vayas a usar'),
+              subtitle: Text(
+                'Con lo que descargues mejoran los resultados. Las voces mejoran la lectura en voz alta. '
+                'La transcripción mejora el texto de las grabaciones, y con un texto mejor salen mejor el resumen '
+                'y las preguntas. El aplanador de hojas arrugadas y el lector de fórmulas se ofrecen la primera '
+                'vez que los usas.',
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           Card(
             child: ListTile(
               leading: const Icon(CupertinoIcons.device_phone_portrait),
@@ -215,9 +228,17 @@ class _VoicesScreenState extends State<VoicesScreen> {
                 ? 'Para grabaciones en idiomas que el iPhone no transcribe sin conexión. Normalmente no hace falta.'
                 : 'Convierte en texto las clases o conversaciones grabadas, sin Internet y sin salir del dispositivo.',
           ),
+          if (Platform.isAndroid) ...[
+            const SizedBox(height: 8),
+            _modelTile(
+              parakeetModel,
+              'Modelo Parakeet de NVIDIA (CC BY 4.0), reducido por sherpa-onnx. En pruebas: rápido y claro, aunque a veces '
+              'se salta palabras. Ocupa mucho y usa bastante memoria. Si la instalas, se usa en lugar de la normal.',
+            ),
+          ],
           const SizedBox(height: 16),
           Text(
-            'Los modelos vienen de los proyectos sherpa-onnx y Piper (licencias libres) y se verifican antes de instalarse. '
+            'Los modelos vienen de los proyectos sherpa-onnx, Piper y NVIDIA (licencias libres) y se verifican antes de instalarse. '
             'Ningún documento ni grabación sale del dispositivo.',
             style: Theme.of(context).textTheme.bodySmall,
           ),

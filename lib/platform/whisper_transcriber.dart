@@ -17,17 +17,17 @@ class WhisperTranscriber implements SpeechTranscriber {
   /// (segmentos listos, total)
   final void Function(int done, int total)? onProgress;
 
-  static bool isInstalled(String dir) =>
-      File('$dir/base-encoder.int8.onnx').existsSync() &&
-      File('$dir/base-decoder.int8.onnx').existsSync() &&
-      File('$dir/base-tokens.txt').existsSync();
+  bool get _installed =>
+      File('$modelDir/base-encoder.int8.onnx').existsSync() &&
+      File('$modelDir/base-decoder.int8.onnx').existsSync() &&
+      File('$modelDir/base-tokens.txt').existsSync();
 
   @override
-  Future<bool> isAvailable({String locale = 'es-ES'}) async => isInstalled(modelDir);
+  Future<bool> isAvailable({String locale = 'es-ES'}) async => _installed;
 
   @override
   Future<String> transcribe(String audioPath, {String locale = 'es-ES'}) async {
-    if (!isInstalled(modelDir)) throw TranscriptionUnavailable();
+    if (!_installed) throw TranscriptionUnavailable();
     final WavAudio wav;
     try {
       wav = WavAudio.parse(await File(audioPath).readAsBytes());
@@ -78,7 +78,7 @@ void _entry(List<Object> args) {
             task: 'transcribe',
           ),
           tokens: '$dir/base-tokens.txt',
-          numThreads: 2,
+          numThreads: 4,
           debug: false,
         ),
       ),

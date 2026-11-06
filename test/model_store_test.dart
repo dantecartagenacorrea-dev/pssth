@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lector_pdf/data/model_queue.dart';
 import 'package:lector_pdf/data/model_store.dart';
 
 void main() {
@@ -76,17 +77,28 @@ void main() {
     File('${d.path}/dict/jieba.dict.utf8').createSync(recursive: true);
     Directory('${tmp.path}/qwen3').createSync();
     Directory('${tmp.path}/piper-ald').createSync();
+    Directory('${tmp.path}/whisper-small').createSync();
     await store.removeRetired();
     final left = d.listSync().map((e) => e.uri.pathSegments.lastWhere((s) => s.isNotEmpty)).toSet();
     expect(left, {...kokoroEsModel.requiredFiles, 'lexicon-us-en.txt', 'lexicon-zh.txt'});
     expect(store.isInstalled(kokoroEsModel), isTrue);
     expect(Directory('${tmp.path}/qwen3').existsSync(), isFalse);
     expect(Directory('${tmp.path}/piper-ald').existsSync(), isFalse);
+    expect(Directory('${tmp.path}/whisper-small').existsSync(), isFalse);
   });
 
   test('solo los modelos de voz obligan a releer las voces', () {
     expect(isVoiceModel(kokoroEsModel), isTrue);
     expect(piperVoiceModels.every(isVoiceModel), isTrue);
     expect(isVoiceModel(whisperBaseModel), isFalse);
+    expect(isVoiceModel(parakeetModel), isFalse);
+  });
+
+  test('Parakeet es opcional: no entra en las descargas automáticas y sus archivos están verificados', () {
+    expect(ModelQueue.all, isNot(contains(parakeetModel)));
+    expect(parakeetModel.requiredFiles, ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt']);
+    expect(parakeetModel.files.map((f) => f.name), parakeetModel.requiredFiles);
+    expect(parakeetModel.files.every((f) => f.sha256.length == 64), isTrue);
+    expect(parakeetModel.files.fold<int>(0, (n, f) => n + f.sizeBytes), parakeetModel.sizeBytes);
   });
 }

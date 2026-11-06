@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/app_exception.dart';
 import '../domain/library_entry.dart';
 import '../domain/study.dart';
+import '../domain/external_ai_prompt.dart';
 import '../domain/summarizer.dart' show studySummaryExtractive;
+import '../platform/file_export.dart';
 import '../platform/study_ai.dart';
 import '../playback/tts_audio_handler.dart';
 import 'floating_panel.dart';
@@ -59,7 +62,7 @@ class _StudySummary extends StatefulWidget {
 }
 
 class _StudySummaryState extends State<_StudySummary> {
-  final _ai = StudyAi();
+  final _ai = StudyAi(pcWithoutCorrection: true, useDeepSeek: true);
   late final (List<String>, int) _source = studySource(widget.handler);
   StudyScope _scope = StudyScope.capitulo;
   bool _running = false;
@@ -102,10 +105,49 @@ class _StudySummaryState extends State<_StudySummary> {
     super.dispose();
   }
 
+  /// Manda el texto a la app de IA que elija la persona. También queda copiado,
+  /// porque no todas las apps reciben lo compartido.
+  Future<void> _sendToOtherAi() async {
+    final (pages, current) = _source;
+    final (from, to) = studyPages(pages, _scope, current, chapters: widget.handler.chapters);
+    final text = pages.sublist(from, to).join('\n\n');
+    final messenger = ScaffoldMessenger.of(context);
+    if (!fitsExternalAi(text)) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            text.trim().isEmpty ? 'No hay texto en esta parte.' : 'Es demasiado largo para enviarlo: elige una parte.',
+          ),
+        ),
+      );
+      return;
+    }
+    final prompt = externalAiPrompt(text);
+    try {
+      await Clipboard.setData(ClipboardData(text: prompt));
+      await FileExport.shareText(prompt);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('También quedó copiado: si la app no lo recibe, pégalo en su chat.')),
+      );
+    } on PlatformException {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('No se pudo abrir. El texto quedó copiado: pégalo en el chat de tu IA.')),
+      );
+    }
+  }
+
   Future<void> _summarize() async {
     final (pages, current) = _source;
     final (from, to) = studyPages(pages, _scope, current, chapters: widget.handler.chapters);
-    final parts = splitForStudy(pages.sublist(from, to).join('\n\n'));
+    final parts = splitForStudy(
+      pages.sublist(from, to).join('\n\n'),
+      maxChars: switch (_engine) {
+        // De una vez: DeepSeek entiende mejor la clase entera.
+        StudyEngine.deepseek => externalAiMaxChars,
+        StudyEngine.computer => StudyAi.pcSummaryChars,
+        _ => 3500,
+      },
+    );
     final outline = studyOutline(pages, from, to, chapters: widget.handler.chapters);
     StudySummary withList(StudySummary r) => outline == null ? r : r.withOutline(outline.$1, outline.$2);
     if (parts.isEmpty) {
@@ -173,6 +215,8 @@ class _StudySummaryState extends State<_StudySummary> {
       _result = partial.isEmpty ? null : withList(mergeSummaries(partial, overall: overall));
       if (partial.isEmpty) _error = lastError ?? 'No se pudo resumir este texto.';
     });
+    final notice = _ai.lastQuotaNotice;
+    if (notice != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(notice)));
   }
 
   Future<void> _listen(List<String> lines) async {
@@ -230,11 +274,31 @@ class _StudySummaryState extends State<_StudySummary> {
                 icon: const Icon(CupertinoIcons.sparkles),
                 label: const Text('Resumir'),
               ),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _sendToOtherAi,
+                icon: const Icon(CupertinoIcons.share),
+                label: const Text('Resumir con DeepSeek u otra IA'),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'El texto se envía a la app que elijas, y el resumen queda en esa app. '
+                'Revisa los datos importantes contra la clase: la IA puede equivocarse.',
+                style: t.bodySmall,
+              ),
             ],
             if (_running) ...[
               LinearProgressIndicator(value: _total == 0 ? null : _done / _total),
               const SizedBox(height: 6),
-              Text('Leyendo parte ${_done + 1 > _total ? _total : _done + 1} de $_total…', style: t.bodySmall),
+              Text(
+                _engine == StudyEngine.deepseek
+                    ? 'DeepSeek está leyendo y revisando el texto. Puede tardar uno o dos minutos.'
+                    : _engine == StudyEngine.computer
+                    ? 'Tu computadora está leyendo la parte ${_done + 1 > _total ? _total : _done + 1} de $_total. '
+                          'Puede tardar unos minutos.'
+                    : 'Leyendo parte ${_done + 1 > _total ? _total : _done + 1} de $_total…',
+                style: t.bodySmall,
+              ),
               const SizedBox(height: 8),
             ],
             if (_error != null) Text(_error!, style: t.bodyMedium),

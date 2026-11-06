@@ -29,6 +29,7 @@ class MainActivity : AudioServiceActivity() {
         AudioExport.register(flutterEngine.dartExecutor.binaryMessenger)
         NativeTextTools.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
         SystemDownloads.register(applicationContext, flutterEngine.dartExecutor.binaryMessenger)
+        FileExport.register(this, flutterEngine.dartExecutor.binaryMessenger)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "lector/open_file")
         channel?.setMethodCallHandler { call, result ->
             when (call.method) {

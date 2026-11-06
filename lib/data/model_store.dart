@@ -107,6 +107,47 @@ const whisperBaseModel = ModelSpec(
   ],
 );
 
+const _parakeetRepo =
+    'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/2bda32ec70b097a55adaa07d9a7173915b43cc78';
+
+/// Parakeet TDT v3 de NVIDIA (CC BY 4.0), versión reducida de sherpa-onnx.
+/// Solo se baja si se pide.
+const parakeetModel = ModelSpec(
+  id: 'parakeet',
+  title: 'Transcripción Parakeet',
+  url: _parakeetRepo,
+  sizeBytes: 652184281 + 11845275 + 6355277 + 93939,
+  sha256: '',
+  extractedDir: '',
+  requiredFiles: ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt'],
+  files: [
+    ModelFile(
+      'encoder.int8.onnx',
+      '$_parakeetRepo/encoder.int8.onnx',
+      652184281,
+      'acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247',
+    ),
+    ModelFile(
+      'decoder.int8.onnx',
+      '$_parakeetRepo/decoder.int8.onnx',
+      11845275,
+      '179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e',
+    ),
+    ModelFile(
+      'joiner.int8.onnx',
+      '$_parakeetRepo/joiner.int8.onnx',
+      6355277,
+      '3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3',
+    ),
+    ModelFile(
+      'tokens.txt',
+      '$_parakeetRepo/tokens.txt',
+      93939,
+      'd58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d',
+    ),
+  ],
+);
+
 /// Voces latinoamericanas (Piper, acento mexicano neutro), convertidas por
 /// sherpa-onnx. Solo el modelo y sus fonemas: el español se le pasa ya
 /// convertido a fonemas, como a la voz natural.
@@ -209,12 +250,14 @@ const unwarpModel = ModelSpec(
 /// ([ModelQueue.all]); retomar descargas pendientes, todos.
 /// Los que traen voces: al instalarlos o quitarlos hay que releer las voces
 /// (releerlas corta la frase que se está preparando; con Whisper no hace falta).
-bool isVoiceModel(ModelSpec m) => m.id != whisperBaseModel.id && m.id != formulaModel.id && m.id != unwarpModel.id;
+bool isVoiceModel(ModelSpec m) =>
+    m.id != whisperBaseModel.id && m.id != parakeetModel.id && m.id != formulaModel.id && m.id != unwarpModel.id;
 
 List<ModelSpec> get optionalModels => [
   kokoroEsModel,
   ...piperVoiceModels,
   whisperBaseModel,
+  if (Platform.isAndroid) parakeetModel,
   // En iPhone todavía no hay cómo correrlo: no se ofrece.
   if (Platform.isAndroid) formulaModel,
   if (Platform.isAndroid) unwarpModel,
@@ -295,7 +338,7 @@ class ModelStore extends ChangeNotifier {
   /// se quitó porque no respetaba el formato de resúmenes y preguntas; la voz
   /// Piper Ald (62 MB), porque la app deja solo seis voces; el lector de fórmulas
   /// sin reducir (120 MB), porque el de 32 MB acierta igual.
-  static const _retired = ['qwen3', 'piper-ald', 'formula'];
+  static const _retired = ['whisper-small', 'qwen3', 'piper-ald', 'formula'];
 
   /// Borra lo que quedó instalado de [_retired] y, en los modelos ya
   /// instalados, lo que [ModelSpec.prune] dice que no se usa (las instalaciones

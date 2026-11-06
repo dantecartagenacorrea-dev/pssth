@@ -16,19 +16,19 @@ footer{margin-top:3em;font-size:.9em;color:#555}
 </head>
 <body>
 <header><img src="logo.png" alt="PSSTH!"><h1>Política de privacidad de PSSTH!</h1></header>
-<p>Última actualización: 26 de octubre de 2026</p>
+<p>Última actualización: 4 de noviembre de 2026</p>
 <p>PSSTH! convierte documentos (PDF, imágenes, texto, EPUB) en lectura en voz alta en tu dispositivo.</p>
 <h2>Qué datos trata PSSTH!</h2>
 <ul>
 <li>Los documentos que abres se copian a una carpeta privada de la aplicación en tu dispositivo.</li>
-<li>El texto extraído, el reconocimiento de texto (OCR), el progreso de lectura, los marcadores, el diccionario de pronunciación y las preferencias se guardan únicamente en tu dispositivo.</li>
+<li>El texto extraído, el reconocimiento de texto (OCR), el progreso de lectura, los marcadores, el diccionario de pronunciación y las preferencias se guardan en tu dispositivo, salvo que actives la sincronización (ver «Sincronización con Google Drive»).</li>
 <li>Grabaciones: si grabas una clase o conversación, el audio y su transcripción se guardan en tu dispositivo junto al documento. Si abres un audio desde otra app, PSSTH! guarda una copia del mismo modo.</li>
-<li>Transcripción: en iPhone se usa el reconocimiento de voz del sistema con la opción de procesar solo en el dispositivo; si no está disponible, se usa el modelo Whisper descargado en tu dispositivo. El audio no se envía a ningún servidor.</li>
+<li>Transcripción: en iPhone se usa el reconocimiento de voz del sistema con la opción de procesar solo en el dispositivo; si no está disponible, y en Android, se usan modelos descargados en tu dispositivo. La transcripción no envía el audio a ningún servidor.</li>
 </ul>
 <h2>Qué NO hace PSSTH!</h2>
 <ul>
-<li>No envía documentos, texto, imágenes, grabaciones, estadísticas ni ningún otro dato a servidores propios ni de terceros. La única excepción es opcional, está desactivada por defecto y la controlas tú (ver «Corrección avanzada con Ollama»).</li>
-<li>No requiere cuenta de usuario. Funciona sin Internet; solo se conecta si eliges descargar los modelos opcionales (ver «Descarga de modelos opcionales»).</li>
+<li>El desarrollador no tiene servidores que reciban tus documentos, textos, imágenes, grabaciones ni estadísticas. Solo salen del dispositivo en los casos que tú eliges y que se explican abajo: sincronización con tu Google Drive, tu servidor Ollama, abrir un enlace, descargar modelos o compartir un archivo o texto con otra app.</li>
+<li>No requiere cuenta de usuario para leer. La cuenta de Google solo se usa si activas la sincronización. Lo básico funciona sin Internet.</li>
 <li>No incluye publicidad, analítica remota ni rastreadores.</li>
 <li>No accede a tus contactos, ubicación ni a otros datos del dispositivo.</li>
 </ul>
@@ -38,28 +38,36 @@ footer{margin-top:3em;font-size:.9em;color:#555}
 <li>Escanear a PDF: las páginas que fotografías se convierten en un PDF en el dispositivo (con el texto reconocido localmente para poder buscarlo). PSSTH! no lo sube a ningún lado: solo sale si tú lo compartes o lo guardas desde la hoja Compartir del sistema. En Android, el escáner lo provee Google Play Services en el propio equipo.</li>
 <li>Micrófono: solo cuando pulsas grabar. Si grabas a otras personas, obtén su consentimiento cuando la ley lo exija.</li>
 <li>Reconocimiento de voz: solo para transcribir tus grabaciones, en el dispositivo.</li>
-<li>Red local: solo si activas la corrección avanzada con Ollama, para conectarse a la dirección que tú indiques.</li>
+<li>Red local: solo si escribes la dirección de tu servidor Ollama, para conectarse a esa dirección.</li>
 </ul>
 <h2>Descarga de modelos opcionales</h2>
-<p>La voz natural y la transcripción con Whisper necesitan modelos que no vienen dentro de la app. Si eliges instalarlos, PSSTH! los descarga desde GitHub (github.com). En esa descarga GitHub recibe, como en cualquier conexión, tu dirección IP; PSSTH! no le envía ningún otro dato tuyo. Puedes borrar los modelos en «Voces y modelos».</p>
-<h2>Corrección avanzada con Ollama (opcional)</h2>
-<p>Está desactivada por defecto. Si la activas y escribes la dirección de un servidor Ollama (por ejemplo, tu propio ordenador en la red de tu casa u oficina), PSSTH! envía a esa dirección el texto de los documentos que abres para corregir errores y recibe el texto corregido. PSSTH! no elige, opera ni recibe datos de ese servidor: el texto va solo a la dirección que tú escribes, y lo que ocurra allí depende de quien lo administre. La conexión usa http sin cifrar, así que úsala solo dentro de una red de confianza. Puedes desactivarla en cualquier momento.</p>
+<p>La voz natural, la transcripción, la lectura de fórmulas y el aplanado de hojas necesitan modelos que no vienen dentro de la app. Si eliges instalarlos, PSSTH! los descarga desde GitHub (github.com) y Hugging Face (huggingface.co). En esa descarga esos servicios reciben, como en cualquier conexión, tu dirección IP; PSSTH! no les envía ningún otro dato tuyo. Puedes borrar los modelos en «Voces y modelos».</p>
+<h2>IA de tu computadora con Ollama (opcional)</h2>
+<p>No se usa si no escribes la dirección de un servidor Ollama (por ejemplo, tu propio ordenador en la red de tu casa u oficina). Con esa dirección, PSSTH! le envía el texto que pides resumir o las fotos de hojas que pides leer con IA; si además activas la corrección, también el texto de los documentos que abres. PSSTH! no elige, opera ni recibe datos de ese servidor: el texto va solo a la dirección que tú escribes, y lo que ocurra allí depende de quien lo administre. La conexión usa http sin cifrar, así que úsala solo dentro de una red de confianza. Puedes borrar la dirección o desactivar la corrección en cualquier momento.</p>
+<h2>Sincronización con Google Drive (opcional)</h2>
+<p>No se usa si no la activas. Si entras con tu cuenta de Google, PSSTH! guarda en una carpeta oculta de tu propio Google Drive, que solo esta app puede ver, tu biblioteca, tu avance, tus marcas y los documentos que se sincronizan. Solo pide permiso para esa carpeta: no puede ver tus demás archivos de Drive. El desarrollador no recibe esos datos; quedan en tu cuenta, bajo las condiciones de Google. Puedes cerrar la sesión en la app y quitar el acceso desde la configuración de tu cuenta de Google.</p>
+<h2>Abrir enlaces y videos</h2>
+<p>Si pegas un enlace, PSSTH! se conecta a esa página para traer su texto. Si es un video de YouTube, le pide sus subtítulos a YouTube. Esos sitios reciben tu dirección IP y qué página o video pediste.</p>
+<h2>Resumir con otra IA (opcional)</h2>
+<p>Si tocas «Resumir con DeepSeek u otra IA», el texto elegido queda copiado y se abre la hoja Compartir del sistema. Solo sale del dispositivo si eliges una app, y entonces queda sujeto a las condiciones de esa app y de su empresa. PSSTH! no recibe ese texto ni el resumen.</p>
+<h2>Informe de errores</h2>
+<p>Los errores de la app se anotan en tu dispositivo. Solo salen si tocas «Enviar informe de errores» y eliges por dónde compartirlos.</p>
 <h2>Reconocimiento de texto y voz</h2>
 <p>El OCR y la síntesis de voz usan las capacidades del sistema operativo de tu dispositivo (Apple Vision y las voces del sistema en iOS). Según la configuración del sistema, algunas voces pueden descargarse de Apple; PSSTH! no participa en esa transferencia.</p>
 <h2>Eliminación de datos</h2>
-<p>Al eliminar un documento de la biblioteca se borran su copia local, el texto reconocido, la grabación asociada (si la hay), el progreso y los marcadores. Al desinstalar la aplicación se eliminan todos sus datos.</p>
+<p>Al eliminar un documento de la biblioteca se borran su copia local, el texto reconocido, la grabación asociada (si la hay), el progreso y los marcadores. Al desinstalar la aplicación se eliminan los datos guardados en el dispositivo; lo que hayas sincronizado sigue en tu Google Drive hasta que lo quites desde tu cuenta de Google.</p>
 <h2>Contacto</h2>
 <p>dantecartagenacorrea@gmail.com</p>
 <h2>Soporte</h2>
 <p>Para cualquier consulta sobre PSSTH! escribe a <a href="mailto:dantecartagenacorrea@gmail.com">dantecartagenacorrea@gmail.com</a>.</p>
 <section class="legal" aria-labelledby="aviso-legal">
 <h2 id="aviso-legal">Aviso legal</h2>
-<p>PSSTH! es una herramienta que funciona en tu dispositivo: no aloja, revisa ni publica lo que abres o grabas.</p>
-<details><summary>Tu contenido</summary><p>Eres responsable de tener derecho a usar los documentos, imágenes y audios que abres en PSSTH!. La app los procesa solo en tu dispositivo y para tu uso personal; el desarrollador no los recibe, no los guarda y no los comparte.</p></details>
-<details><summary>Grabaciones</summary><p>Si grabas a otras personas, obtén su consentimiento cuando la ley lo exija. Las grabaciones quedan en tu dispositivo.</p></details>
+<p>PSSTH! es una herramienta que funciona en tu dispositivo: el desarrollador no aloja, revisa ni publica lo que abres o grabas.</p>
+<details><summary>Tu contenido</summary><p>Eres responsable de tener derecho a usar los documentos, imágenes y audios que abres en PSSTH!. La app los procesa para tu uso personal; el desarrollador no los recibe, no los guarda y no los comparte.</p></details>
+<details><summary>Grabaciones</summary><p>Si grabas a otras personas, obtén su consentimiento cuando la ley lo exija. Las grabaciones quedan en tu dispositivo, salvo que las compartas o sincronices.</p></details>
 <details><summary>Sin garantías</summary><p>El reconocimiento de texto, la transcripción y la voz pueden contener errores; consulta el documento original para cualquier uso formal. PSSTH! se ofrece tal cual, sin garantías, en la medida en que lo permita la ley aplicable.</p></details>
-<details><summary>Software de terceros</summary><p>PSSTH! usa software de código abierto. Las voces naturales y la transcripción opcionales usan los modelos Kokoro-82M (Apache 2.0) y Whisper (MIT) a través de sherpa-onnx. Las licencias completas están en la app, en «Acerca de».</p></details>
+<details><summary>Software de terceros</summary><p>PSSTH! usa software de código abierto. Las funciones opcionales usan modelos abiertos, como Kokoro-82M (Apache 2.0) y Whisper (MIT), a través de sherpa-onnx. Las licencias completas están en la app, en «Acerca de».</p></details>
 </section>
-<footer>PSSTH! · Aplicación de lectura en voz alta · Todo el procesamiento ocurre en tu dispositivo, salvo la corrección opcional con Ollama en tu red. Internet solo para descargar los modelos opcionales.</footer>
+<footer>PSSTH! · Aplicación de lectura en voz alta · El procesamiento ocurre en tu dispositivo, salvo las funciones opcionales que eliges y se explican arriba.</footer>
 </body>
 </html>

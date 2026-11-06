@@ -35,6 +35,9 @@ import FoundationModels
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "ShareBridge") {
       ShareBridge.register(with: registrar)
     }
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "FileExportBridge") {
+      FileExportBridge.register(with: registrar)
+    }
     if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "DocumentScanBridge") {
       DocumentScanBridge.register(with: registrar)
     }
@@ -428,6 +431,63 @@ final class ShareBridge: NSObject, FlutterPlugin {
       vc.completionWithItemsHandler = { _, _, _, _ in result(true) }
       root.present(vc, animated: true)
     }
+  }
+}
+
+/// Saca documentos de la biblioteca. Canal "lector/file_export": "share" (hoja
+/// Compartir con uno o varios), "save" (donde elija la persona; devuelve
+/// cuántos guardó, 0 si canceló) y "shareText" (texto a la app que se elija).
+final class FileExportBridge: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
+  private var pendingSave: FlutterResult?
+
+  static func register(with registrar: FlutterPluginRegistrar) {
+    let channel = FlutterMethodChannel(name: "lector/file_export", binaryMessenger: registrar.messenger())
+    registrar.addMethodCallDelegate(FileExportBridge(), channel: channel)
+  }
+
+  func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any] else {
+      result(FlutterMethodNotImplemented)
+      return
+    }
+    let urls = (args["paths"] as? [String] ?? []).map { URL(fileURLWithPath: $0) }
+    let items: [Any] = (args["text"] as? String).map { [$0] } ?? urls
+    DispatchQueue.main.async {
+      guard let root = UIApplication.shared.connectedScenes
+        .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
+        .first?.rootViewController else {
+        result(FlutterError(code: "no_window", message: "No hay ventana", details: nil))
+        return
+      }
+      switch call.method {
+      case "share", "shareText":
+        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let pop = vc.popoverPresentationController {
+          pop.sourceView = root.view
+          pop.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 1, height: 1)
+          pop.permittedArrowDirections = []
+        }
+        vc.completionWithItemsHandler = { _, _, _, _ in result(true) }
+        root.present(vc, animated: true)
+      case "save":
+        self.pendingSave = result
+        let picker = UIDocumentPickerViewController(forExporting: urls, asCopy: true)
+        picker.delegate = self
+        root.present(picker, animated: true)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+    pendingSave?(urls.count)
+    pendingSave = nil
+  }
+
+  func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    pendingSave?(0)
+    pendingSave = nil
   }
 }
 

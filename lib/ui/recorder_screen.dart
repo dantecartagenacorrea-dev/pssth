@@ -1,22 +1,34 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+
+import '../domain/level_booster.dart';
+import '../domain/live_audio.dart';
+import '../platform/parakeet_transcriber.dart';
 import 'premium.dart';
 
-/// Grabación terminada: archivo de audio y duración.
+const _sampleRate = 16000;
+
+/// Grabación terminada: archivo de audio, duración y, si se fue transcribiendo
+/// mientras se grababa, el texto que termina de armarse.
 class RecordingResult {
-  RecordingResult(this.path, this.duration);
+  RecordingResult(this.path, this.duration, {this.transcript});
   final String path;
   final Duration duration;
+  final Future<String>? transcript;
 }
 
 /// Pantalla austera: un botón grande para grabar/detener. Todo queda en el dispositivo.
 class RecorderScreen extends StatefulWidget {
-  const RecorderScreen({super.key});
+  const RecorderScreen({super.key, this.liveModelDir});
+
+  /// Carpeta de Parakeet si se puede transcribir mientras se graba.
+  final String? liveModelDir;
 
   @override
   State<RecorderScreen> createState() => _RecorderScreenState();
@@ -37,10 +49,21 @@ class _RecorderScreenState extends State<RecorderScreen> {
   /// Un rato en silencio total: avisar por si el micrófono no capta.
   int _quietTicks = 0;
 
+  ParakeetLiveSession? _live;
+  String _liveText = '';
+  final _pcm = Pcm16Decoder();
+  final _booster = LevelBooster();
+  IOSink? _wav;
+  int _wavBytes = 0;
+  StreamSubscription<Uint8List>? _audio;
+  Completer<void>? _audioDone;
+
   @override
   void dispose() {
     _ticker?.cancel();
     _levels?.cancel();
+    _audio?.cancel();
+    _live?.cancel();
     _recorder.dispose();
     super.dispose();
   }
@@ -71,10 +94,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
       }
       final dir = await getTemporaryDirectory();
       final path = '${dir.path}/grabacion_${DateTime.now().millisecondsSinceEpoch}.wav';
-      await _recorder.start(
-        const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000, numChannels: 1),
-        path: path,
-      );
+      await _startStream(path);
       _path = path;
       _watch
         ..reset()
@@ -90,6 +110,61 @@ class _RecorderScreenState extends State<RecorderScreen> {
     }
   }
 
+  /// Graba el audio a mano para subirle el volumen y, si se puede, ir dándoselo
+  /// al reconocedor mientras se graba.
+  Future<void> _startStream(String path) async {
+    final modelDir = widget.liveModelDir;
+    final live = modelDir == null
+        ? null
+        : await ParakeetLiveSession.start(
+            modelDir: modelDir,
+            sampleRate: _sampleRate,
+            onText: (text) {
+              if (mounted) setState(() => _liveText = text);
+            },
+          );
+    _live = live;
+    final wav = File(path).openWrite()..add(Uint8List(44));
+    _wav = wav;
+    _wavBytes = 0;
+    final done = Completer<void>();
+    _audioDone = done;
+    final stream = await _recorder.startStream(
+      const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: _sampleRate, numChannels: 1),
+    );
+    _audio = stream.listen(
+      (bytes) {
+        final samples = _booster.process(_pcm.convert(bytes));
+        final boosted = pcm16Bytes(samples);
+        wav.add(boosted);
+        _wavBytes += boosted.length;
+        live?.add(samples);
+      },
+      onDone: () {
+        if (!done.isCompleted) done.complete();
+      },
+      onError: (_) {
+        if (!done.isCompleted) done.complete();
+      },
+    );
+  }
+
+  /// Cierra el archivo con su cabecera, ya sabiendo cuánto audio tiene.
+  Future<void> _closeWav(String path) async {
+    final wav = _wav;
+    if (wav == null) return;
+    await _audioDone?.future.timeout(const Duration(seconds: 2), onTimeout: () {});
+    await _audio?.cancel();
+    await wav.close();
+    final file = await File(path).open(mode: FileMode.append);
+    try {
+      await file.setPosition(0);
+      await file.writeFrom(pcm16WavHeader(dataBytes: _wavBytes, sampleRate: _sampleRate));
+    } finally {
+      await file.close();
+    }
+  }
+
   Future<void> _stop() async {
     _ticker?.cancel();
     await _levels?.cancel();
@@ -98,16 +173,19 @@ class _RecorderScreenState extends State<RecorderScreen> {
     try {
       path = await _recorder.stop();
     } catch (_) {}
-    path ??= _path;
+    path = _path;
+    if (path != null) await _closeWav(path);
     if (!mounted) return;
-    if (path == null || !File(path).existsSync() || File(path).lengthSync() == 0) {
+    if (path == null || !File(path).existsSync() || File(path).lengthSync() <= (_wav == null ? 0 : 44)) {
       setState(() {
         _recording = false;
         _error = 'La grabación quedó vacía.';
       });
       return;
     }
-    Navigator.pop(context, RecordingResult(path, _watch.elapsed));
+    final live = _live;
+    _live = null;
+    Navigator.pop(context, RecordingResult(path, _watch.elapsed, transcript: _wavBytes > 0 ? live?.finish() : null));
   }
 
   Future<void> _cancel() async {
@@ -115,6 +193,13 @@ class _RecorderScreenState extends State<RecorderScreen> {
     try {
       await _recorder.cancel();
     } catch (_) {}
+    final path = _path;
+    if (path != null && _wav != null) {
+      try {
+        await _closeWav(path);
+        await File(path).delete();
+      } catch (_) {}
+    }
     if (mounted) Navigator.pop(context);
   }
 
@@ -138,13 +223,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
             child: Column(
               children: [
                 const Spacer(),
-                Semantics(
-                  liveRegion: true,
-                  child: Text(
-                    _clock,
-                    style: Theme.of(context).textTheme.displayMedium,
-                  ),
-                ),
+                Semantics(liveRegion: true, child: Text(_clock, style: Theme.of(context).textTheme.displayMedium)),
                 const SizedBox(height: 32),
                 SizedBox(
                   width: 240,
@@ -183,27 +262,43 @@ class _RecorderScreenState extends State<RecorderScreen> {
                 ),
                 const SizedBox(height: 16),
                 if (_recording)
-                  Row(mainAxisSize: MainAxisSize.min, children: [
-                    // Punto rojo que parpadea cada segundo, como en una grabadora.
-                    AnimatedOpacity(
-                      opacity: _watch.elapsed.inSeconds.isEven ? 1 : 0.2,
-                      duration: const Duration(milliseconds: 300),
-                      child: Icon(CupertinoIcons.circle_fill, size: 14, color: cs.error),
-                    ),
-                    const SizedBox(width: 8),
-                    const Text('GRABANDO · toca para detener'),
-                  ])
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Punto rojo que parpadea cada segundo, como en una grabadora.
+                      AnimatedOpacity(
+                        opacity: _watch.elapsed.inSeconds.isEven ? 1 : 0.2,
+                        duration: const Duration(milliseconds: 300),
+                        child: Icon(CupertinoIcons.circle_fill, size: 14, color: cs.error),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('GRABANDO · toca para detener'),
+                    ],
+                  )
                 else
                   const Text('Toca para grabar'),
                 if (_recording && _quietTicks > 60) ...[
                   const SizedBox(height: 8),
                   Text('No se escucha nada: acércate al micrófono.', style: TextStyle(color: cs.error)),
                 ],
-                if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(_error!, style: TextStyle(color: cs.error)),
-                ],
-                const Spacer(),
+                if (_error != null) ...[const SizedBox(height: 12), Text(_error!, style: TextStyle(color: cs.error))],
+                if (_recording && widget.liveModelDir != null) ...[
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      reverse: true,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          _liveText.isEmpty ? 'El texto irá apareciendo por partes mientras grabas…' : _liveText,
+                          style: Theme.of(context).textTheme.bodyLarge,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ] else
+                  const Spacer(),
                 Text(
                   'Avisa a las personas que grabas y obtén su consentimiento cuando la ley lo exija. '
                   'El audio y el texto se guardan solo en este dispositivo.',

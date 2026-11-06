@@ -43,16 +43,19 @@ import '../domain/text_chunk.dart';
 import '../domain/text_normalizer.dart';
 import '../ocr/ocr_engine.dart';
 import '../platform/document_scanner.dart';
+import '../platform/file_export.dart';
 import '../platform/formula_engine.dart' show FormulaEngineException;
 import '../platform/page_unwarp.dart';
 import '../platform/native_text.dart';
 import '../platform/open_file_bridge.dart';
+import '../platform/parakeet_transcriber.dart';
 import '../platform/speech_transcriber.dart';
 import '../platform/whisper_transcriber.dart';
 import 'calculator_screen.dart';
 import 'scan_review_screen.dart';
 import 'floating_panel.dart';
 import '../playback/tts_audio_handler.dart';
+import '../services/deepseek_client.dart';
 import '../services/llm_cleaner.dart';
 import 'first_run_guide.dart';
 import 'listening_stats_screen.dart';
@@ -222,14 +225,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  void _showTranscribeProgress(int done, int total) {
+    if (mounted) setState(() => _busyLabel = 'Transcribiendo… $done/$total');
+  }
+
   late final SpeechTranscriber _speech = CompositeTranscriber([
     NativeSpeechTranscriber(),
-    WhisperTranscriber(
-      modelDir: widget.modelStore.dirFor(whisperBaseModel).path,
-      onProgress: (done, total) {
-        if (mounted) setState(() => _busyLabel = 'Transcribiendo… $done/$total');
-      },
-    ),
+    // Parakeet si se instaló; si no, o si no carga, la normal.
+    ParakeetTranscriber(modelDir: widget.modelStore.dirFor(parakeetModel).path, onProgress: _showTranscribeProgress),
+    WhisperTranscriber(modelDir: widget.modelStore.dirFor(whisperBaseModel).path, onProgress: _showTranscribeProgress),
   ]);
 
   /// Graba una clase o conversación, la transcribe en el dispositivo y la abre
@@ -269,9 +273,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
       }
     }
     if (!mounted) return;
-    final rec = await Navigator.of(
-      context,
-    ).push<RecordingResult>(MaterialPageRoute(builder: (_) => const RecorderScreen()));
+    final rec = await Navigator.of(context).push<RecordingResult>(
+      MaterialPageRoute(
+        builder: (_) => RecorderScreen(
+          liveModelDir: widget.modelStore.isInstalled(parakeetModel)
+              ? widget.modelStore.dirFor(parakeetModel).path
+              : null,
+        ),
+      ),
+    );
     if (rec == null || !mounted) return;
     final now = DateTime.now();
     String two(int n) => n.toString().padLeft(2, '0');
@@ -279,18 +289,29 @@ class _LibraryScreenState extends State<LibraryScreen> {
       rec.path,
       'Grabación ${two(now.day)}-${two(now.month)} ${two(now.hour)}.${two(now.minute)}',
       deleteSource: true,
+      transcript: rec.transcript,
     );
   }
 
   /// Transcribe un audio (grabado aquí o importado) y lo abre como documento.
   /// El audio se guarda junto a la entrada: "Eliminar" borra también el audio.
-  Future<void> _transcribeAndOpen(String audioPath, String title, {required bool deleteSource}) async {
+  Future<void> _transcribeAndOpen(
+    String audioPath,
+    String title, {
+    required bool deleteSource,
+    Future<String>? transcript,
+  }) async {
     setState(() {
       _busy = true;
       _busyLabel = 'Transcribiendo…';
     });
     try {
-      final (entry, aviso) = await _transcribeToLibrary(audioPath, title, deleteSource: deleteSource);
+      final (entry, aviso) = await _transcribeToLibrary(
+        audioPath,
+        title,
+        deleteSource: deleteSource,
+        transcript: transcript,
+      );
       if (aviso != null && mounted) showSafeMessage(context, AppException(aviso));
       if (!mounted) return;
       setState(() => _busy = false);
@@ -308,11 +329,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     String audioPath,
     String title, {
     required bool deleteSource,
+    Future<String>? transcript,
   }) async {
     String text;
     String? aviso;
     try {
-      text = await _speech.transcribe(audioPath);
+      text = await _textFrom(transcript) ?? await _speech.transcribe(audioPath);
       if (text.isEmpty) {
         text = 'La grabación no contiene voz reconocible.';
         aviso = 'No se reconoció voz en la grabación.';
@@ -330,10 +352,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return (entry, aviso);
   }
 
+  /// El texto armado mientras se grababa; null si falló o quedó vacío, y entonces
+  /// se transcribe el audio guardado.
+  Future<String?> _textFrom(Future<String>? transcript) async {
+    if (transcript == null) return null;
+    try {
+      final text = await transcript;
+      return text.isEmpty ? null : text;
+    } on TranscriptionUnavailable {
+      return null;
+    }
+  }
+
   static const _audioExt = audioExtensions;
 
   /// Pestaña de la lista: documentos normales o los creados con el escáner.
   bool _showScans = false;
+
+  /// Eligiendo varios documentos para compartirlos o guardarlos.
+  bool _selecting = false;
+  final Set<String> _selected = {};
 
   List<LibraryEntry> get _entries => [
     for (final e in widget.libraryStore.data.entries)
@@ -401,110 +439,125 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     final cont = _continueEntry;
     final entries = _entries;
-    return Stack(
-      children: [
-        PremiumPage(
-          showBack: false,
-          title: _showScans ? 'Escaneados' : 'Biblioteca',
-          actions: [
-            PageAction.widget(
-              ListenableBuilder(
-                listenable: ModelQueue.instance,
-                // Mientras se preparan voces y modelos, su señal; si no, la
-                // entrada a Voces.
-                builder: (_, _) => ModelQueue.instance.busy
-                    ? ProcessingSign(active: true, tooltip: 'Preparando voces y modelos', onTap: _openVoices)
-                    : IconButton(
-                        tooltip: 'Voces y modelos',
-                        icon: const Icon(CupertinoIcons.waveform),
-                        onPressed: _openVoices,
-                      ),
-              ),
-            ),
-            PageAction(icon: CupertinoIcons.link, tooltip: 'Pegar enlace', onTap: _busy ? null : _openUrl),
-            PageAction(
-              icon: CupertinoIcons.plus,
-              tooltip: 'Abrir documento',
-              onTap: _busy ? null : _openFile,
-              primary: true,
-            ),
-          ],
-          hero: _hero(cont),
-          body: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
-                child: Wrap(
-                  spacing: 8,
-                  children: [
-                    ChoiceChip(
-                      label: const Text('Recientes'),
-                      selected: !_showScans,
-                      showCheckmark: false,
-                      onSelected: (_) => setState(() => _showScans = false),
-                    ),
-                    ChoiceChip(
-                      label: Text('Escaneados ($_scanCount)'),
-                      selected: _showScans,
-                      showCheckmark: false,
-                      onSelected: (_) => setState(() => _showScans = true),
-                    ),
-                  ],
+    return PopScope(
+      canPop: !_selecting,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _endSelection();
+      },
+      child: Stack(
+        children: [
+          PremiumPage(
+            showBack: false,
+            title: _showScans ? 'Escaneados' : 'Biblioteca',
+            actions: [
+              PageAction.widget(
+                ListenableBuilder(
+                  listenable: ModelQueue.instance,
+                  // Mientras se preparan voces y modelos, su señal; si no, la
+                  // entrada a Voces.
+                  builder: (_, _) => ModelQueue.instance.busy
+                      ? ProcessingSign(active: true, tooltip: 'Preparando voces y modelos', onTap: _openVoices)
+                      : IconButton(
+                          tooltip: 'Voces y modelos',
+                          icon: const Icon(CupertinoIcons.waveform),
+                          onPressed: _openVoices,
+                        ),
                 ),
               ),
-              Expanded(
-                child: entries.isEmpty
-                    ? _EmptyLibrary(scans: _showScans, onStart: _busy ? null : (_showScans ? _scanToPdf : _openFile))
-                    : _showScans
-                    ? _scanGrid(entries)
-                    : ListView(padding: const EdgeInsets.only(bottom: 16), children: _entryRows(entries)),
+              PageAction(icon: CupertinoIcons.link, tooltip: 'Pegar enlace', onTap: _busy ? null : _openUrl),
+              PageAction(
+                icon: CupertinoIcons.plus,
+                tooltip: 'Abrir documento',
+                onTap: _busy ? null : _openFile,
+                primary: true,
               ),
             ],
-          ),
-          tabs: [
-            const TabItem(icon: CupertinoIcons.house_fill, label: 'Biblioteca', onTap: null, selected: true),
-            TabItem(
-              icon: CupertinoIcons.plus_slash_minus,
-              label: 'Calculadora',
-              onTap: _busy
-                  ? null
-                  : () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => CalculatorScreen(handler: widget.handler, modelStore: widget.modelStore),
+            hero: _hero(cont),
+            body: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+                  child: Wrap(
+                    spacing: 8,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('Recientes'),
+                        selected: !_showScans,
+                        showCheckmark: false,
+                        onSelected: (_) => setState(() {
+                          _showScans = false;
+                          _selected.clear();
+                          _selecting = false;
+                        }),
                       ),
-                    ),
+                      ChoiceChip(
+                        label: Text('Escaneados ($_scanCount)'),
+                        selected: _showScans,
+                        showCheckmark: false,
+                        onSelected: (_) => setState(() {
+                          _showScans = true;
+                          _selected.clear();
+                          _selecting = false;
+                        }),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: entries.isEmpty
+                      ? _EmptyLibrary(scans: _showScans, onStart: _busy ? null : (_showScans ? _scanToPdf : _openFile))
+                      : _showScans
+                      ? _scanGrid(entries)
+                      : ListView(padding: const EdgeInsets.only(bottom: 16), children: _entryRows(entries)),
+                ),
+                if (_selecting) _selectionBar(entries),
+              ],
             ),
-            TabItem(icon: CupertinoIcons.waveform, label: 'Voces', onTap: _openVoices),
-            TabItem(icon: CupertinoIcons.gear, label: 'Ajustes', onTap: _showSettings),
-          ],
-        ),
-        // Mientras carga un documento: un panel flotante en el centro.
-        if (_busy)
-          Positioned.fill(
-            child: ColoredBox(
-              color: Colors.black54,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 420),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Material(
-                      color: Theme.of(context).colorScheme.surface,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Premium.radiusSheet)),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              _busyLabel,
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const SizedBox(height: 16),
-                            const LinearProgressIndicator(minHeight: 3),
-                          ],
+            tabs: [
+              const TabItem(icon: CupertinoIcons.house_fill, label: 'Biblioteca', onTap: null, selected: true),
+              TabItem(
+                icon: CupertinoIcons.plus_slash_minus,
+                label: 'Calculadora',
+                onTap: _busy
+                    ? null
+                    : () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => CalculatorScreen(handler: widget.handler, modelStore: widget.modelStore),
+                        ),
+                      ),
+              ),
+              TabItem(icon: CupertinoIcons.waveform, label: 'Voces', onTap: _openVoices),
+              TabItem(icon: CupertinoIcons.gear, label: 'Ajustes', onTap: _showSettings),
+            ],
+          ),
+          // Mientras carga un documento: un panel flotante en el centro.
+          if (_busy)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black54,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Material(
+                        color: Theme.of(context).colorScheme.surface,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Premium.radiusSheet)),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                _busyLabel,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.titleMedium,
+                              ),
+                              const SizedBox(height: 16),
+                              const LinearProgressIndicator(minHeight: 3),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -512,9 +565,96 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
               ),
             ),
-          ),
-      ],
+        ],
+      ),
     );
+  }
+
+  void _toggleSelected(LibraryEntry entry) => setState(() {
+    _selecting = true;
+    if (!_selected.remove(entry.id)) _selected.add(entry.id);
+  });
+
+  void _endSelection() => setState(() {
+    _selecting = false;
+    _selected.clear();
+  });
+
+  /// Abajo, mientras se eligen documentos: qué hacer con los elegidos.
+  Widget _selectionBar(List<LibraryEntry> entries) {
+    final count = _selected.length;
+    final all = count == entries.length;
+    final chosen = [
+      for (final e in entries)
+        if (_selected.contains(e.id)) e,
+    ];
+    return Material(
+      elevation: 8,
+      color: Theme.of(context).colorScheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 4,
+          children: [
+            IconButton(tooltip: 'Cancelar', icon: const Icon(CupertinoIcons.xmark), onPressed: _endSelection),
+            Text(count == 1 ? '1 elegido' : '$count elegidos', style: Theme.of(context).textTheme.titleSmall),
+            TextButton(
+              onPressed: () => setState(() {
+                _selected.clear();
+                if (!all) _selected.addAll(entries.map((e) => e.id));
+              }),
+              child: Text(all ? 'Ninguno' : 'Todos'),
+            ),
+            TextButton.icon(
+              onPressed: count == 0 || _busy ? null : () => _exportEntries(chosen, save: true),
+              icon: const Icon(CupertinoIcons.arrow_down_doc),
+              label: const Text('Guardar'),
+            ),
+            FilledButton.icon(
+              onPressed: count == 0 || _busy ? null : () => _exportEntries(chosen, save: false),
+              icon: const Icon(CupertinoIcons.share),
+              label: const Text('Compartir'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Comparte o guarda los documentos; copiarlos puede tardar si son grandes.
+  Future<void> _exportEntries(List<LibraryEntry> chosen, {required bool save}) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _busy = true;
+      _busyLabel = save ? 'Guardando…' : 'Preparando…';
+    });
+    try {
+      if (!save) {
+        await FileExport.share(chosen);
+        if (mounted) _endSelection();
+        return;
+      }
+      final saved = await FileExport.save(chosen);
+      if (saved == null) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('En esta versión de Android usa Compartir para elegir dónde guardarlo.')),
+        );
+      } else if (saved > 0) {
+        final where = Platform.isAndroid ? ' en Descargas/PSSTH' : '';
+        messenger.showSnackBar(
+          SnackBar(content: Text(saved == 1 ? 'Guardado$where.' : '$saved documentos guardados$where.')),
+        );
+        if (mounted) _endSelection();
+      }
+    } on PlatformException {
+      messenger.showSnackBar(SnackBar(content: Text('No se pudo ${save ? 'guardar' : 'compartir'}. Prueba de nuevo.')));
+    } on FileSystemException {
+      messenger.showSnackBar(const SnackBar(content: Text('No se encontró el archivo o falta espacio.')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   /// Lo de arriba, sobre el negro: lo que se está escuchando con su avance en
@@ -614,8 +754,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final t = Theme.of(context).textTheme;
     final percent = (entry.progress * 100).round();
     final fresh = entry.pageCount <= 0;
+    final picked = _selected.contains(entry.id);
     return ListTile(
-      leading: IconAvatar(_iconFor(entry.kind)),
+      selected: picked,
+      leading: _selecting
+          ? Icon(picked ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle)
+          : IconAvatar(_iconFor(entry.kind)),
       title: Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
         entry.finished
@@ -631,14 +775,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
             fresh ? 'Nuevo' : '$percent%',
             style: t.titleSmall?.copyWith(color: fresh ? Premium.positive : s.onSurface),
           ),
-          IconButton(
-            tooltip: 'Opciones de ${entry.name}',
-            icon: Icon(CupertinoIcons.ellipsis, color: s.onSurfaceVariant),
-            onPressed: _busy ? null : () => _entryOptions(entry),
-          ),
+          if (!_selecting)
+            IconButton(
+              tooltip: 'Opciones de ${entry.name}',
+              icon: Icon(CupertinoIcons.ellipsis, color: s.onSurfaceVariant),
+              onPressed: _busy ? null : () => _entryOptions(entry),
+            ),
         ],
       ),
-      onTap: _busy ? null : () => _openEntry(entry),
+      onTap: _busy ? null : () => _selecting ? _toggleSelected(entry) : _openEntry(entry),
+      onLongPress: _busy ? null : () => _toggleSelected(entry),
     );
   }
 
@@ -658,19 +804,34 @@ class _LibraryScreenState extends State<LibraryScreen> {
         final entry = entries[i];
         return InkWell(
           borderRadius: BorderRadius.circular(18),
-          onTap: _busy ? null : () => _openEntry(entry),
+          onTap: _busy ? null : () => _selecting ? _toggleSelected(entry) : _openEntry(entry),
+          onLongPress: _busy ? null : () => _toggleSelected(entry),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Card(
-                  clipBehavior: Clip.antiAlias,
-                  child: PdfDocumentViewBuilder.file(
-                    entry.storedPath,
-                    builder: (context, doc) => doc == null
-                        ? const Center(child: Icon(CupertinoIcons.doc_text_viewfinder, size: 36))
-                        : PdfPageView(document: doc, pageNumber: 1, maximumDpi: 60),
-                  ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Card(
+                      clipBehavior: Clip.antiAlias,
+                      child: PdfDocumentViewBuilder.file(
+                        entry.storedPath,
+                        builder: (context, doc) => doc == null
+                            ? const Center(child: Icon(CupertinoIcons.doc_text_viewfinder, size: 36))
+                            : PdfPageView(document: doc, pageNumber: 1, maximumDpi: 60),
+                      ),
+                    ),
+                    if (_selecting)
+                      Positioned(
+                        top: 10,
+                        right: 10,
+                        child: Icon(
+                          _selected.contains(entry.id) ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.circle,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(height: 6),
@@ -688,11 +849,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       ],
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Opciones de ${entry.name}',
-                    icon: const Icon(CupertinoIcons.ellipsis),
-                    onPressed: _busy ? null : () => _entryOptions(entry),
-                  ),
+                  if (!_selecting)
+                    IconButton(
+                      tooltip: 'Opciones de ${entry.name}',
+                      icon: const Icon(CupertinoIcons.ellipsis),
+                      onPressed: _busy ? null : () => _entryOptions(entry),
+                    ),
                 ],
               ),
             ],
@@ -702,7 +864,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     );
   }
 
-  /// Favorito, editar y eliminar, en una hoja (en la lista solo se ve el avance).
+  /// Favorito, compartir, guardar, editar y eliminar, en una hoja (en la lista solo se ve el avance).
   Future<void> _entryOptions(LibraryEntry entry) async {
     final choice = await showFloatingSheet<String>(
       context: context,
@@ -718,6 +880,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
               leading: Icon(entry.favorite ? CupertinoIcons.star_fill : CupertinoIcons.star),
               title: Text(entry.favorite ? 'Quitar de favoritos' : 'Marcar como favorito'),
               onTap: () => Navigator.pop(ctx, 'favorito'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.share),
+              title: const Text('Compartir'),
+              onTap: () => Navigator.pop(ctx, 'compartir'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.arrow_down_doc),
+              title: const Text('Guardar en el dispositivo'),
+              onTap: () => Navigator.pop(ctx, 'guardar'),
+            ),
+            ListTile(
+              leading: const Icon(CupertinoIcons.checkmark_circle),
+              title: const Text('Seleccionar varios'),
+              onTap: () => Navigator.pop(ctx, 'seleccionar'),
             ),
             if (entry.kind == 'pdf')
               ListTile(
@@ -740,6 +917,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       await widget.libraryStore.toggleFavorite(entry.id);
       if (mounted) setState(() {});
     }
+    if (choice == 'compartir') await _exportEntries([entry], save: false);
+    if (choice == 'guardar') await _exportEntries([entry], save: true);
+    if (choice == 'seleccionar') _toggleSelected(entry);
     if (choice == 'eliminar') await _confirmDelete(entry);
     if (choice == 'editar' && mounted) {
       await Navigator.of(context).push(
@@ -763,7 +943,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
               for (final (value, icon, label) in const [
                 ('voces', CupertinoIcons.waveform, 'Voces y modelos'),
                 ('pronunciacion', CupertinoIcons.ear, 'Pronunciación'),
-                ('ia', CupertinoIcons.sparkles, 'Corrección avanzada (IA local)'),
+                ('deepseek', CupertinoIcons.sparkles, 'DeepSeek (resúmenes)'),
+                ('ia', CupertinoIcons.desktopcomputer, 'Corrección avanzada (IA local)'),
                 ('comodidad', CupertinoIcons.paintbrush, 'Aspecto y letra'),
                 ('estadisticas', CupertinoIcons.chart_bar, 'Estadísticas de escucha'),
                 ('sincronizar', CupertinoIcons.cloud, 'Sincronizar con Google Drive'),
@@ -784,6 +965,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
         await Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => PronunciationScreen(store: widget.pronunciationStore)));
+      case 'deepseek':
+        await _showDeepSeekSettings(context);
       case 'ia':
         _showLlmSettings(context);
       case 'comodidad':
@@ -1076,6 +1259,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Future<void> _reviewAndSave(List<String> paths) async {
     await LlmCleaner.instance.load();
+    // Con clave, DeepSeek mira la foto al «Transcribir»: lee mejor que el lector
+    // común en hojas arrugadas (prueba 2026-11-06). Si no, la IA de la computadora.
+    final withDeepSeek = await DeepSeekClient.instance.available();
     if (!mounted) return;
     final now = DateTime.now();
     try {
@@ -1089,11 +1275,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
               final data = await rootBundle.load('assets/words/spanish_words.bin');
               return SpanishWords(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
             },
-            readWithAi: LlmCleaner.instance.url.isEmpty
+            readWithAi: !withDeepSeek && LlmCleaner.instance.url.isEmpty
                 ? null
                 : (path) async {
                     try {
-                      return await LlmCleaner.instance.readPage(await photoForAi(path));
+                      final photo = await photoForAi(path);
+                      if (withDeepSeek) return await DeepSeekClient.instance.readPage(photo);
+                      return await LlmCleaner.instance.readPage(photo);
                     } on FileSystemException {
                       return null;
                     } on FormatException {
@@ -1334,6 +1522,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       // IA local: lo ya corregido en otra apertura se usa al momento; el resto
       // se corrige en segundo plano mientras se escucha (ver _runLlm).
       final llm = LlmCleaner.instance;
+      // DeepSeek no corrige escaneos: probado el 2026-11-06, sin ver la foto
+      // dejaba los errores y cambiaba palabras que estaban bien.
       final corrected = llm.ready ? await _corrected.load(updated.id, model: llm.model) : const <int, String>{};
       for (final e in corrected.entries) {
         if (e.key < doc.pages.length) doc.pages[e.key] = e.value;
@@ -1562,6 +1752,71 @@ Future<void> _showLlmSettings(BuildContext context) async {
       ),
     ),
   );
+}
+
+/// Clave de DeepSeek: con ella, Resumen usa DeepSeek por internet.
+Future<void> _showDeepSeekSettings(BuildContext context) async {
+  final ds = DeepSeekClient.instance;
+  await ds.load();
+  final keyCtl = TextEditingController();
+  var status = ds.hasKey ? 'Hay una clave guardada.' : 'Sin clave: el Resumen no usa DeepSeek.';
+  if (!context.mounted) return;
+  await showDialog<void>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setS) => AlertDialog(
+        title: const Text('DeepSeek'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Con tu clave de DeepSeek, el Resumen sale en la misma pantalla, hecho por DeepSeek. '
+              'El texto se envía por internet a DeepSeek y cada uso gasta saldo de tu cuenta.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: keyCtl,
+              obscureText: true,
+              autocorrect: false,
+              enableSuggestions: false,
+              decoration: InputDecoration(labelText: ds.hasKey ? 'Clave nueva (opcional)' : 'Clave (sk-…)'),
+            ),
+            const SizedBox(height: 8),
+            Text(status, style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: [
+          if (ds.hasKey)
+            TextButton(
+              onPressed: () async {
+                await ds.saveKey('');
+                setS(() => status = 'Clave borrada.');
+              },
+              child: const Text('Borrar'),
+            ),
+          TextButton(
+            onPressed: () async {
+              if (keyCtl.text.trim().isNotEmpty) await ds.saveKey(keyCtl.text);
+              setS(() => status = 'Probando…');
+              final e = await ds.ping();
+              setS(() => status = e ?? 'Conectado ✓');
+            },
+            child: const Text('Probar'),
+          ),
+          TextButton(
+            onPressed: () async {
+              if (keyCtl.text.trim().isNotEmpty) await ds.saveKey(keyCtl.text);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('Guardar'),
+          ),
+        ],
+      ),
+    ),
+  );
+  keyCtl.dispose();
 }
 
 /// Biblioteca sin documentos: qué se puede abrir y un botón para empezar.
