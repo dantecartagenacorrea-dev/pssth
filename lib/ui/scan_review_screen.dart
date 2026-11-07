@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -28,9 +29,20 @@ typedef ScanReview = ({
 /// Revisión de lo escaneado: se giran, ordenan o quitan páginas, se elige cómo
 /// limpiarlas viendo cómo queda, o «Transcribir» para reescribirlas, y se confirma. Devuelve la revisión, en orden, o null si se cancela.
 class ScanReviewScreen extends StatefulWidget {
-  const ScanReviewScreen({super.key, required this.paths, required this.recognize, this.readWithAi, this.loadWords});
+  const ScanReviewScreen({
+    super.key,
+    required this.paths,
+    required this.recognize,
+    this.readWithAi,
+    this.loadWords,
+    this.transcribe = false,
+  });
 
   final List<String> paths;
+
+  /// Abre ya en «Transcribir» y lee todas las páginas de una vez, sin esperar
+  /// a que se miren una por una.
+  final bool transcribe;
 
   /// Lee los renglones de una foto.
   final Future<List<ScannedLine>> Function(String path) recognize;
@@ -55,6 +67,29 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
   static const _thumbCacheHeight = 112;
   late final List<String> _paths = [...widget.paths];
   final _pager = PageController();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.transcribe) _startRetype();
+  }
+
+  /// Pasa a «Transcribir» y lee todas las páginas, de a una para no saturar la IA.
+  void _startRetype() {
+    _retype = true;
+    unawaited(_readAll());
+  }
+
+  Future<void> _readAll() async {
+    for (final path in [..._paths]) {
+      if (!mounted || !_retype) return;
+      try {
+        await _lines(path);
+      } on Exception {
+        // La página muestra su propio error al verla; las demás siguen.
+      }
+    }
+  }
 
   /// Filtro propio de cada página, si se eligió «Solo esta página».
   final _ownFilter = <String, ScanFilter>{};
@@ -350,7 +385,11 @@ class _ScanReviewScreenState extends State<ScanReviewScreen> {
                   ChoiceChip(
                     label: const Text('Transcribir'),
                     selected: _retype,
-                    onSelected: _finishing ? null : (_) => setState(() => _retype = true),
+                    onSelected: _finishing
+                        ? null
+                        : (_) {
+                            if (!_retype) setState(_startRetype);
+                          },
                   ),
                   if (total > 1 && !_retype)
                     FilterChip(

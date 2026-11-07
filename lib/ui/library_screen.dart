@@ -1269,6 +1269,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         MaterialPageRoute(
           builder: (_) => ScanReviewScreen(
             paths: paths,
+            transcribe: true,
             recognize: (path) async => (await _native.recognizeLines(path)).lines,
             loadWords: () async {
               final data = await rootBundle.load('assets/words/spanish_words.bin');

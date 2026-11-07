@@ -39,6 +39,36 @@ void main() {
     expect(find.textContaining('Hay 1 renglón dudoso'), findsOneWidget);
   });
 
+  testWidgets('al escanear transcribe todas las páginas sin tener que mirarlas', (tester) async {
+    final dir = await tester.runAsync(() => Directory.systemTemp.createTemp('revisar'));
+    addTearDown(() => tester.runAsync(() => dir!.delete(recursive: true)));
+    final paths = ['${dir!.path}/a.jpg', '${dir.path}/b.jpg', '${dir.path}/c.jpg'];
+    for (final p in paths) {
+      await tester.runAsync(
+        () => File(p).writeAsBytes(Uint8List.fromList(img.encodeJpg(img.Image(width: 200, height: 300)))),
+      );
+    }
+    final read = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ScanReviewScreen(
+          paths: paths,
+          transcribe: true,
+          recognize: (path) async {
+            read.add(path);
+            return const <ScannedLine>[(text: 'hola', left: 0.1, top: 0.2, width: 0.5, height: 0.05)];
+          },
+        ),
+      ),
+    );
+    for (var i = 0; i < 15; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 200)));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+    expect(read, paths);
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Transcribir')).selected, isTrue);
+  });
+
   testWidgets('«Transcribir» deja corregir lo leído y lo entrega con sus páginas', (tester) async {
     final dir = await tester.runAsync(() => Directory.systemTemp.createTemp('revisar'));
     addTearDown(() => tester.runAsync(() => dir!.delete(recursive: true)));
