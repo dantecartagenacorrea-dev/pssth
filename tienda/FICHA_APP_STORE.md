@@ -44,7 +44,7 @@ Productividad (secundaria: Educación)
 PENDIENTE DE REVISAR antes de enviar: el desarrollador no recibe datos ni hace seguimiento, pero con la clave de DeepSeek de la persona salen textos y fotos de hojas hacia DeepSeek, y con la sincronización los datos van a su propio Google Drive. Confirmar en el cuestionario de App Store Connect si eso cuenta como datos recopilados por terceros. La IA de la computadora (Ollama) envía texto solo al servidor que el usuario configura.
 
 ## URL de política de privacidad
-Publicar privacidad_web/index.html (con privacidad_web/publicar_privacidad.bat) y usar esa URL.
+https://cartagenacorrealimitada-cell.github.io/pssth-privacidad/
 
 ## URL de soporte
 Misma página, sección "Contacto".

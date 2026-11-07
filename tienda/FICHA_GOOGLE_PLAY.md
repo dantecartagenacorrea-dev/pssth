@@ -41,7 +41,8 @@ Productividad. Etiquetas: lector de PDF, texto a voz, educación.
 Correo: dantecartagenacorrea@gmail.com (el mismo de la política de privacidad).
 
 ## Política de privacidad
-URL: PENDIENTE de publicar `privacidad_web/index.html` (hoy la dirección da 404).
+URL: https://cartagenacorrealimitada-cell.github.io/pssth-privacidad/
+(Copia publicada de `privacidad_web/index.html`. Si cambias la política, actualiza también el repositorio `pssth-privacidad`.)
 
 ## Contenido de la app (respuestas sugeridas; confirmar al llenarlas)
 - **Acceso a la app:** todo se puede usar sin iniciar sesión.
