@@ -77,7 +77,6 @@ class PdfEditor {
   final List<_Undo> _undo = [];
 
   bool get canUndo => _undo.isNotEmpty;
-  bool get edited => changes.value > 0;
   int get pageCount => doc.pages.length;
 
   static Future<PdfEditor> openFile(String path) async {

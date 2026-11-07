@@ -286,17 +286,15 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
       // detenido a propósito: no es un fallo
     } finally {
       await levels?.cancel();
-      onLevel?.call(0);
     }
   }
 
   static const _levelStep = Duration(milliseconds: 50);
 
-  /// Informa por [onLevel] el volumen del audio en el punto que va sonando y,
-  /// por [onProgress], la palabra que se estima que suena (esta voz no marca
+  /// Informa por [onProgress] la palabra que se estima que suena (esta voz no marca
   /// tiempos: se reparte el tramo con voz según el largo de cada palabra).
   Future<StreamSubscription<Duration>?> _followLevel(File file, String text) async {
-    if (onLevel == null && onProgress == null) return null;
+    if (onProgress == null) return null;
     final List<double> env;
     try {
       env = WavAudio.parse(await file.readAsBytes()).envelope(windowMs: _levelStep.inMilliseconds);
@@ -308,7 +306,6 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     (int, int)? lastWord;
     return _player.createPositionStream(minPeriod: _levelStep, maxPeriod: _levelStep).listen((pos) {
       final i = (pos.inMilliseconds ~/ _levelStep.inMilliseconds).clamp(0, env.length - 1);
-      onLevel?.call(env[i]);
       if (voiced == null || i < voiced.$1) return;
       final span = voiced.$2 - voiced.$1;
       final word = wordAtFraction(text, span <= 0 ? 1 : (i - voiced.$1) / span);

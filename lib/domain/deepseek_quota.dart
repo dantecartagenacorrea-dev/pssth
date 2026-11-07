@@ -1,5 +1,5 @@
 // Margen diario de DeepSeek en tres fases (pedido 2026-11-06): normal, aviso y
-// tope. Cuenta los resúmenes, por equipo y por día.
+// tope. Cuenta los resúmenes y las hojas leídas, por equipo y por día.
 
 /// Hasta aquí, sin avisos.
 const deepSeekFreeUses = 20;

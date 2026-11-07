@@ -264,6 +264,9 @@ class _MathSolveViewState extends State<MathSolveView> {
                 _solution = null;
                 _error = null;
                 _notice = null;
+                _choices = const [];
+                _toGraph = null;
+                _showSteps = false;
               }),
             ),
           ),

@@ -1,8 +1,6 @@
-// Lo que se manda a una IA grande para que haga el resumen: desde la app
-// (DeepSeek con la clave de la persona) o a la app que se elija.
+// Lo que se manda a DeepSeek (con la clave de la persona) para que haga el resumen.
 
-/// Hasta aquí cabe sin riesgo en lo que Android deja pasar entre apps (1 MB, con
-/// dos bytes por letra) y equivale a más de dos horas de clase.
+/// Lo más largo que se resume de una vez: más de dos horas de clase.
 const externalAiMaxChars = 200000;
 
 const _intro =
@@ -28,9 +26,7 @@ const _json =
     'Responde solo con JSON de esta forma: {"brief": "punto 1", "concepts": [{"term": "...", "meaning": "..."}], '
     '"ideas": ["una idea o paso por elemento, en orden"]}.\n\n';
 
-String externalAiPrompt(String text) => '$_intro$_task${_rules}TEXTO:\n${text.trim()}';
-
-/// Las mismas instrucciones, con la respuesta en JSON para mostrarla en la app.
+/// Las instrucciones del resumen, con la respuesta en JSON para mostrarla en la app.
 String jsonSummaryPrompt(String text) => '$_intro$_task$_rules${_json}TEXTO:\n${text.trim()}';
 
 /// Segundo paso: que la IA compare su propio resumen con el texto. En la

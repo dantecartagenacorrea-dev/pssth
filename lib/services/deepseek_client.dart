@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -30,7 +32,12 @@ class DeepSeekClient {
 
   Future<void> load() async {
     if (_loaded) return;
-    _key = (await _storage.read(key: _keyName)) ?? '';
+    try {
+      _key = (await _storage.read(key: _keyName)) ?? '';
+    } on PlatformException {
+      // Clave ilegible (p. ej. tras restaurar un respaldo): se pide de nuevo.
+      _key = '';
+    }
     _loaded = true;
   }
 
@@ -118,7 +125,7 @@ class DeepSeekClient {
   static const _dayKey = 'deepseek_quota_day';
   static const _usesKey = 'deepseek_quota_uses';
 
-  /// Resúmenes hechos hoy, para el margen diario.
+  /// Usos de hoy (resúmenes y hojas leídas), para el margen diario.
   Future<int> usedToday() async {
     final p = await SharedPreferences.getInstance();
     return usesToday(storedDay: p.getString(_dayKey), storedUses: p.getInt(_usesKey) ?? 0, now: DateTime.now());
@@ -151,7 +158,8 @@ class DeepSeekClient {
         req.add(utf8.encode(jsonEncode(body)));
       }
       final res = await req.close().timeout(timeout);
-      final text = await res.transform(utf8.decoder).join().timeout(timeout);
+      // allowMalformed: una respuesta dañada no debe confundirse con una clave mala.
+      final text = await res.transform(const Utf8Decoder(allowMalformed: true)).join().timeout(timeout);
       final problem = deepSeekError(res.statusCode);
       if (problem != null) throw AppException(problem);
       return text;
@@ -161,6 +169,9 @@ class DeepSeekClient {
       throw AppException('Sin internet: no se pudo llegar a DeepSeek.');
     } on TimeoutException {
       throw AppException('DeepSeek tardó demasiado en responder. Prueba de nuevo.');
+    } on FormatException {
+      // La clave pegada trae letras o saltos que no pueden ir en el pedido.
+      throw AppException('La clave de DeepSeek no es válida. Revísala en Ajustes → DeepSeek.');
     } finally {
       client.close(force: true);
     }
@@ -224,7 +235,7 @@ class DeepSeekUsage {
       cachedInput += (u['prompt_cache_hit_tokens'] as num?)?.toInt() ?? 0;
       output += (u['completion_tokens'] as num?)?.toInt() ?? 0;
       // Solo cantidades, nunca texto ni la clave: para medir el gasto en pruebas.
-      print('deepseek_uso llamadas=$calls entrada=$input cache=$cachedInput salida=$output'); // ignore: avoid_print
+      if (kDebugMode) debugPrint('deepseek_uso llamadas=$calls entrada=$input cache=$cachedInput salida=$output');
     } on FormatException {
       return;
     }

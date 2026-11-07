@@ -19,9 +19,6 @@ class FileExport {
     await _channel.invokeMethod<bool>('share', {'paths': paths});
   }
 
-  /// Abre la hoja Compartir con un texto, para mandarlo a la app que se elija.
-  static Future<void> shareText(String text) => _channel.invokeMethod<bool>('shareText', {'text': text});
-
   /// Guarda los documentos: en Android, en Descargas/PSSTH; en iPhone, donde
   /// elija la persona. Devuelve cuántos guardó (0 si canceló) o null si esta
   /// versión del sistema no lo permite.

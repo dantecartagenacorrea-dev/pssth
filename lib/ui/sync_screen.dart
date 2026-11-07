@@ -23,12 +23,16 @@ class _SyncScreenState extends State<SyncScreen> {
 
   Future<void> _download(CloudDoc doc) async {
     setState(() => _downloading.add(doc.hash));
-    final entry = await _sync.download(doc);
+    String message;
+    try {
+      final entry = await _sync.download(doc);
+      message = entry == null ? 'Ya no está en tu Drive.' : '«${doc.name}» ya está en tu biblioteca.';
+    } on Exception {
+      message = 'No se pudo bajar «${doc.name}». Revisa tu conexión y prueba de nuevo.';
+    }
     if (!mounted) return;
     setState(() => _downloading.remove(doc.hash));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(entry == null ? 'Ya no está en tu Drive.' : '«${doc.name}» ya está en tu biblioteca.')),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override

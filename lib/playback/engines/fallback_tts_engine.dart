@@ -67,7 +67,6 @@ class FallbackTtsEngine extends TtsEngine {
 
   void _wire(TtsEngine e) {
     e.onProgress = (t, s, en) => onProgress?.call(t, s, en);
-    e.onLevel = (l) => onLevel?.call(l);
     e.onError = (m) => onError?.call(m);
     e.onVoicesChanged = (m) async {
       if (identical(e, primary)) {

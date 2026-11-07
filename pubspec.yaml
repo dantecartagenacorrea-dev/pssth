@@ -1,5 +1,5 @@
 name: lector_pdf
-description: "Lector local de PDF en voz alta para Android."
+description: "PSSTH!: lector de documentos en voz alta, para Android y iPhone."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -80,6 +80,7 @@ flutter:
 
   assets:
     - assets/fonts/OFL.txt
+    - assets/fonts/Inter-OFL.txt
     - assets/words/
 
   # Letra muy legible opcional (Braille Institute, licencia OFL).

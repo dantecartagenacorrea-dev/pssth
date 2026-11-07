@@ -219,10 +219,7 @@ class LectorPdfApp extends StatelessWidget {
   }
 
   Widget _app(Paper paper) {
-    final base = _themes[paper]!;
-    // La letra muy legible es solo para el texto que se lee (Comfort.readingFont);
-    // la interfaz conserva la letra de Apple/Inter.
-    final theme = base;
+    final theme = _themes[paper]!;
     return MaterialApp(
       title: 'PSSTH!',
       theme: theme,

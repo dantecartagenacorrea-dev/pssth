@@ -9,10 +9,11 @@ const _retiredPrefixes = ['qwen3'];
 /// archivos ya se copió. Se guardan un día por si la app que los recibió
 /// todavía los está leyendo.
 const _tempPrefixes = [
+  'abrir_', // lo abierto desde otra app: ya se copió a la biblioteca
   'audio_exportado',
   'compartir_',
-  'escaneos',
-  'escaneo',
+  'enlace_', // audio bajado de un enlace: ya se copió a la biblioteca
+  'escaneo', // también «escaneos»
   'file_picker',
   'grabacion_',
   'scaled_',

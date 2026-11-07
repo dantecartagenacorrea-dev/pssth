@@ -44,7 +44,6 @@ import '../domain/text_normalizer.dart';
 import '../ocr/ocr_engine.dart';
 import '../platform/document_scanner.dart';
 import '../platform/file_export.dart';
-import '../platform/formula_engine.dart' show FormulaEngineException;
 import '../platform/page_unwarp.dart';
 import '../platform/native_text.dart';
 import '../platform/open_file_bridge.dart';
@@ -56,6 +55,7 @@ import 'scan_review_screen.dart';
 import 'floating_panel.dart';
 import '../playback/tts_audio_handler.dart';
 import '../services/deepseek_client.dart';
+import '../domain/deepseek_quota.dart' show deepSeekMaxUses;
 import '../services/llm_cleaner.dart';
 import 'first_run_guide.dart';
 import 'listening_stats_screen.dart';
@@ -943,7 +943,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               for (final (value, icon, label) in const [
                 ('voces', CupertinoIcons.waveform, 'Voces y modelos'),
                 ('pronunciacion', CupertinoIcons.ear, 'Pronunciación'),
-                ('deepseek', CupertinoIcons.sparkles, 'DeepSeek (resúmenes)'),
+                ('deepseek', CupertinoIcons.sparkles, 'DeepSeek (resúmenes y hojas)'),
                 ('ia', CupertinoIcons.desktopcomputer, 'Corrección avanzada (IA local)'),
                 ('comodidad', CupertinoIcons.paintbrush, 'Aspecto y letra'),
                 ('estadisticas', CupertinoIcons.chart_bar, 'Estadísticas de escucha'),
@@ -990,9 +990,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
           applicationName: 'PSSTH!',
           applicationVersion: kAppVersion,
           applicationLegalese:
-              'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo. '
-              'Solo se usa Internet si descargas los modelos opcionales (desde GitHub y Hugging Face), y la red local '
-              'solo si activas la corrección con Ollama.\n\n'
+              'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo, salvo lo que '
+              'actives: se usa Internet si descargas los modelos opcionales (desde GitHub y Hugging Face), si '
+              'sincronizas con Google Drive o si pones tu clave de DeepSeek (entonces el texto que resumes y las '
+              'fotos de las hojas que transcribes se envían a DeepSeek). La red local solo se usa si conectas la IA '
+              'de tu computadora.\n\n'
               'El reconocimiento de texto (OCR) y la voz pueden contener errores; '
               'consulta siempre el documento original para cualquier uso formal.\n\n'
               'Modelos opcionales: voz natural Kokoro-82M (Apache 2.0; entrenada con datos CC BY: '
@@ -1222,13 +1224,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
       try {
         await unwarpPage(picked.path, model, out);
         paths.add(out);
-      } on FormulaEngineException {
+      } on Exception {
+        // No se pudo aplanar: la página sigue tal como se sacó la foto.
         notFlattened = true;
         paths.add(picked.path);
-      } on FormatException {
-        notFlattened = true;
-      } on FileSystemException {
-        notFlattened = true;
       }
       if (mounted) setState(() => _busy = false);
     }
@@ -1275,7 +1274,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               final data = await rootBundle.load('assets/words/spanish_words.bin');
               return SpanishWords(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
             },
-            readWithAi: !withDeepSeek && LlmCleaner.instance.url.isEmpty
+            readWithAi: !withDeepSeek && !LlmCleaner.instance.ready
                 ? null
                 : (path) async {
                     try {
@@ -1759,7 +1758,7 @@ Future<void> _showDeepSeekSettings(BuildContext context) async {
   final ds = DeepSeekClient.instance;
   await ds.load();
   final keyCtl = TextEditingController();
-  var status = ds.hasKey ? 'Hay una clave guardada.' : 'Sin clave: el Resumen no usa DeepSeek.';
+  var status = ds.hasKey ? 'Hay una clave guardada.' : 'Sin clave: el Resumen y las hojas no usan DeepSeek.';
   if (!context.mounted) return;
   await showDialog<void>(
     context: context,
@@ -1771,8 +1770,9 @@ Future<void> _showDeepSeekSettings(BuildContext context) async {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Con tu clave de DeepSeek, el Resumen sale en la misma pantalla, hecho por DeepSeek. '
-              'El texto se envía por internet a DeepSeek y cada uso gasta saldo de tu cuenta.',
+              'Con tu clave de DeepSeek, el Resumen y «Transcribir» en las hojas escaneadas los hace DeepSeek. '
+              'El texto que resumes y las fotos de esas hojas se envían por internet a DeepSeek, y cada uso gasta '
+              'saldo de tu cuenta (hasta $deepSeekMaxUses usos por día).',
               style: TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 12),

@@ -86,7 +86,24 @@ class _RecorderScreenState extends State<RecorderScreen> {
     return '${two(s ~/ 3600)}:${two((s % 3600) ~/ 60)}:${two(s % 60)}';
   }
 
-  Future<void> _start() async {
+  /// Un toque doble en empezar o detener no debe correr dos veces.
+  bool _busy = false;
+
+  Future<void> _once(Future<void> Function() action) async {
+    if (_busy) return;
+    _busy = true;
+    try {
+      await action();
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<void> _start() => _once(_startRecording);
+
+  Future<void> _stop() => _once(_stopRecording);
+
+  Future<void> _startRecording() async {
     try {
       if (!await _recorder.hasPermission()) {
         setState(() => _error = 'Sin permiso de micrófono. Actívalo en Ajustes.');
@@ -106,7 +123,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
         _error = null;
       });
     } catch (_) {
-      setState(() => _error = 'No se pudo iniciar la grabación.');
+      if (mounted) setState(() => _error = 'No se pudo iniciar la grabación.');
     }
   }
 
@@ -165,15 +182,15 @@ class _RecorderScreenState extends State<RecorderScreen> {
     }
   }
 
-  Future<void> _stop() async {
+  Future<void> _stopRecording() async {
+    if (!_recording) return;
     _ticker?.cancel();
     await _levels?.cancel();
     _watch.stop();
-    String? path;
     try {
-      path = await _recorder.stop();
+      await _recorder.stop();
     } catch (_) {}
-    path = _path;
+    final path = _path;
     if (path != null) await _closeWav(path);
     if (!mounted) return;
     if (path == null || !File(path).existsSync() || File(path).lengthSync() <= (_wav == null ? 0 : 44)) {

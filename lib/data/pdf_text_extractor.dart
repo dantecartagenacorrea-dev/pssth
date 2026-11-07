@@ -18,18 +18,6 @@ class PdfTextExtractor {
   File _cacheFile(String documentId) =>
       File('${cacheDir.path}/$documentId.text.json');
 
-  /// Texto limpio por página, desde la caché si existe.
-  Future<List<String>> loadPages({
-    required String filePath,
-    required String documentId,
-  }) async {
-    final cached = await _readCache(documentId);
-    if (cached != null) return cached;
-    final pages = await _extractPages(filePath);
-    await _writeCache(documentId, pages);
-    return pages;
-  }
-
   /// Para PDF largos: las primeras [count] páginas al momento, para empezar a
   /// leer ya, y el texto completo (limpio y en caché) en [rest] cuando termine
   /// de extraerse lo demás. Si ya está en caché, o es corto, todo de una vez.

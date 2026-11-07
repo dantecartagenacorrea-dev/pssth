@@ -15,8 +15,7 @@ import java.io.File
 
 /// Saca documentos de la biblioteca. Canal "lector/file_export": "share" (hoja
 /// Compartir con uno o varios), "save" (a Descargas/PSSTH, sin pedir permisos;
-/// devuelve cuántos guardó, o -1 antes de Android 10, donde hace falta permiso) y
-/// "shareText" (texto a la app que se elija).
+/// devuelve cuántos guardó, o -1 antes de Android 10, donde hace falta permiso).
 object FileExport {
     private const val FOLDER = "PSSTH"
 
@@ -26,16 +25,6 @@ object FileExport {
             when (call.method) {
                 "share" -> try {
                     share(activity, paths)
-                    result.success(true)
-                } catch (e: Exception) {
-                    result.error("share", e.message, null)
-                }
-                "shareText" -> try {
-                    val send = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_TEXT, call.argument<String>("text").orEmpty())
-                    }
-                    activity.startActivity(Intent.createChooser(send, "Resumir con"))
                     result.success(true)
                 } catch (e: Exception) {
                     result.error("share", e.message, null)

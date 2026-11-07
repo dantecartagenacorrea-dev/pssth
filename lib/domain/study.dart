@@ -34,12 +34,12 @@ class StudySummary {
   factory StudySummary.fromMap(Object? raw) {
     final m = raw is Map ? raw : const {};
     final concepts = <StudyConcept>[
-      for (final c in (m['concepts'] as List?) ?? const [])
+      for (final c in m['concepts'] is List ? m['concepts'] as List : const [])
         if (c is Map && '${c['term'] ?? ''}'.trim().isNotEmpty)
           (term: '${c['term']}'.trim(), meaning: '${c['meaning'] ?? ''}'.trim()),
     ];
     final ideas = [
-      for (final i in (m['ideas'] as List?) ?? const [])
+      for (final i in m['ideas'] is List ? m['ideas'] as List : const [])
         if ('$i'.trim().isNotEmpty) '$i'.trim(),
     ];
     return StudySummary(concepts: concepts, ideas: ideas, brief: '${m['brief'] ?? ''}'.trim());

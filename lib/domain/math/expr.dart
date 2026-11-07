@@ -344,6 +344,8 @@ Expr _compute(String op, Expr l, Expr r) {
       case '^':
         if (b.isInteger) {
           if (a.isZero && b.isNegative) throw const MathError('No se puede dividir entre cero.');
+          // toInt() de un exponente enorme se corta a 64 bits y daría un resultado falso.
+          if (b.num.abs() > BigInt.from(64)) throw const MathError('El exponente es demasiado grande.');
           return Num(a.pow(b.num.toInt()));
         }
         if (a.isNegative) throw const MathError('Esa potencia no da un número real.');

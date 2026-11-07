@@ -338,32 +338,6 @@ class HeroPill extends StatelessWidget {
   }
 }
 
-/// Botón redondo grande sobre la tarjeta oscura (reproducir).
-class HeroRoundButton extends StatelessWidget {
-  const HeroRoundButton({super.key, required this.icon, required this.tooltip, this.onTap, this.size = 56});
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onTap;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) => Tooltip(
-    message: tooltip,
-    child: Material(
-      color: Premium.heroText,
-      shape: const CircleBorder(),
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: SizedBox.square(
-          dimension: size,
-          child: Icon(icon, color: Premium.hero, size: size * 0.46),
-        ),
-      ),
-    ),
-  );
-}
-
 /// Barra de pestañas de Apple: ícono y nombre, la elegida resaltada.
 class AppTabBar extends StatelessWidget {
   const AppTabBar({super.key, required this.items});
@@ -472,42 +446,4 @@ class SectionCaption extends StatelessWidget {
     padding: padding,
     child: Text(text, style: Theme.of(context).textTheme.labelSmall),
   );
-}
-
-/// Recuadro de acción con ícono arriba y texto abajo.
-class ActionTile extends StatelessWidget {
-  const ActionTile({super.key, required this.icon, required this.label, this.onTap});
-  final IconData icon;
-  final String label;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = Theme.of(context).colorScheme;
-    return Material(
-      color: s.surfaceContainerHighest,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(Premium.radiusCard)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(Premium.radiusCard),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 24, color: s.onSurface),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 13, color: s.onSurface),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

@@ -3,7 +3,7 @@ import 'package:lector_pdf/domain/external_ai_prompt.dart';
 
 void main() {
   test('trae las instrucciones antes del texto completo', () {
-    final prompt = externalAiPrompt('La clase trató sobre hornos.');
+    final prompt = jsonSummaryPrompt('La clase trató sobre hornos.');
     expect(prompt, contains('Usa solo lo que dice el texto'));
     expect(prompt, contains('no lo adivines'));
     expect(prompt, contains('dice X; probablemente Y'));
@@ -19,7 +19,6 @@ void main() {
     expect(prompt, contains('"concepts"'));
     expect(prompt, contains('(deducido)'));
     expect(prompt.endsWith('La clase trató sobre hornos.'), isTrue);
-    expect(externalAiPrompt('x'), isNot(contains('JSON')));
   });
 
   test('el repaso trae el resumen y el texto, y pide revisar el orden de las tareas', () {
@@ -32,7 +31,7 @@ void main() {
   });
 
   test('quita los espacios sobrantes del texto', () {
-    expect(externalAiPrompt('  hola  \n').endsWith('hola'), isTrue);
+    expect(jsonSummaryPrompt('  hola  \n').endsWith('hola'), isTrue);
   });
 
   test('avisa si el texto es demasiado largo para enviarlo de una vez', () {

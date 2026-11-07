@@ -1,2 +1,0 @@
-10-07 05:30:18.711   585  1052 I ActivityTaskManager: START u0 {act=android.intent.action.VIEW dat=content://media/... typ=audio/wav flg=0x10000001 cmp=com.lectorpdf.lector_pdf/.MainActivity} with LAUNCH_MULTIPLE from uid 2000 result code=-92
-10-07 05:31:48.613  9574  9574 I app_process: Using CollectorTypeCMC GC.

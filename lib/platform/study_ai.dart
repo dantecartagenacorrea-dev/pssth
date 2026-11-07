@@ -135,17 +135,22 @@ class StudyAi {
       case StudyEngine.apple:
         return StudySummary.fromMap(await _callApple('summarize', {'text': text}));
       case StudyEngine.computer:
-        try {
-          return await _summarizeOnComputer(text);
-        } on IOException {
-          throw AppException('Se perdió la conexión con tu computadora. Prueba de nuevo.');
-        } on TimeoutException {
-          throw AppException('Tu computadora tardó demasiado en responder. Prueba de nuevo.');
-        } on FormatException {
-          throw AppException('No se pudo leer la respuesta de tu computadora. Prueba de nuevo.');
-        }
+        return _onComputer(() => _summarizeOnComputer(text));
       case null:
         throw AppException((await unavailableReason())!);
+    }
+  }
+
+  /// Los fallos de red o de respuesta de la computadora, en palabras simples.
+  Future<T> _onComputer<T>(Future<T> Function() call) async {
+    try {
+      return await call();
+    } on IOException {
+      throw AppException('Se perdió la conexión con tu computadora. Prueba de nuevo.');
+    } on TimeoutException {
+      throw AppException('Tu computadora tardó demasiado en responder. Prueba de nuevo.');
+    } on FormatException {
+      throw AppException('No se pudo leer la respuesta de tu computadora. Prueba de nuevo.');
     }
   }
 
@@ -211,7 +216,9 @@ class StudyAi {
         final res = await _callApple('quiz', {'text': text, 'count': count, 'level': level.name});
         raw = res is List ? res : const [];
       case StudyEngine.computer:
-        final res = await LlmCleaner.instance.generateJson(_tutor, '$ask\n\nTEXTO:\n$text', _quizSchema);
+        final res = await _onComputer(
+          () => LlmCleaner.instance.generateJson(_tutor, '$ask\n\nTEXTO:\n$text', _quizSchema),
+        );
         raw = res is Map && res['questions'] is List ? res['questions'] as List : const [];
       case null:
         throw AppException((await unavailableReason())!);

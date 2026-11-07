@@ -316,6 +316,8 @@ _Poly _power(_Poly base, _Poly exp) {
     }
     throw const MathError('Esa potencia está fuera de lo que resuelvo por ahora.');
   }
+  // Mismo tope que Rational.pow: (x+1)^9999999 congelaría la pantalla.
+  if (e.num > BigInt.from(64)) throw const MathError('El exponente es demasiado grande.');
   var r = _Poly.constant(Rational.one);
   for (var i = 0; i < e.num.toInt(); i++) {
     r = r * base;

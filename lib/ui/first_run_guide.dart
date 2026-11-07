@@ -12,7 +12,7 @@ class FirstRunGuide {
     (
       icon: CupertinoIcons.folder,
       title: 'Abre lo que quieras escuchar',
-      text: 'Un PDF, un EPUB, una foto, una hoja escaneada o un enlace. Todo se queda en tu equipo.',
+      text: 'Un PDF, un EPUB, una foto, una hoja escaneada o un enlace. Se guarda en tu equipo.',
     ),
     (
       icon: CupertinoIcons.play_circle,
@@ -24,7 +24,7 @@ class FirstRunGuide {
     (
       icon: CupertinoIcons.question_circle,
       title: 'Estudia sin salir del texto',
-      text: 'Resumen con los conceptos clave y preguntas para repasar, al instante y sin Internet.',
+      text: 'Resumen con los conceptos clave y preguntas para repasar.',
     ),
   ];
 

@@ -89,14 +89,19 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
   }
 
   /// Corre un cambio con la pantalla en espera; un fallo se avisa sin cerrar.
-  Future<void> _do(Future<void> Function(PdfEditor ed) change) async {
+  /// Devuelve si se hizo. Tras un cambio, las páginas elegidas pueden haber
+  /// cambiado de lugar: la selección se vacía.
+  Future<bool> _do(Future<void> Function(PdfEditor ed) change) async {
     final ed = _ed;
-    if (ed == null || _busy) return;
+    if (ed == null || _busy) return false;
     setState(() => _busy = true);
     try {
       await change(ed);
+      _selected.clear();
+      return true;
     } catch (_) {
       if (mounted) _snack(context, 'No se pudo hacer ese cambio en este PDF.');
+      return false;
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -145,7 +150,9 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
         await const MethodChannel('lector/share').invokeMethod<bool>('shareFile', {'path': file.path});
       } else {
         final path = await FilePicker.platform.saveFile(dialogTitle: 'Guardar PDF', fileName: name, bytes: bytes);
-        if (path != null && mounted) _snack(context, 'PDF guardado.');
+        // Cancelado: sigue sin guardar y al salir se vuelve a preguntar.
+        if (path == null) return;
+        if (mounted) _snack(context, 'PDF guardado.');
       }
       _saved = ed.changes.value;
     } catch (_) {
@@ -381,9 +388,7 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
     final n = pages.length;
     Future<void> act(Future<void> Function(PdfEditor e, Directory tmp) f, String done) async {
       final tmp = await getTemporaryDirectory();
-      await _do((e) => f(e, tmp));
-      if (!mounted) return;
-      setState(_selected.clear);
+      if (!await _do((e) => f(e, tmp)) || !mounted) return;
       _snack(context, done);
     }
 
@@ -533,7 +538,10 @@ class _PdfEditorScreenState extends State<PdfEditorScreen> {
   };
 
   Future<void> _onRect(PdfEditor ed, Rect r) async {
-    if (_tool == _Tool.highlight) return _do((e) => e.highlight(_page, r));
+    if (_tool == _Tool.highlight) {
+      await _do((e) => e.highlight(_page, r));
+      return;
+    }
     final text = await _ask('Texto correcto', hint: 'Lo que debe decir (vacío: solo tapar)');
     if (text == null) return;
     await _do((e) => e.correct(_page, r, text));

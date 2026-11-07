@@ -25,7 +25,7 @@ PSSTH! convierte cualquier documento en una experiencia de audiolibro: abre un P
 - Lectura natural de textos jurídicos y contables: artículos, incisos, importes y porcentajes.
 - Diccionario de pronunciación para nombres, siglas y términos técnicos.
 
-Privacidad total: todo se procesa en tu dispositivo. Sin cuentas ni anuncios, y funciona sin Internet; solo se conecta si eliges descargar las voces o la transcripción opcionales.
+Privacidad: lo básico se procesa en tu dispositivo y funciona sin Internet. Sin cuentas obligatorias ni anuncios. Lo que se conecta es opcional y solo si lo activas: descargar voces y modelos, sincronizar con tu Google Drive, o resumir y transcribir hojas con DeepSeek usando tu propia clave.
 
 Opcional para usuarios avanzados: corrección del texto con un modelo Ollama en tu propio ordenador, dentro de tu red (desactivada por defecto).
 
@@ -41,10 +41,10 @@ Productividad (secundaria: Educación)
 4+
 
 ## Privacidad de la app (cuestionario de App Store Connect)
-Datos recopilados: **Ninguno** ("Data Not Collected"). PSSTH! no recopila datos vinculados ni no vinculados al usuario y no realiza seguimiento. La corrección opcional con Ollama envía texto solo al servidor que el usuario configura (normalmente su propio ordenador); el desarrollador no recibe esos datos.
+PENDIENTE DE REVISAR antes de enviar: el desarrollador no recibe datos ni hace seguimiento, pero con la clave de DeepSeek de la persona salen textos y fotos de hojas hacia DeepSeek, y con la sincronización los datos van a su propio Google Drive. Confirmar en el cuestionario de App Store Connect si eso cuenta como datos recopilados por terceros. La IA de la computadora (Ollama) envía texto solo al servidor que el usuario configura.
 
 ## URL de política de privacidad
-Publicar tienda/PRIVACIDAD.md en una página pública (por ejemplo GitHub Pages de un repositorio público pequeño) y usar esa URL.
+Publicar privacidad_web/index.html (con privacidad_web/publicar_privacidad.bat) y usar esa URL.
 
 ## URL de soporte
 Misma página, sección "Contacto".
@@ -61,8 +61,8 @@ Necesarias: iPhone 6,7" (1290×2796) y opcionalmente 6,5". Tomarlas en el iPhone
 La app no requiere cuenta. Para probar: abrir cualquier PDF desde Archivos con "Abrir en PSSTH!" y pulsar Play. El permiso de cámara/fotos solo se solicita al usar esas funciones (incluido «Escanear a PDF», que crea el PDF en el dispositivo y solo lo entrega por la hoja Compartir); el de micrófono y reconocimiento de voz, solo al pulsar «Grabar clase o conversación» (la transcripción se hace en el dispositivo). Los modelos opcionales de voz natural y transcripción se descargan desde GitHub en «Voces y modelos» y no son necesarios para probar la app. La "Corrección avanzada (IA local)" está desactivada por defecto, necesita un servidor Ollama propio del usuario en su red y no es necesaria para probar la app; el permiso de red local solo se solicita al activarla.
 
 ## Texto de los permisos (ya en Info.plist)
-- NSCameraUsageDescription: "PSSTH! usa la cámara para fotografiar páginas y leerlas en voz alta. Las fotos se procesan solo en tu dispositivo."
-- NSPhotoLibraryUsageDescription: "PSSTH! necesita acceder a tus fotos para leer en voz alta el texto de una imagen. Se procesa solo en tu dispositivo."
+- NSCameraUsageDescription: "PSSTH! usa la cámara para fotografiar páginas y leerlas en voz alta. Las fotos se procesan en tu dispositivo; solo si pones tu clave de DeepSeek, las hojas que transcribes se envían a DeepSeek."
+- NSPhotoLibraryUsageDescription: "PSSTH! necesita acceder a tus fotos para leer en voz alta el texto de una imagen. Se procesa en tu dispositivo; solo si pones tu clave de DeepSeek, las hojas que transcribes se envían a DeepSeek."
 - NSMicrophoneUsageDescription: "PSSTH! usa el micrófono para grabar clases o conversaciones. El audio se guarda y se transcribe solo en tu dispositivo."
 - NSSpeechRecognitionUsageDescription: "PSSTH! transcribe tus grabaciones con el reconocimiento de voz del iPhone, sin enviarlas a ningún servidor."
-- NSLocalNetworkUsageDescription: "PSSTH! se conecta a tu propio ordenador en la red local solo si activas la corrección avanzada con Ollama."
+- NSLocalNetworkUsageDescription: "PSSTH! se conecta a tu propio ordenador en la red local solo si conectas la IA de tu computadora."

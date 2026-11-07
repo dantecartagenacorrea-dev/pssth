@@ -3,14 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../core/app_exception.dart';
 import '../domain/library_entry.dart';
 import '../domain/study.dart';
 import '../domain/external_ai_prompt.dart';
 import '../domain/summarizer.dart' show studySummaryExtractive;
-import '../platform/file_export.dart';
 import '../platform/study_ai.dart';
 import '../playback/tts_audio_handler.dart';
 import 'floating_panel.dart';
@@ -103,37 +101,6 @@ class _StudySummaryState extends State<_StudySummary> {
   void dispose() {
     _closed = true;
     super.dispose();
-  }
-
-  /// Manda el texto a la app de IA que elija la persona. También queda copiado,
-  /// porque no todas las apps reciben lo compartido.
-  Future<void> _sendToOtherAi() async {
-    final (pages, current) = _source;
-    final (from, to) = studyPages(pages, _scope, current, chapters: widget.handler.chapters);
-    final text = pages.sublist(from, to).join('\n\n');
-    final messenger = ScaffoldMessenger.of(context);
-    if (!fitsExternalAi(text)) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            text.trim().isEmpty ? 'No hay texto en esta parte.' : 'Es demasiado largo para enviarlo: elige una parte.',
-          ),
-        ),
-      );
-      return;
-    }
-    final prompt = externalAiPrompt(text);
-    try {
-      await Clipboard.setData(ClipboardData(text: prompt));
-      await FileExport.shareText(prompt);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('También quedó copiado: si la app no lo recibe, pégalo en su chat.')),
-      );
-    } on PlatformException {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('No se pudo abrir. El texto quedó copiado: pégalo en el chat de tu IA.')),
-      );
-    }
   }
 
   Future<void> _summarize() async {
@@ -275,17 +242,7 @@ class _StudySummaryState extends State<_StudySummary> {
                 label: const Text('Resumir'),
               ),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _sendToOtherAi,
-                icon: const Icon(CupertinoIcons.share),
-                label: const Text('Resumir con DeepSeek u otra IA'),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'El texto se envía a la app que elijas, y el resumen queda en esa app. '
-                'Revisa los datos importantes contra la clase: la IA puede equivocarse.',
-                style: t.bodySmall,
-              ),
+              Text('Revisa los datos importantes contra la clase: la IA puede equivocarse.', style: t.bodySmall),
             ],
             if (_running) ...[
               LinearProgressIndicator(value: _total == 0 ? null : _done / _total),

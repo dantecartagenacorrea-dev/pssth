@@ -436,7 +436,7 @@ final class ShareBridge: NSObject, FlutterPlugin {
 
 /// Saca documentos de la biblioteca. Canal "lector/file_export": "share" (hoja
 /// Compartir con uno o varios), "save" (donde elija la persona; devuelve
-/// cuántos guardó, 0 si canceló) y "shareText" (texto a la app que se elija).
+/// cuántos guardó, 0 si canceló).
 final class FileExportBridge: NSObject, FlutterPlugin, UIDocumentPickerDelegate {
   private var pendingSave: FlutterResult?
 
@@ -451,7 +451,6 @@ final class FileExportBridge: NSObject, FlutterPlugin, UIDocumentPickerDelegate 
       return
     }
     let urls = (args["paths"] as? [String] ?? []).map { URL(fileURLWithPath: $0) }
-    let items: [Any] = (args["text"] as? String).map { [$0] } ?? urls
     DispatchQueue.main.async {
       guard let root = UIApplication.shared.connectedScenes
         .compactMap({ ($0 as? UIWindowScene)?.keyWindow })
@@ -460,8 +459,8 @@ final class FileExportBridge: NSObject, FlutterPlugin, UIDocumentPickerDelegate 
         return
       }
       switch call.method {
-      case "share", "shareText":
-        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+      case "share":
+        let vc = UIActivityViewController(activityItems: urls, applicationActivities: nil)
         if let pop = vc.popoverPresentationController {
           pop.sourceView = root.view
           pop.sourceRect = CGRect(x: root.view.bounds.midX, y: root.view.bounds.midY, width: 1, height: 1)

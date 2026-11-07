@@ -103,8 +103,6 @@ class TtsAudioHandler extends BaseAudioHandler {
   /// Rango (inicio, fin) de la palabra que se está leyendo en el bloque actual.
   final ValueNotifier<(int, int)?> wordRange = ValueNotifier(null);
 
-  /// Volumen de la voz (0–1) para el fondo del reproductor; 0 sin voz.
-  final ValueNotifier<double> voiceLevel = ValueNotifier(0);
   int _lastIndex = -1;
 
   List<TextChunk> _chunks = [];
@@ -113,6 +111,9 @@ class TtsAudioHandler extends BaseAudioHandler {
   bool _ready = false;
   bool _speaking = false;
   bool _keepIndexAfterStop = false;
+
+  /// Se leyó hasta el final: al volver a reproducir, empieza desde el principio.
+  bool _atEnd = false;
 
   /// Al cambiar de voz a media frase: desde qué carácter del fragmento sigue
   /// la voz nueva (0 = desde el principio).
@@ -169,7 +170,6 @@ class TtsAudioHandler extends BaseAudioHandler {
       }
     };
     _tts.onVoicesChanged = (message) => unawaited(_voicesChanged(message));
-    _tts.onLevel = (level) => voiceLevel.value = level;
     _tts.onError = (message) {
       if (kDebugMode) debugPrint('[lector] error del motor de voz: $message');
       _chunkFailed = true;
@@ -219,6 +219,7 @@ class TtsAudioHandler extends BaseAudioHandler {
     _appliedLang = null;
     _chunkLangs = const [];
     final keys = chunks.map((c) => (pageIndex: c.pageIndex, chunkIndex: c.chunkIndex)).toList();
+    _atEnd = false;
     _index = entry.finished
         ? 0 // un documento terminado se vuelve a escuchar desde el principio
         : ReadingPosition(pageIndex: entry.pageIndex, chunkIndex: entry.chunkIndex).resolveChunkListIndex(keys);
@@ -478,9 +479,16 @@ class TtsAudioHandler extends BaseAudioHandler {
       _endAside();
       _asideGen++;
     }
+    if (_atEnd) {
+      _atEnd = false;
+      _index = 0;
+      _resumeAt = 0;
+    }
     _speaking = true;
     final my = ++_playGen;
     _failsInRow = 0;
+    // Un salto hecho con la lectura pausada no debe repetir la primera frase.
+    _keepIndexAfterStop = false;
     _broadcastState(playing: true);
     _refresh(playing: true, message: null);
     while (_speaking && my == _playGen && _index < _chunks.length) {
@@ -489,7 +497,8 @@ class TtsAudioHandler extends BaseAudioHandler {
         final changing = _voiceChange;
         if (changing != null) await changing;
         if (!_speaking || my != _playGen) break;
-        final whole = _chunks[_index].speech;
+        final at = _index;
+        final whole = _chunks[at].speech;
         final from = _resumeAt > 0 && _resumeAt < whole.length ? _resumeAt : 0;
         _resumeAt = 0;
         final speech = _spoken(from > 0 ? whole.substring(from) : whole);
@@ -505,6 +514,11 @@ class TtsAudioHandler extends BaseAudioHandler {
           await _applyChunkLanguage(_index);
           // Se pausó mientras tanto (p. ej. para leer una pregunta): no debe sonar encima.
           if (!_speaking || my != _playGen) break;
+          // Se saltó de frase mientras se preparaba: leer la nueva, no la vieja.
+          if (_index != at) {
+            _keepIndexAfterStop = false;
+            continue;
+          }
           _tts.prefetch([
             for (var k = _index + 1; k <= _index + 2 && k < _chunks.length; k++) _spoken(_chunks[k].speech),
           ]);
@@ -520,8 +534,8 @@ class TtsAudioHandler extends BaseAudioHandler {
       }
       if (_chunkFailed) {
         _failsInRow += 1;
-        // Dos fallos seguidos: probar con otra voz y repetir la frase.
-        if (_failsInRow == 2 && await _switchToWorkingVoice()) {
+        // Regla de oro: al primer fallo se pasa a otra voz y se repite la frase.
+        if (await _switchToWorkingVoice()) {
           _failsInRow = 0;
           continue;
         }
@@ -540,6 +554,7 @@ class TtsAudioHandler extends BaseAudioHandler {
       }
       if (_index >= _chunks.length - 1) {
         _speaking = false;
+        _atEnd = true;
         _broadcastState(playing: false);
         _refresh(playing: false);
         sleepAtChapterEnd.value = false;
@@ -591,12 +606,6 @@ class TtsAudioHandler extends BaseAudioHandler {
   }
 
   @override
-  Future<void> click([MediaButton button = MediaButton.media]) async {
-    if (kDebugMode) debugPrint('[lector] click($button) desde el sistema');
-    return super.click(button);
-  }
-
-  @override
   Future<void> stop() async {
     _speaking = false;
     _playGen += 1;
@@ -617,6 +626,7 @@ class TtsAudioHandler extends BaseAudioHandler {
       return;
     }
     _index += 1;
+    _atEnd = false;
     await _persistPosition();
     _refresh(playing: wasPlaying);
     if (wasPlaying) {
@@ -635,6 +645,7 @@ class TtsAudioHandler extends BaseAudioHandler {
     if (_index > 0) {
       _index -= 1;
     }
+    _atEnd = false;
     await _persistPosition();
     _refresh(playing: wasPlaying);
     if (wasPlaying) {
@@ -690,7 +701,13 @@ class TtsAudioHandler extends BaseAudioHandler {
       _voiceName = voice?.name;
       _voiceLocale = voice?.locale;
       _activeVoice = null;
-      await _applyVoice();
+      final lang = _appliedLang ?? _docLang;
+      if (voice == null && lang != null) {
+        // «Automática»: la mejor voz del idioma, no la que venía sonando.
+        await _applyLanguage(lang);
+      } else {
+        await _applyVoice();
+      }
       if (resume && _keepIndexAfterStop) await _tts.stop();
     } finally {
       changed.complete();
@@ -913,6 +930,7 @@ class TtsAudioHandler extends BaseAudioHandler {
     if (kDebugMode) debugPrint('[lector] _moveTo($target) speaking=$_speaking');
     final wasPlaying = _speaking;
     _index = target;
+    _atEnd = false;
     await _persistPosition();
     _refresh(playing: wasPlaying);
     if (wasPlaying) {

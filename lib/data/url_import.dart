@@ -144,7 +144,8 @@ Future<List<int>> _read(
 String _fileName(Uri uri) {
   final segs = uri.pathSegments.where((s) => s.isNotEmpty);
   final last = segs.isEmpty ? uri.host : segs.last;
-  return Uri.decodeComponent(last).replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+  // pathSegments ya viene decodificado: decodificarlo de nuevo rompe «100%.pdf».
+  return last.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
 }
 
 String _extension(Uri uri) {

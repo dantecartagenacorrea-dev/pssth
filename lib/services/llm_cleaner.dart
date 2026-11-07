@@ -135,13 +135,11 @@ class LlmCleaner {
   /// Modelo de la computadora que puede ver imágenes.
   static const visionModel = 'qwen2.5vl:7b';
 
-  /// Guarda la dirección de la computadora sin tocar lo demás.
-  Future<void> saveUrl(String address) => save(url: address, model: model, enabled: enabled);
-
   /// Transcribe una página con la IA de la computadora ([jpeg]: la foto). null si no
-  /// respondió: quien llama sigue con el lector común.
+  /// está activada, no respondió o la hoja no tiene texto: quien llama sigue con
+  /// el lector común.
   Future<String?> readPage(List<int> jpeg) async {
-    if (url.isEmpty) return null;
+    if (!ready) return null;
     try {
       final r = await _post('/api/generate', {
         'model': visionModel,
@@ -153,7 +151,9 @@ class LlmCleaner {
         'images': [base64Encode(jpeg)],
         'options': {'temperature': 0, 'num_predict': 3000},
       }, timeout: const Duration(minutes: 4));
-      return r?['response'] as String?;
+      final text = r?['response'];
+      if (text is! String) return null;
+      return text.trim().replaceAll(RegExp(r'[.\s]+$'), '').toUpperCase() == 'NONE' ? null : text;
     } on IOException {
       return null;
     } on TimeoutException {

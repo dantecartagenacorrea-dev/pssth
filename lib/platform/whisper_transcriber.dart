@@ -39,25 +39,38 @@ class WhisperTranscriber implements SpeechTranscriber {
     final lang = locale.split(RegExp('[-_]')).first.toLowerCase();
 
     final reply = ReceivePort();
-    final isolate = await Isolate.spawn(_entry, [reply.sendPort, modelDir, lang, wav.sampleRate, parts]);
+    // onExit manda null si el isolate termina sin avisar: así no se espera para siempre.
+    final isolate = await Isolate.spawn(
+      _entry,
+      [reply.sendPort, modelDir, lang, wav.sampleRate, parts],
+      onExit: reply.sendPort,
+    );
     final out = <String>[];
+    String? error;
     try {
+      // Se espera a que el isolate libere el modelo (cientos de MB fuera de Dart)
+      // antes de cerrarlo: si se mata antes, esa memoria queda ocupada.
       await for (final msg in reply) {
+        if (msg == null || (msg is List && msg.isNotEmpty && msg[0] == _freed[0])) break;
         if (msg is String) {
           out.add(msg);
           onProgress?.call(out.length, parts.length);
-          if (out.length == parts.length) break;
         } else if (msg is List && msg.isNotEmpty && msg[0] == 'error') {
-          throw TranscriptionUnavailable('${msg[1]}');
+          error = '${msg[1]}';
         }
       }
     } finally {
       reply.close();
       isolate.kill(priority: Isolate.immediate);
     }
+    if (error != null) throw TranscriptionUnavailable(error);
     return out.map((s) => s.trim()).where((s) => s.isNotEmpty).join(' ');
   }
 }
+
+/// Aviso del isolate: ya liberó el modelo. Es una lista para no confundirlo
+/// con el texto de un tramo.
+const _freed = ['freed'];
 
 void _entry(List<Object> args) {
   final out = args[0] as SendPort;
@@ -100,5 +113,6 @@ void _entry(List<Object> args) {
     out.send(['error', '$e']);
   } finally {
     rec.free();
+    out.send(_freed);
   }
 }

@@ -73,3 +73,20 @@ Claude outputs/
 
 # Datos de cuentas: se guardan fuera del repo (C:\PSSTH-privado)
 CUENTAS.md
+
+# Herramientas locales de prueba (no son parte de la app)
+adb_bg.bat
+adb_env.bat
+adb_launch.bat
+diag.bat
+emu.bat
+solo_emu.bat
+instalar_apk.bat
+vigilante.bat
+publicar.bat
+publicar_auto.bat
+ui_dump.py
+run_emu_only.txt
+kokoro_log*.txt
+muestras/
+DIAGRAMA PSSTH.xlsx
