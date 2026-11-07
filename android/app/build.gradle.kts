@@ -60,10 +60,11 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
-            // Sin recorte de código ni recursos: R8 rompía librerías nativas
-            // (sherpa-onnx/JNI, ML Kit) y la app se cerraba al abrir en dispositivos reales.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // Recorte de código y recursos con R8. Lo que llaman las partes nativas
+            // y los plugins se conserva en proguard-rules.pro.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
