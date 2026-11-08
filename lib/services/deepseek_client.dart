@@ -33,7 +33,7 @@ class DeepSeekClient {
   Future<void> load() async {
     if (_loaded) return;
     try {
-      _key = (await _storage.read(key: _keyName)) ?? '';
+      _key = cleanDeepSeekKey((await _storage.read(key: _keyName)) ?? '');
     } on PlatformException {
       // Clave ilegible (p. ej. tras restaurar un respaldo): se pide de nuevo.
       _key = '';
@@ -44,7 +44,7 @@ class DeepSeekClient {
   bool get hasKey => _key.isNotEmpty;
 
   Future<void> saveKey(String key) async {
-    _key = key.trim();
+    _key = cleanDeepSeekKey(key);
     _loaded = true;
     if (_key.isEmpty) {
       await _storage.delete(key: _keyName);
@@ -171,7 +171,7 @@ class DeepSeekClient {
       throw AppException('DeepSeek tardó demasiado en responder. Prueba de nuevo.');
     } on FormatException {
       // La clave pegada trae letras o saltos que no pueden ir en el pedido.
-      throw AppException('La clave de DeepSeek no es válida. Revísala en Ajustes → DeepSeek.');
+      throw AppException('La clave de DeepSeek tiene caracteres de más. Vuelve a pegarla en Ajustes → DeepSeek.');
     } finally {
       client.close(force: true);
     }
@@ -182,7 +182,9 @@ class DeepSeekClient {
 String? deepSeekError(int status) {
   if (status < 300) return null;
   return switch (status) {
-    401 => 'La clave de DeepSeek no es válida. Revísala en Ajustes → DeepSeek.',
+    401 =>
+      'DeepSeek rechazó la clave: puede estar borrada en tu cuenta o copiada a medias. '
+          'Crea o copia una nueva en platform.deepseek.com y pégala en Ajustes → DeepSeek.',
     402 => 'Tu cuenta de DeepSeek no tiene saldo.',
     429 => 'DeepSeek está recibiendo demasiados pedidos. Prueba en un minuto.',
     >= 500 => 'DeepSeek tiene problemas ahora. Prueba más tarde.',
@@ -240,4 +242,13 @@ class DeepSeekUsage {
       return;
     }
   }
+}
+
+/// La clave tal como se pega puede traer espacios, saltos, comillas, el
+/// prefijo «Bearer» o caracteres invisibles (de un chat o una nota): se
+/// dejan solo las letras, números y guiones que forman la clave.
+String cleanDeepSeekKey(String raw) {
+  var key = raw.trim();
+  if (key.toLowerCase().startsWith('bearer ')) key = key.substring(7);
+  return key.replaceAll(RegExp(r'[^A-Za-z0-9_\-]'), '');
 }

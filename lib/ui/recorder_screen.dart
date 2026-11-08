@@ -318,7 +318,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
                   const Spacer(),
                 Text(
                   'Avisa a las personas que grabas y obtén su consentimiento cuando la ley lo exija. '
-                  'El audio y el texto se guardan solo en este dispositivo.',
+                  'Se transcribe en este aparato, sin Internet; el texto se sincroniza solo si conectaste Google Drive.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),

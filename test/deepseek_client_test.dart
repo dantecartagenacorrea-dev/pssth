@@ -53,4 +53,11 @@ void main() {
     expect(deepSeekError(503), contains('más tarde'));
     expect(deepSeekError(400), contains('400'));
   });
+
+  test('la clave pegada con espacios, saltos, comillas o invisibles queda limpia', () {
+    expect(cleanDeepSeekKey('  sk-abc123\n'), 'sk-abc123');
+    expect(cleanDeepSeekKey('"sk-abc 123"'), 'sk-abc123');
+    expect(cleanDeepSeekKey('Bearer sk-abc123'), 'sk-abc123');
+    expect(cleanDeepSeekKey('sk-abc\u200b123\u00a0'), 'sk-abc123');
+  });
 }
