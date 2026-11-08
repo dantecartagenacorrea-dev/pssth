@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/cupertino.dart' show CupertinoIcons;
+import 'package:flutter/cupertino.dart' show CupertinoActivityIndicator, CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show MethodChannel, PlatformException, rootBundle;
 import 'package:image_picker/image_picker.dart';
@@ -120,6 +120,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     bridge.onOpened = _importExternal;
     // La sincronización puede cambiar el avance o los documentos.
     SyncController.instance?.changes.addListener(_refresh);
+    SyncController.instance?.needsAuthorization.addListener(_offerReauthorize);
     bridge.start();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final pending = await bridge.takePending();
@@ -128,7 +129,49 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (mounted) await FirstRunGuide.showOnce(context, isNewUser: isNewUser);
       if (pending != null) await _importExternal(pending);
       await _askModelsOnce();
+      await _offerSyncOnce();
+      _offerReauthorize();
     });
+  }
+
+  /// Una sola vez, cuando ya hay algo que guardar: ¿tener la biblioteca en
+  /// todos sus aparatos? Lo demás sigue solo.
+  Future<void> _offerSyncOnce() async {
+    final sync = SyncController.instance;
+    if (sync == null || widget.libraryStore.data.entries.isEmpty || !await sync.shouldOffer() || !mounted) return;
+    await sync.markOffered();
+    if (!mounted) return;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tu biblioteca en todos tus aparatos'),
+        content: const Text(
+          'Guardo tus documentos, por dónde vas y tus marcas en tu Google Drive, en una carpeta privada '
+          'que solo PSSTH ve. Se hace solo; únicamente te pido autorizar esta vez.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Ahora no')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Autorizar')),
+        ],
+      ),
+    );
+    if (yes == true) await sync.signIn();
+  }
+
+  bool _reauthorizeShown = false;
+
+  /// Google pidió volver a autorizar: un aviso con el botón, una vez por sesión.
+  void _offerReauthorize() {
+    final sync = SyncController.instance;
+    if (sync == null || !sync.needsAuthorization.value || _reauthorizeShown || !mounted) return;
+    _reauthorizeShown = true;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Google pide autorizar de nuevo para seguir guardando tu biblioteca en Drive.'),
+        duration: const Duration(seconds: 10),
+        action: SnackBarAction(label: 'Autorizar', onPressed: () => unawaited(sync.signIn())),
+      ),
+    );
   }
 
   static const _whatItDoes = {
@@ -172,6 +215,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void dispose() {
     OpenFileBridge.instance.onOpened = null;
     SyncController.instance?.changes.removeListener(_refresh);
+    SyncController.instance?.needsAuthorization.removeListener(_offerReauthorize);
     super.dispose();
   }
 
@@ -436,6 +480,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (_jobDocId == entry.id) _ocrJob++;
     await widget.bookmarkStore.removeAllFor(entry.id);
     await HighlightStore.instance?.removeAllFor(entry.id);
+    await SyncController.instance?.keepOff(entry.contentHash);
     await widget.libraryStore.remove(entry.id);
     if (mounted) setState(() {});
   }
@@ -1855,9 +1900,36 @@ class _EmptyLibrary extends StatelessWidget {
               icon: Icon(scans ? CupertinoIcons.doc_text_viewfinder : CupertinoIcons.folder),
               label: Text(scans ? 'Escanear a PDF' : 'Abrir documento'),
             ),
+            // Aparato nuevo de alguien que ya usaba PSSTH: traer su biblioteca.
+            if (!scans) const _BringFromDrive(),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// «¿Ya usabas PSSTH? Traer mi biblioteca»: solo si todavía no autorizó Drive.
+class _BringFromDrive extends StatelessWidget {
+  const _BringFromDrive();
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = SyncController.instance;
+    if (sync == null || !sync.configured) return const SizedBox.shrink();
+    return ValueListenableBuilder(
+      valueListenable: sync.status,
+      builder: (context, s, _) {
+        if (s.signedIn && !s.busy) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: TextButton.icon(
+            onPressed: s.busy ? null : () => unawaited(sync.signIn()),
+            icon: s.busy ? const CupertinoActivityIndicator() : const Icon(CupertinoIcons.cloud_download),
+            label: Text(s.busy ? 'Trayendo tu biblioteca…' : '¿Ya usabas PSSTH? Traer mi biblioteca de Google Drive'),
+          ),
+        );
+      },
     );
   }
 }
