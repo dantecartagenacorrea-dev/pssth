@@ -59,8 +59,8 @@ class SyncScreen extends StatelessWidget {
               Text(
                 'Se hace solo, al abrir y al salir de la app: tu avance, marcadores, notas, pronunciación, '
                 'estadísticas y documentos quedan en una carpeta oculta de tu Google Drive que solo PSSTH ve '
-                '(usa tu espacio de Drive). En tus otros aparatos aparecen solos. Borrar un documento lo quita '
-                'solo de este aparato.',
+                '(usa tu espacio de Drive). Los documentos suben y bajan solo con Wi-Fi y en tus otros aparatos aparecen '
+                'solos. Borrar un documento lo quita solo de este aparato.',
                 style: muted,
               ),
             ],

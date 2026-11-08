@@ -67,6 +67,9 @@ Future<void> main() async {
       'Supertonic (voz Luna)',
     ], 'Supertonic, Supertone Inc. Modelo bajo licencia OpenRAIL-M (https://huggingface.co/Supertone/supertonic-2/blob/main/LICENSE): '
         'la voz es sintética y no se puede usar para hacerse pasar por personas reales ni para los usos que esa licencia prohíbe.');
+    yield const LicenseEntryWithLineBreaks([
+      'Dictado en español (NVIDIA Fast Conformer)',
+    ], 'NVIDIA NeMo Fast Conformer, español. Creative Commons Attribution 4.0: https://creativecommons.org/licenses/by/4.0/');
     yield const LicenseEntryWithLineBreaks(['Pix2Text MFR (lector de fórmulas)'], _pix2textLicense);
     yield const LicenseEntryWithLineBreaks([
       'UVDoc (aplanador de hojas)',
@@ -153,7 +156,7 @@ Future<void> main() async {
   );
 
   mark('servicio de audio');
-  // Modelos opcionales: se bajan solos en segundo plano si el usuario aceptó.
+  // Modelos opcionales: se bajan cuando la persona los pide.
   ModelQueue.instance = ModelQueue(modelStore, () async {
     await engine.retryPrimary();
     await handler.reloadVoices();
@@ -166,8 +169,7 @@ Future<void> main() async {
 
   WidgetsBinding.instance.addPostFrameCallback((_) {
     mark('primer cuadro');
-    // Modelos que se bajaron con la app cerrada (gestor de descargas) se
-    // instalan solos; con permiso, sigue bajando lo que falta.
+    // Lo que se pidió y se bajó con la app cerrada (gestor de descargas) se instala.
     unawaited(ModelQueue.instance.start());
     // Temporales viejos y restos de la IA quitada (no frena el arranque).
     unawaited(cleanTemporary(cacheDir).then((b) => mark('temporales: ${b ~/ (1024 * 1024)} MB liberados')));

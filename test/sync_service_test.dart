@@ -53,6 +53,21 @@ class Device {
   }
 }
 
+/// Nube lenta: mientras se lee, la persona sigue editando.
+class _EditWhileReading implements SyncRemote {
+  _EditWhileReading(this.inner, this.edit);
+  final SyncRemote inner;
+  final Future<void> Function() edit;
+  @override
+  Future<String?> read() async {
+    await edit();
+    return inner.read();
+  }
+
+  @override
+  Future<void> write(String json) => inner.write(json);
+}
+
 void main() {
   late Device tablet, phone;
   late FakeRemote drive;
@@ -124,6 +139,54 @@ void main() {
     await phone.sync.syncWith(drive);
     await tablet.sync.syncWith(drive);
     expect(await tablet.bookmarks.forDocument(onTablet.id), isEmpty, reason: 'marcador ${b.id}');
+  });
+
+  test('quitar un documento de un aparato no borra sus marcadores ni notas en el otro', () async {
+    final onTablet = await tablet.library.importFile(originalName: 'libro.pdf', bytes: pdf);
+    final onPhone = await phone.library.importFile(originalName: 'libro.pdf', bytes: pdf);
+    await tablet.bookmarks.add(documentId: onTablet.id, pageIndex: 2, chunkIndex: 0, label: 'x');
+    await tablet.highlights.add(documentId: onTablet.id, pageIndex: 2, chunkIndex: 0, text: 't', note: 'n');
+    await tablet.sync.syncWith(drive);
+    await phone.sync.syncWith(drive);
+
+    await tablet.bookmarks.removeAllFor(onTablet.id);
+    await tablet.highlights.removeAllFor(onTablet.id);
+    await tablet.library.remove(onTablet.id);
+    await tablet.sync.syncWith(drive);
+    await phone.sync.syncWith(drive);
+
+    expect(await phone.bookmarks.forDocument(onPhone.id), hasLength(1));
+    expect(await phone.highlights.forDocument(onPhone.id), hasLength(1));
+    expect(phone.library.byId(onPhone.id), isNotNull);
+  });
+
+  test('un marcador creado mientras se sincroniza no se pierde', () async {
+    final onTablet = await tablet.library.importFile(originalName: 'libro.pdf', bytes: pdf);
+    final slow = _EditWhileReading(drive, () async {
+      await tablet.bookmarks.add(documentId: onTablet.id, pageIndex: 9, chunkIndex: 0, label: 'en el medio');
+    });
+
+    await tablet.sync.syncWith(slow);
+    expect((await tablet.bookmarks.forDocument(onTablet.id)).single.label, 'en el medio');
+
+    await tablet.sync.syncWith(drive);
+    await phone.library.importFile(originalName: 'libro.pdf', bytes: pdf);
+    await phone.sync.syncWith(drive);
+    final id = phone.library.data.entries.single.id;
+    expect((await phone.bookmarks.forDocument(id)).single.label, 'en el medio');
+  });
+
+  test('al olvidar la cuenta, lo de la anterior no pasa a la nueva', () async {
+    await tablet.library.importFile(originalName: 'libro.pdf', bytes: pdf);
+    await tablet.pronunciation.set('SQL', 'ese cu ele');
+    await tablet.sync.syncWith(drive);
+    await tablet.pronunciation.remove('SQL');
+    final other = FakeRemote();
+
+    await tablet.sync.forgetAccount();
+    await tablet.sync.syncWith(other);
+
+    expect(other.text, isNot(contains('SQL')));
   });
 
   test('lo que solo está en un aparato queda en la nube para cuando el otro lo tenga', () async {

@@ -60,10 +60,11 @@ class SyncService {
   Future<SyncState> syncWith(SyncRemote remote) async {
     await library.ensureHashes();
     final saved = await _readSaved();
+    final local = await _localRecords();
     final mine = observeLocal(
       last: saved.state,
       lastLocalKeys: saved.localKeys,
-      local: await _localRecords(),
+      local: local,
       changedAt: _readTimes(),
       device: saved.device,
       deviceListening: await listening.days(),
@@ -72,11 +73,19 @@ class SyncService {
     final merged = mergeStates(mine, _parse(await remote.read()));
     // Primero a la nube: si algo falla después, lo de este aparato ya está a salvo.
     await remote.write(jsonEncode(merged.toJson()));
+    // Se editó algo mientras se hablaba con la nube: aplicar pisaría ese cambio.
+    // Queda para la próxima sincronización, que lo verá y lo juntará.
+    if (jsonEncode(await _localRecords()) != jsonEncode(local)) return merged;
     await _apply(merged);
     final after = await _localRecords();
     await _writeSaved(device: saved.device, state: merged, localKeys: after.keys.toSet());
     listening.setOtherDevices(combinedListening(SyncState(listening: {...merged.listening}..remove(saved.device))));
     return merged;
+  }
+
+  /// Otra cuenta de Google: lo guardado de la anterior no debe pasar a esta.
+  Future<void> forgetAccount() async {
+    if (await file.exists()) await file.delete();
   }
 
   /// Documentos que están en otros aparatos y no en este (por su huella).

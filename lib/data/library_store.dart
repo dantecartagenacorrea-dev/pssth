@@ -140,6 +140,36 @@ class LibraryStore {
     return entry;
   }
 
+  /// Dónde dejar un archivo que está llegando, para luego pasarlo con [adoptFile].
+  File incomingFile(String hash) => File('${_root.path}/.llegando-$hash');
+
+  /// Suma a la biblioteca un archivo ya en disco, sin cargarlo en memoria: se
+  /// mueve, no se copia. [contentHash] es su huella ya comprobada.
+  Future<LibraryEntry> adoptFile({
+    required String originalName,
+    required File file,
+    required String contentHash,
+  }) async {
+    final id = _newId();
+    final kind = kindFor(originalName);
+    final dot = originalName.lastIndexOf('.');
+    final ext = dot < 0 ? (kind == 'pdf' ? 'pdf' : kind) : originalName.substring(dot + 1).toLowerCase();
+    final stored = await file.rename('${_root.path}/$id.$ext');
+    final entry = LibraryEntry(
+      id: id,
+      name: originalName,
+      storedPath: stored.path,
+      pageCount: 0,
+      totalChunks: 0,
+      lastOpenedIso: DateTime.now().toIso8601String(),
+      kind: kind,
+      contentHash: contentHash,
+    );
+    _data.entries.insert(0, entry);
+    await _save();
+    return entry;
+  }
+
   /// Identificador por hora en milisegundos; al importar en lote dos archivos
   /// pueden caer en el mismo milisegundo, así que se avanza hasta uno libre.
   String _newId() {

@@ -77,20 +77,24 @@ class DriveSync {
   /// Huellas de los documentos que ya están en su Drive.
   Future<Set<String>> uploadedDocs() async {
     final api = await _api();
-    if (api == null) return {};
-    final out = <String>{};
+    return api == null ? {} : (await _docFiles(api)).keys.toSet();
+  }
+
+  /// Huella → id de cada documento en la carpeta de la app. Se filtra aquí y
+  /// no en la consulta: el «contains» de Drive busca por palabras enteras.
+  Future<Map<String, String>> _docFiles(drive.DriveApi api) async {
+    final out = <String, String>{};
     String? page;
     do {
       final list = await api.files.list(
         spaces: 'appDataFolder',
-        q: "name contains 'doc-'",
         pageSize: 1000,
         pageToken: page,
-        $fields: 'nextPageToken, files(name)',
+        $fields: 'nextPageToken, files(id, name)',
       );
       for (final f in list.files ?? const <drive.File>[]) {
-        final name = f.name ?? '';
-        if (name.startsWith('doc-')) out.add(name.substring(4).split('.').first);
+        final name = f.name ?? '', id = f.id;
+        if (name.startsWith('doc-') && id != null) out[name.substring(4).split('.').first] = id;
       }
       page = list.nextPageToken;
     } while (page != null);
@@ -109,19 +113,21 @@ class DriveSync {
     );
   }
 
-  /// Baja el documento de [hash]; null si no está en su Drive.
-  Future<List<int>?> downloadDoc(String hash) async {
+  /// Escribe en [target] el documento de [hash], directo al disco (un libro
+  /// escaneado no entra en la memoria de un teléfono). false si no está.
+  Future<bool> downloadDoc(String hash, File target) async {
     final api = await _api();
-    if (api == null) return null;
-    final list = await api.files.list(spaces: 'appDataFolder', q: "name contains 'doc-$hash'", $fields: 'files(id)');
-    final id = list.files?.firstOrNull?.id;
-    if (id == null) return null;
+    if (api == null) return false;
+    final id = (await _docFiles(api))[hash];
+    if (id == null) return false;
     final media = await api.files.get(id, downloadOptions: drive.DownloadOptions.fullMedia) as drive.Media;
-    final bytes = <int>[];
-    await for (final chunk in media.stream) {
-      bytes.addAll(chunk);
+    final sink = target.openWrite();
+    try {
+      await sink.addStream(media.stream);
+    } finally {
+      await sink.close();
     }
-    return bytes;
+    return true;
   }
 }
 

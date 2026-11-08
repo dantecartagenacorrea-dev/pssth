@@ -22,7 +22,7 @@ Play Console > **Crear aplicación**:
 | Anuncios | No contiene anuncios |
 | Clasificación de contenido | Cuestionario IARC según la ficha (Utilidad/productividad, todo «no») |
 | Público objetivo | 13+ (no dirigida a niños) |
-| Seguridad de los datos | Según la ficha: Fotos y Archivos y documentos, recopilados, no compartidos, opcionales, cifrados en tránsito |
+| Seguridad de los datos | Según la ficha: Archivos y documentos, recopilados, no compartidos, opcionales, cifrados en tránsito |
 | Apps gubernamentales / financieras / salud | No |
 | Categoría | Productividad; correo y sitio de contacto |
 

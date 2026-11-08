@@ -82,10 +82,20 @@ SyncState observeLocal({
     final same = before != null && !before.deleted && _canonical(before.data) == _canonical(e.value);
     if (!same) records[e.key] = SyncRecord(changedAt[e.key] ?? now, e.value);
   }
+  final docsHere = {
+    for (final key in local.keys)
+      if (key.startsWith('doc:')) key.substring(4),
+  };
   for (final key in lastLocalKeys) {
     if (local.containsKey(key)) continue;
     final before = records[key];
-    if (before != null && !before.deleted) records[key] = SyncRecord(now, null);
+    if (before == null || before.deleted) continue;
+    // Quitar un documento de este aparato no toca los otros: ni el documento
+    // ni sus marcadores y notas cuentan como borrados.
+    final data = before.data;
+    final doc = data is Map ? data['doc'] : null;
+    if (key.startsWith('doc:') || (doc is String && !docsHere.contains(doc))) continue;
+    records[key] = SyncRecord(now, null);
   }
   return SyncState(records: records, listening: {...last.listening, device: Map.of(deviceListening)});
 }

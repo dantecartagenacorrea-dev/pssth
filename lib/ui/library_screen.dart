@@ -1006,10 +1006,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               'de tu computadora.\n\n'
               'El reconocimiento de texto (OCR) y la voz pueden contener errores; '
               'consulta siempre el documento original para cualquier uso formal.\n\n'
-              'Modelos opcionales: voz natural Kokoro-82M (Apache 2.0; entrenada con datos CC BY: '
-              'Koniwa y SIWIS) y transcripción Whisper (MIT), ejecutados con sherpa-onnx (Apache 2.0); '
-              'Letras Inter y Atkinson Hyperlegible (OFL). '
-              'Esta versión incluye espeak-ng (GPL-3.0) dentro de sherpa-onnx. '
+              'Modelos opcionales: voces naturales Luna (Supertonic, OpenRAIL-M) y Claude (Piper); dictado en '
+              'español NVIDIA Fast Conformer (CC BY 4.0); transcripción Whisper (MIT, en iPhone). Se ejecutan con '
+              'sherpa-onnx (Apache 2.0). Letras Inter y Atkinson Hyperlegible (OFL). '
               'El resto de licencias está en «Ver licencias».',
         );
     }

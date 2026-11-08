@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:isolate';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -24,16 +27,23 @@ class SyncStatus {
 /// Sincroniza con el Google Drive de la persona, sola y en segundo plano: al
 /// abrir la app (si ya autorizó) y al salir de ella. Sube los documentos que
 /// falten y baja los que están en otros aparatos, salvo los que se borraron
-/// aquí. A la persona solo se le pide autorizar.
+/// aquí, y eso solo con Wi-Fi para no gastar datos. A la persona solo se le
+/// pide autorizar.
 class SyncController {
-  SyncController({required this.service, required this.library, DriveSync? drive})
-    : _drive = drive ?? DriveSync.instance;
+  SyncController({
+    required this.service,
+    required this.library,
+    DriveSync? drive,
+    Future<List<ConnectivityResult>> Function()? network,
+  }) : _drive = drive ?? DriveSync.instance,
+       _network = network ?? Connectivity().checkConnectivity;
 
   static SyncController? instance;
 
   final SyncService service;
   final LibraryStore library;
   final DriveSync _drive;
+  final Future<List<ConnectivityResult>> Function() _network;
 
   final status = ValueNotifier(const SyncStatus());
 
@@ -52,6 +62,7 @@ class SyncController {
   static const _askedKey = 'sync_asked';
   static const _onKey = 'sync_on';
   static const _skipKey = 'sync_skip';
+  static const _emailKey = 'sync_email';
 
   Future<void>? _running;
 
@@ -65,10 +76,12 @@ class SyncController {
       final account = await _drive.signInSilently();
       final prefs = await SharedPreferences.getInstance();
       if (account == null) {
-        if (prefs.getBool(_onKey) ?? false) needsAuthorization.value = true;
+        // Sin red Google tampoco puede confirmar la cuenta: no es falta de permiso.
+        if ((prefs.getBool(_onKey) ?? false) && await _online()) needsAuthorization.value = true;
         return;
       }
       await prefs.setBool(_onKey, true);
+      await _adoptAccount(account.email);
       status.value = SyncStatus(email: account.email);
       if (!_signedInChecked.isCompleted) _signedInChecked.complete();
       await syncNow();
@@ -100,12 +113,32 @@ class SyncController {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_onKey, true);
       await prefs.setBool(_askedKey, true);
+      await _adoptAccount(account.email);
       needsAuthorization.value = false;
       status.value = SyncStatus(email: account.email);
       await syncNow(interactive: true);
     } on Exception catch (e) {
-      status.value = SyncStatus(error: _message(e));
+      // Si ya estaba conectada y canceló, sigue conectada.
+      status.value = SyncStatus(email: status.value.email, lastIso: status.value.lastIso, error: _message(e));
     }
+  }
+
+  /// Si entró con otra cuenta, lo de la anterior no pasa a esta.
+  Future<void> _adoptAccount(String email) async {
+    final prefs = await SharedPreferences.getInstance();
+    final before = prefs.getString(_emailKey);
+    if (before != null && before != email) {
+      await service.forgetAccount();
+      await prefs.remove(_skipKey);
+    }
+    await prefs.setString(_emailKey, email);
+  }
+
+  Future<bool> _online() async => !(await _network()).contains(ConnectivityResult.none);
+
+  Future<bool> _onWifi() async {
+    final now = await _network();
+    return now.contains(ConnectivityResult.wifi) || now.contains(ConnectivityResult.ethernet);
   }
 
   Future<void> signOut() async {
@@ -135,18 +168,26 @@ class SyncController {
     try {
       final remote = await _drive.stateFile(interactive: interactive);
       if (remote == null) {
-        needsAuthorization.value = true;
-        status.value = SyncStatus(email: email, error: 'Google pide volver a autorizar el acceso a tu Drive.');
+        final online = await _online();
+        if (online) needsAuthorization.value = true;
+        status.value = SyncStatus(
+          email: email,
+          lastIso: status.value.lastIso,
+          error: online ? 'Google pide volver a autorizar el acceso a tu Drive.' : 'Sin conexión: se sincroniza la próxima vez.',
+        );
         return;
       }
       var merged = await service.syncWith(remote);
+      needsAuthorization.value = false;
       changes.value++;
-      if (await _downloadMissing(service.cloudOnly(merged))) {
+      // Los documentos pesan: solo con Wi-Fi. El avance y las notas, siempre.
+      final wifi = await _onWifi();
+      if (wifi && await _downloadMissing(service.cloudOnly(merged))) {
         merged = await service.syncWith(remote); // trae su avance, marcadores y notas
         changes.value++;
       }
       cloudOnly.value = service.cloudOnly(merged);
-      await _uploadMissing();
+      if (wifi) await _uploadMissing();
       status.value = SyncStatus(email: email, lastIso: DateTime.now().toIso8601String());
     } on Exception catch (e) {
       perfLog('sincronizar: $e');
@@ -175,17 +216,30 @@ class SyncController {
     for (final doc in docs) {
       if (skip.contains(doc.hash)) continue;
       try {
-        final bytes = await Activity.run('Bajando documento', () => _drive.downloadDoc(doc.hash));
-        if (bytes == null) continue;
-        await library.importFile(originalName: doc.name, bytes: bytes);
-        any = true;
-        perfLog('sincronizar: bajado ${doc.name}');
+        final part = library.incomingFile(doc.hash);
+        try {
+          if (!await Activity.run('Bajando documento', () => _drive.downloadDoc(doc.hash, part))) continue;
+          final hash = await _hashOf(part.path);
+          if (hash != doc.hash) {
+            perfLog('sincronizar: ${doc.name} llegó dañado');
+            continue;
+          }
+          await library.adoptFile(originalName: doc.name, file: part, contentHash: hash);
+          any = true;
+          perfLog('sincronizar: bajado ${doc.name}');
+        } finally {
+          if (await part.exists()) await part.delete();
+        }
       } on Exception catch (e) {
         perfLog('sincronizar: no se pudo bajar ${doc.name}: $e');
       }
     }
     return any;
   }
+
+  /// Huella de un archivo, sin cargarlo en memoria ni frenar la pantalla.
+  static Future<String> _hashOf(String path) =>
+      Isolate.run(() async => (await sha256.bind(File(path).openRead()).first).toString());
 
   static String _message(Exception e) {
     final text = '$e';
