@@ -10,7 +10,7 @@ import '../domain/wav_audio.dart';
 import '../domain/window_merge.dart';
 import 'speech_transcriber.dart';
 
-/// Parakeet necesita contexto: en trozos cortos se salta frases enteras.
+/// Estos modelos necesitan contexto: en trozos cortos se saltan frases enteras.
 const _windowSeconds = 40;
 const _overlapSeconds = 10;
 
@@ -21,9 +21,10 @@ const _marginSeconds = 0.5;
 const _freed = 'freed';
 const _close = 'close';
 
-/// Transcripción offline con Parakeet TDT v3 (sherpa-onnx) en un isolate.
-class ParakeetTranscriber implements SpeechTranscriber {
-  ParakeetTranscriber({required this.modelDir, this.onProgress});
+/// Transcripción offline con un modelo NeMo transducer (dictado en español,
+/// sherpa-onnx) en un isolate.
+class NemoTranscriber implements SpeechTranscriber {
+  NemoTranscriber({required this.modelDir, this.onProgress});
 
   final String modelDir;
 
@@ -139,8 +140,8 @@ List<Object> _recognize(sherpa.OfflineRecognizer rec, Float32List samples, int r
 
 /// Transcribe mientras se graba: el modelo se carga al empezar y cada ventana se
 /// reconoce apenas está completa, así al terminar queda poco o nada por hacer.
-class ParakeetLiveSession {
-  ParakeetLiveSession._(this._rate, this._onText, this._live);
+class NemoLiveSession {
+  NemoLiveSession._(this._rate, this._onText, this._live);
 
   final int _rate;
   final void Function(String text) _onText;
@@ -152,12 +153,12 @@ class ParakeetLiveSession {
   final _ready = Completer<SendPort>();
   bool _finished = false;
 
-  static Future<ParakeetLiveSession> start({
+  static Future<NemoLiveSession> start({
     required String modelDir,
     required int sampleRate,
     required void Function(String text) onText,
   }) async {
-    final session = ParakeetLiveSession._(
+    final session = NemoLiveSession._(
       sampleRate,
       onText,
       LiveWindows(window: _windowSeconds * sampleRate, overlap: _overlapSeconds * sampleRate),

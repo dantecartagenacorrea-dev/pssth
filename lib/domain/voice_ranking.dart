@@ -36,7 +36,7 @@ List<T> rankVoices<T>(
   return list;
 }
 
-/// Cuántas voces del sistema se ofrecen: con Dora, Alex y Claude suman seis.
+/// Cuántas voces del sistema se ofrecen, junto a las naturales (Luna y Claude).
 const kSystemVoiceLimit = 3;
 
 /// Las [kSystemVoiceLimit] mejores voces del sistema en español; las de

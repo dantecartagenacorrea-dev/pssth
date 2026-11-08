@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -28,8 +29,9 @@ class ModelQueue extends ChangeNotifier {
   bool? consent;
   bool _running = false;
 
-  /// En el orden en que se bajan: primero la voz, que se usa siempre.
-  static List<ModelSpec> get all => [kokoroEsModel, whisperBaseModel];
+  /// En el orden en que se bajan: primero la voz natural, que se usa siempre;
+  /// luego la transcripción (en Android, el dictado en español).
+  static List<ModelSpec> get all => [supertonicModel, Platform.isAndroid ? dictationModel : whisperBaseModel];
 
   List<ModelSpec> get missing => [
     for (final m in all)

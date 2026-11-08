@@ -3,9 +3,10 @@ import 'dart:typed_data';
 
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
 
+import '../../domain/spanish_numbers.dart';
 import '../../domain/spanish_phonemizer.dart';
 
-/// Sintetiza con Kokoro (o una voz Piper) vía sherpa-onnx, en un isolate
+/// Sintetiza con una voz Piper o con Supertonic vía sherpa-onnx, en un isolate
 /// propio para no bloquear la interfaz. Devuelve audio WAV de 16 bits.
 class KokoroWorker {
   KokoroWorker._(this._isolate, this._commands);
@@ -13,13 +14,14 @@ class KokoroWorker {
   final SendPort _commands;
   var _nextId = 0;
 
-  /// Carga el modelo (varios segundos). Lanza si falta algún archivo o falla.
-  static Future<KokoroWorker> start(String modelDir, {int threads = 2, String lang = 'es'}) =>
-      _start([modelDir, threads, lang, '']);
-
-  /// Una voz Piper: [onnx] es el modelo y [tokens] sus fonemas.
+  /// Una voz Piper: [onnx] es el modelo y [tokens] sus fonemas. Carga el
+  /// modelo (unos segundos); lanza si falta algún archivo o falla.
   static Future<KokoroWorker> startPiper(String onnx, String tokens, {int threads = 2}) =>
       _start([onnx, threads, tokens, 'piper']);
+
+  /// Supertonic: [dir] es la carpeta con sus archivos.
+  static Future<KokoroWorker> startSupertonic(String dir, {int threads = 2}) =>
+      _start([dir, threads, '', 'supertonic']);
 
   static Future<KokoroWorker> _start(List<Object> config) async {
     final ready = ReceivePort();
@@ -28,7 +30,7 @@ class KokoroWorker {
     ready.close();
     if (first is SendPort) return KokoroWorker._(isolate, first);
     isolate.kill(priority: Isolate.immediate);
-    throw StateError('Kokoro: $first');
+    throw StateError('Voz natural: $first');
   }
 
   Future<Uint8List> synthesize(String text, {required int speaker, required double speed}) async {
@@ -39,7 +41,7 @@ class KokoroWorker {
     if (msg is TransferableTypedData) {
       return msg.materialize().asUint8List();
     }
-    throw StateError('Kokoro: $msg');
+    throw StateError('Voz natural: $msg');
   }
 
   void dispose() {
@@ -52,23 +54,25 @@ void _entry(List<Object> args) {
   final out = args[0] as SendPort;
   final dir = args[1] as String;
   final threads = args[2] as int;
-  final lang = args[3] as String; // en Piper: el archivo de fonemas
-  final piper = args[4] == 'piper';
+  final tokens = args[3] as String; // en Piper: el archivo de fonemas
+  final supertonic = args[4] == 'supertonic';
   sherpa.OfflineTts tts;
   try {
     sherpa.initBindings();
     final config = sherpa.OfflineTtsConfig(
       model: sherpa.OfflineTtsModelConfig(
-        kokoro: piper
-            ? const sherpa.OfflineTtsKokoroModelConfig()
-            : sherpa.OfflineTtsKokoroModelConfig(
-                model: '$dir/model.int8.onnx',
-                voices: '$dir/voices.bin',
-                tokens: '$dir/tokens.txt',
-                lexicon: '$dir/lexicon-us-en.txt,$dir/lexicon-zh.txt',
-                lang: lang,
-              ),
-        vits: piper ? sherpa.OfflineTtsVitsModelConfig(model: dir, tokens: lang) : const sherpa.OfflineTtsVitsModelConfig(),
+        vits: supertonic ? const sherpa.OfflineTtsVitsModelConfig() : sherpa.OfflineTtsVitsModelConfig(model: dir, tokens: tokens),
+        supertonic: supertonic
+            ? sherpa.OfflineTtsSupertonicModelConfig(
+                durationPredictor: '$dir/duration_predictor.int8.onnx',
+                textEncoder: '$dir/text_encoder.int8.onnx',
+                vectorEstimator: '$dir/vector_estimator.int8.onnx',
+                vocoder: '$dir/vocoder.int8.onnx',
+                ttsJson: '$dir/tts.json',
+                unicodeIndexer: '$dir/unicode_indexer.bin',
+                voiceStyle: '$dir/voice.bin',
+              )
+            : const sherpa.OfflineTtsSupertonicModelConfig(),
         numThreads: threads,
         debug: false,
         provider: 'cpu',
@@ -91,7 +95,21 @@ void _entry(List<Object> args) {
     final m = message as List;
     final reply = m[4] as SendPort;
     try {
-      // Sin espeak-ng (sherpa-onnx 2.0) el modelo no sabe leer español: se le
+      if (supertonic) {
+        // Lee el texto directo; las cifras se le pasan ya en palabras.
+        final text = numbersToWords(m[1] as String).trim();
+        if (text.isEmpty) {
+          reply.send(TransferableTypedData.fromList([_wav(Float32List(2400), tts.sampleRate)]));
+          return;
+        }
+        final audio = tts.generateWithConfig(
+          text: text,
+          config: sherpa.OfflineTtsGenerationConfig(sid: m[2] as int, speed: m[3] as double, extra: const {'lang': 'es'}),
+        );
+        reply.send(TransferableTypedData.fromList([_wav(audio.samples, audio.sampleRate)]));
+        return;
+      }
+      // Sin espeak-ng (sherpa-onnx 2.0) Piper no sabe leer español: se le
       // pasan los fonemas del conversor propio, una lista por frase.
       final frases = phonemizeSpanish(m[1] as String);
       if (frases.isEmpty) {

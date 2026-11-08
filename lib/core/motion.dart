@@ -44,6 +44,7 @@ class Comfort {
   static const _lineHeightKey = 'reading_line_height';
   static const _keepControlsKey = 'keep_controls';
   static const _skipCitationsKey = 'skip_citations';
+  static const _skipLinksKey = 'skip_links';
   static const _readingPaperKey = 'reading_paper';
   static const _readingModeKey = 'reading_mode';
 
@@ -81,6 +82,10 @@ class Comfort {
   /// No leer en voz alta las citas y notas: [12], (Pérez, 2019).
   static final skipCitations = ValueNotifier(false);
 
+  /// No leer en voz alta direcciones web ni correos (sí por omisión: letra por
+  /// letra no le sirven a nadie).
+  static final skipLinks = ValueNotifier(true);
+
   /// Fondo elegido en la lectura a pantalla completa (blanco, sepia o negro),
   /// por nombre; null si nunca se eligió.
   static final readingPaper = ValueNotifier<String?>(null);
@@ -100,6 +105,7 @@ class Comfort {
     lineHeight.value = LineSpacing.values.asNameMap()[p.getString(_lineHeightKey)] ?? LineSpacing.normal;
     keepControls.value = p.getBool(_keepControlsKey) ?? false;
     skipCitations.value = p.getBool(_skipCitationsKey) ?? false;
+    skipLinks.value = p.getBool(_skipLinksKey) ?? true;
     readingPaper.value = p.getString(_readingPaperKey);
     readingMode.value = p.getString(_readingModeKey);
   }
@@ -132,6 +138,11 @@ class Comfort {
   static Future<void> setSkipCitations(bool on) async {
     skipCitations.value = on;
     await (await SharedPreferences.getInstance()).setBool(_skipCitationsKey, on);
+  }
+
+  static Future<void> setSkipLinks(bool on) async {
+    skipLinks.value = on;
+    await (await SharedPreferences.getInstance()).setBool(_skipLinksKey, on);
   }
 
   static Future<void> setPaper(Paper value) async {

@@ -1,7 +1,7 @@
 import 'spanish_numbers.dart';
 
 /// Texto en español -> fonemas IPA al estilo de espeak-ng `es`, que es lo que
-/// el modelo Kokoro aprendió. Sustituye a espeak-ng (GPL) desde sherpa-onnx 2.0.
+/// aprendieron las voces Piper. Sustituye a espeak-ng (GPL) desde sherpa-onnx 2.0.
 ///
 /// Devuelve una cadena por frase (el modelo tiene un límite de longitud).
 /// [seseo]: z y ce/ci como "s" (latino); false = "θ" (España).

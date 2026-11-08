@@ -13,24 +13,23 @@ void main() {
 
   test('instalado solo cuando están todos los archivos requeridos', () async {
     final store = ModelStore(tmp);
-    expect(store.isInstalled(kokoroEsModel), isFalse);
-    final d = store.dirFor(kokoroEsModel)..createSync(recursive: true);
-    for (final f in kokoroEsModel.requiredFiles.take(2)) {
+    expect(store.isInstalled(dictationModel), isFalse);
+    final d = store.dirFor(dictationModel)..createSync(recursive: true);
+    for (final f in dictationModel.requiredFiles.take(3)) {
       File('${d.path}/$f').writeAsStringSync('x');
     }
-    expect(store.isInstalled(kokoroEsModel), isFalse);
-    // Desde sherpa-onnx 2.0 no hace falta espeak-ng-data.
-    File('${d.path}/${kokoroEsModel.requiredFiles[2]}').writeAsStringSync('x');
-    expect(store.isInstalled(kokoroEsModel), isTrue);
-    expect(await store.installedBytes(kokoroEsModel), 3);
-    await store.remove(kokoroEsModel);
-    expect(store.isInstalled(kokoroEsModel), isFalse);
+    expect(store.isInstalled(dictationModel), isFalse);
+    File('${d.path}/${dictationModel.requiredFiles[3]}').writeAsStringSync('x');
+    expect(store.isInstalled(dictationModel), isTrue);
+    expect(await store.installedBytes(dictationModel), 4);
+    await store.remove(dictationModel);
+    expect(store.isInstalled(dictationModel), isFalse);
   });
 
   test('las fichas de modelos apuntan al repositorio oficial y declaran tamaño y hash', () {
-    expect(kokoroEsModel.url, startsWith('https://github.com/k2-fsa/sherpa-onnx/releases/download/'));
-    expect(kokoroEsModel.sha256, hasLength(64));
-    for (final m in [kokoroEsModel, whisperBaseModel]) {
+    expect(dictationModel.url, startsWith('https://github.com/k2-fsa/sherpa-onnx/releases/download/'));
+    expect(dictationModel.sha256, hasLength(64));
+    for (final m in [dictationModel, whisperBaseModel, supertonicModel]) {
       expect(m.sizeBytes, greaterThan(50 * 1024 * 1024));
       expect(m.sizeLabel, endsWith(' MB'));
     }
@@ -64,41 +63,45 @@ void main() {
 
   test('al iniciar quita lo retirado y lo que la voz instalada no usa', () async {
     final store = ModelStore(tmp);
-    final d = store.dirFor(kokoroEsModel)..createSync(recursive: true);
-    for (final f in [
-      ...kokoroEsModel.requiredFiles,
-      'lexicon-us-en.txt',
-      'lexicon-zh.txt',
-      'lexicon-gb-en.txt',
-      'date-zh.fst',
-    ]) {
+    final d = store.dirFor(dictationModel)..createSync(recursive: true);
+    for (final f in dictationModel.requiredFiles) {
       File('${d.path}/$f').writeAsStringSync('x');
     }
-    File('${d.path}/dict/jieba.dict.utf8').createSync(recursive: true);
+    Directory('${tmp.path}/kokoro').createSync();
+    Directory('${tmp.path}/parakeet').createSync();
     Directory('${tmp.path}/qwen3').createSync();
     Directory('${tmp.path}/piper-ald').createSync();
     Directory('${tmp.path}/whisper-small').createSync();
     await store.removeRetired();
     final left = d.listSync().map((e) => e.uri.pathSegments.lastWhere((s) => s.isNotEmpty)).toSet();
-    expect(left, {...kokoroEsModel.requiredFiles, 'lexicon-us-en.txt', 'lexicon-zh.txt'});
-    expect(store.isInstalled(kokoroEsModel), isTrue);
+    expect(left, {...dictationModel.requiredFiles});
+    expect(store.isInstalled(dictationModel), isTrue);
+    expect(Directory('${tmp.path}/kokoro').existsSync(), isFalse);
+    expect(Directory('${tmp.path}/parakeet').existsSync(), isFalse);
     expect(Directory('${tmp.path}/qwen3').existsSync(), isFalse);
     expect(Directory('${tmp.path}/piper-ald').existsSync(), isFalse);
     expect(Directory('${tmp.path}/whisper-small').existsSync(), isFalse);
   });
 
   test('solo los modelos de voz obligan a releer las voces', () {
-    expect(isVoiceModel(kokoroEsModel), isTrue);
     expect(piperVoiceModels.every(isVoiceModel), isTrue);
     expect(isVoiceModel(whisperBaseModel), isFalse);
-    expect(isVoiceModel(parakeetModel), isFalse);
+    expect(isVoiceModel(dictationModel), isFalse);
   });
 
-  test('Parakeet es opcional: no entra en las descargas automáticas y sus archivos están verificados', () {
-    expect(ModelQueue.all, isNot(contains(parakeetModel)));
-    expect(parakeetModel.requiredFiles, ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt']);
-    expect(parakeetModel.files.map((f) => f.name), parakeetModel.requiredFiles);
-    expect(parakeetModel.files.every((f) => f.sha256.length == 64), isTrue);
-    expect(parakeetModel.files.fold<int>(0, (n, f) => n + f.sizeBytes), parakeetModel.sizeBytes);
+  test('la voz Luna (Supertonic) es la que se baja primero y todos sus archivos están verificados', () {
+    expect(ModelQueue.all.first, supertonicModel);
+    expect(isVoiceModel(supertonicModel), isTrue);
+    expect(supertonicModel.files.map((f) => f.name), supertonicModel.requiredFiles);
+    expect(supertonicModel.files.every((f) => f.sha256.length == 64), isTrue);
+    expect(supertonicModel.files.fold<int>(0, (n, f) => n + f.sizeBytes), supertonicModel.sizeBytes);
+  });
+
+  test('El dictado en español es opcional: no entra en las descargas automáticas y sus archivos están verificados', () {
+    expect(ModelQueue.all, isNot(contains(dictationModel)));
+    expect(dictationModel.requiredFiles, ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt']);
+    // Un solo paquete verificado por su huella; Parakeet se borra al iniciar.
+    expect(dictationModel.sha256.length, 64);
+    expect(dictationModel.prune, ['test_wavs']);
   });
 }

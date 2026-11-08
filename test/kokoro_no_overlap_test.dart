@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:lector_pdf/data/audio_cache.dart';
 import 'package:lector_pdf/playback/engines/kokoro_engine.dart';
+import 'package:lector_pdf/playback/tts_engine.dart';
 
 /// Se porta como just_audio: al terminar un audio, «playing» sigue en true, y
 /// con «playing» en true play() vuelve al instante sin esperar nada.
@@ -38,17 +39,27 @@ class _FakePlayer implements AudioPlayer {
   }
 }
 
+/// Una voz natural cualquiera: su modelo no existe, pero el audio ya está en caché.
+const PiperVoice _luna = (
+  voice: VoiceOption(name: 'Luna (natural)', locale: 'es-ES', quality: 'natural'),
+  onnx: 'no-existe/vocoder.int8.onnx',
+  tokens: 'no-existe/tts.json',
+  sid: 1,
+  supertonic: true,
+);
+
 void main() {
   test('la frase siguiente espera a que suene entera, aunque nadie haya detenido la anterior', () async {
     final tmp = Directory.systemTemp.createTempSync('voz');
     addTearDown(() => tmp.deleteSync(recursive: true));
     final cache = AudioCache(tmp);
     for (final text in ['uno', 'dos']) {
-      final key = AudioCache.keyFor(text: text, engine: 'kokoro', voice: 'sid28', speed: 1);
+      final key = AudioCache.keyFor(text: text, engine: 'kokoro', voice: 'piper-${_luna.voice.name}', speed: 1);
       await cache.put(key, Uint8List(10));
     }
     final player = _FakePlayer();
-    final engine = KokoroEngine(modelDir: tmp.path, cache: cache, player: player);
+    final engine = KokoroEngine(cache: cache, player: player, piper: [_luna]);
+    await engine.setVoice(_luna.voice);
 
     Future<void> untilLoaded(int count) async {
       while (player.loaded.length < count) {

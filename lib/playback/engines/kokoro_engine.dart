@@ -11,48 +11,31 @@ import '../audio_prefetcher.dart';
 import '../tts_engine.dart';
 import 'kokoro_worker.dart';
 
-/// Una voz Piper instalable: su modelo y su archivo de fonemas.
-typedef PiperVoice = ({VoiceOption voice, String onnx, String tokens});
+/// Una voz instalable de un solo modelo: Piper ([onnx] y su archivo de
+/// fonemas [tokens]) o Supertonic ([supertonic]: [onnx] y [tokens] son dos de
+/// los archivos de su carpeta, para saber si está instalada; [sid] el hablante).
+typedef PiperVoice = ({VoiceOption voice, String onnx, String tokens, int sid, bool supertonic});
 
-/// Voz natural local (Kokoro-82M int8 vía sherpa-onnx) y las voces Piper
-/// latinoamericanas. Offline, sin servidores. Sintetiza por fragmentos, guarda
-/// el audio en caché y prepara los siguientes.
+/// Voces naturales locales (Luna con Supertonic, Claude con Piper) vía
+/// sherpa-onnx. Offline, sin servidores. Sintetiza por fragmentos, guarda el
+/// audio en caché y prepara los siguientes. (Se llama así por Kokoro, la
+/// primera voz natural, ya retirada.)
 class KokoroEngine extends TtsEngine implements SynthesizingEngine {
-  KokoroEngine({required this.modelDir, required this.cache, this.piper = const [], AudioPlayer? player})
-    : _player = player ?? AudioPlayer();
+  KokoroEngine({required this.cache, this.piper = const [], AudioPlayer? player}) : _player = player ?? AudioPlayer();
 
-  /// Voces Piper (cada una se ofrece si su modelo está instalado).
+  /// Voces naturales (cada una se ofrece si su modelo está instalado).
   final List<PiperVoice> piper;
-
-  /// Carpeta del modelo (model.int8.onnx, voices.bin, tokens.txt...). Desde sherpa-onnx 2.0
-  /// no se usa espeak-ng: el español se pasa como fonemas (ver spanish_phonemizer.dart).
-  final String modelDir;
   final AudioCache cache;
 
-  static const _voices = <VoiceOption, int>{
-    VoiceOption(name: 'Dora (natural)', locale: 'es-ES', quality: 'natural'): 28,
-    VoiceOption(name: 'Alex (natural)', locale: 'es-ES', quality: 'natural'): 29,
-  };
-
-  /// ¿Está instalado el modelo?
-  static bool isInstalled(String dir) =>
-      File('$dir/model.int8.onnx').existsSync() &&
-      File('$dir/voices.bin').existsSync() &&
-      File('$dir/tokens.txt').existsSync();
-
-  KokoroWorker? _worker;
-  Future<KokoroWorker>? _starting;
   final AudioPlayer _player;
-  int _speaker = 28;
 
-  /// La voz Piper elegida (null: Kokoro). Su modelo se carga al elegirla y
-  /// queda uno solo en memoria.
+  /// La voz elegida. Su modelo se carga al elegirla y queda uno solo en memoria.
   PiperVoice? _piperVoice;
   String? _piperOnnx;
   Future<KokoroWorker>? _piperWorker;
 
   /// ¿Hay con qué sintetizar la voz elegida?
-  bool get _ready => _piperVoice != null || _worker != null;
+  bool get _ready => _piperVoice != null;
 
   static bool _piperInstalled(PiperVoice p) => File(p.onnx).existsSync() && File(p.tokens).existsSync();
   double _speed = 1.0;
@@ -67,25 +50,17 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   int _slow = 0;
   bool _tooSlow = false;
 
-  // Dora y Alex (Kokoro) piden más cálculo que las voces Piper: si en este
-  // equipo sintetizar una frase tarda más de lo que dura, nunca alcanzan a la
-  // lectura (la lee la voz del sistema) y se ocultan. Queda anotado en la
-  // carpeta del modelo; reinstalarlo las vuelve a ofrecer.
-  int _kokoroSlow = 0;
-  bool _kokoroHidden = false;
-  File get _hiddenMark => File('$modelDir/no_alcanza');
-
   @override
   String get id => 'kokoro';
 
   AudioPrefetcher get _pf => _prefetcher ??= AudioPrefetcher(
     engine: this,
     cache: cache,
-    voice: _cacheVoice(_piperVoice, _speaker),
+    voice: _cacheVoice(_piperVoice),
     speed: _speed,
   );
 
-  static String _cacheVoice(PiperVoice? p, int speaker) => p == null ? 'sid$speaker' : 'piper-${p.voice.name}';
+  static String _cacheVoice(PiperVoice? p) => 'piper-${p?.voice.name}';
 
   /// Sintetiza con [voice] y lo guarda en la caché con la misma clave que
   /// usará [speak] después de [setVoice]: mientras tanto sigue sonando la voz
@@ -94,14 +69,12 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   Future<void> prepare(VoiceOption voice, String text) async {
     if (_tooSlow || text.trim().isEmpty) return;
     final p = piper.where((p) => p.voice.id == voice.id).firstOrNull;
-    final sid = _voices.entries.where((e) => e.key.id == voice.id).map((e) => e.value).firstOrNull;
-    if (p == null && (sid == null || _worker == null)) return;
-    final speaker = sid ?? 0;
+    if (p == null) return;
     final speed = _speed;
     await AudioPrefetcher(
-      engine: _VoiceSynth(id, (t) => _enqueue(() => _synthesizeNow(t, p, speaker, speed))),
+      engine: _VoiceSynth(id, (t) => _enqueue(() => _synthesizeNow(t, p, speed))),
       cache: cache,
-      voice: _cacheVoice(p, speaker),
+      voice: _cacheVoice(p),
       speed: speed,
     ).fileFor(text);
   }
@@ -112,27 +85,13 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     // tiempo) no debe apagar la voz natural para siempre.
     _slow = 0;
     _tooSlow = false;
-    _kokoroHidden = _hiddenMark.existsSync();
-    // Ocultas, no se cargan: ocupan memoria que a este equipo le falta.
-    final kokoro = isInstalled(modelDir) && !_kokoroHidden;
-    if (!kokoro && !piper.any(_piperInstalled)) {
+    if (!piper.any(_piperInstalled)) {
       throw StateError('Modelo de voz natural no instalado.');
-    }
-    if (kokoro && _worker == null) {
-      // Dos avisos de "modelo instalado" a la vez cargaban dos copias de la
-      // voz (una quedaba en memoria para siempre): se comparte el arranque.
-      final starting = _starting ??= KokoroWorker.start(modelDir);
-      try {
-        _worker = await starting;
-      } finally {
-        _starting = null;
-      }
     }
   }
 
   @override
   Future<List<VoiceOption>> voices() async => [
-    if (isInstalled(modelDir) && !_kokoroHidden) ..._voices.keys,
     for (final p in piper)
       if (_piperInstalled(p)) p.voice,
   ];
@@ -144,13 +103,7 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
       _piperVoice = p.first;
       _changed();
       unawaited(_piperFor(p.first).then((_) {}, onError: (_) {})); // que cargue ya
-      return;
     }
-    final sid = _voices.entries.where((e) => e.key.id == voice.id).map((e) => e.value);
-    if (sid.isEmpty) return;
-    _speaker = sid.first;
-    _piperVoice = null;
-    _changed();
   }
 
   /// El proceso de la voz Piper [p]: si es otra que la cargada, la reemplaza.
@@ -158,7 +111,9 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     if (_piperOnnx == p.onnx && _piperWorker != null) return _piperWorker!;
     final old = _piperWorker;
     _piperOnnx = p.onnx;
-    final next = KokoroWorker.startPiper(p.onnx, p.tokens);
+    final next = p.supertonic
+        ? KokoroWorker.startSupertonic(File(p.onnx).parent.path)
+        : KokoroWorker.startPiper(p.onnx, p.tokens);
     _piperWorker = next;
     next.then(
       (_) {},
@@ -204,13 +159,13 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   @override
   Future<Uint8List> synthesize(String text) {
     // Con la voz y la velocidad de ahora: el audio se guarda con esa clave.
-    final speaker = _speaker;
     final piperVoice = _piperVoice;
     final speed = _speed;
     final settings = _settings;
     return _enqueue(() {
       if (settings != _settings) throw const _Stale();
-      return _synthesizeNow(text, piperVoice, speaker, speed);
+      if (piperVoice == null) throw StateError('No hay voz natural elegida.');
+      return _synthesizeNow(text, piperVoice, speed);
     });
   }
 
@@ -220,36 +175,20 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     return job;
   }
 
-  Future<void> _hideKokoro() async {
-    if (_kokoroHidden) return;
-    _kokoroHidden = true;
-    _prefetcher = null;
-    try {
-      await _hiddenMark.writeAsString('${DateTime.now().toIso8601String()}\n');
-    } on FileSystemException {
-      // sin anotar: se vuelve a medir la próxima vez que se abra la app
-    }
-    onVoicesChanged?.call('Dora y Alex no alcanzan a leer al ritmo de este equipo: se ocultaron.');
-  }
-
-  Future<Uint8List> _synthesizeNow(String text, PiperVoice? piperVoice, int speaker, double speed) async {
-    final w = piperVoice == null ? _worker : await _piperFor(piperVoice);
-    if (w == null) throw StateError('Kokoro no iniciado.');
+  Future<Uint8List> _synthesizeNow(String text, PiperVoice piperVoice, double speed) async {
+    final w = await _piperFor(piperVoice);
     final sw = Stopwatch()..start();
-    // Las voces Piper tienen un solo hablante (el 0).
-    final wav = await w.synthesize(text, speaker: piperVoice == null ? speaker : 0, speed: speed);
+    // Las voces Piper tienen un solo hablante (el 0); Supertonic, el elegido.
+    final wav = await w.synthesize(text, speaker: piperVoice.sid, speed: speed);
     final rate = ByteData.sublistView(wav).getUint32(24, Endian.little);
     final audioMs = (wav.length - 44) / 2 / rate * 1000;
-    if (audioMs > 500 && piperVoice == null) {
-      _kokoroSlow = sw.elapsedMilliseconds > audioMs ? _kokoroSlow + 1 : 0;
-      if (_kokoroSlow >= 2) await _hideKokoro();
-    } else if (audioMs > 500) {
+    if (audioMs > 500) {
       _slow = sw.elapsedMilliseconds > audioMs * 2 ? _slow + 1 : 0;
       if (_slow >= 2) _tooSlow = true;
     }
     if (kDebugMode) {
       debugPrint(
-        '[lector] kokoro sintetizó ${text.length} car. en ${sw.elapsedMilliseconds} ms (${wav.length ~/ 1024} KB)',
+        '[lector] voz natural sintetizó ${text.length} car. en ${sw.elapsedMilliseconds} ms (${wav.length ~/ 1024} KB)',
       );
     }
     return wav;
@@ -327,11 +266,10 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   /// de un minuto en silencio). Si no hay con qué sintetizar o es demasiado
   /// lento, sí: [speak] falla y se pasa a la voz del sistema con aviso.
   @override
-  bool get worthWaiting => !(_piperVoice == null && _kokoroHidden);
+  bool get worthWaiting => true;
 
   @override
   Future<bool> canSpeakNow(String text) async {
-    if (_piperVoice == null && _kokoroHidden) return false; // sigue la voz del sistema
     if (!_ready || _tooSlow) return true;
     return _pf.isReady(text);
   }
@@ -360,7 +298,6 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
   @override
   Future<void> dispose() async {
     await _player.dispose();
-    _worker?.dispose();
     _piperWorker?.then((w) => w.dispose(), onError: (_) {});
   }
 }

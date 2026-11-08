@@ -47,7 +47,7 @@ import '../platform/file_export.dart';
 import '../platform/page_unwarp.dart';
 import '../platform/native_text.dart';
 import '../platform/open_file_bridge.dart';
-import '../platform/parakeet_transcriber.dart';
+import '../platform/nemo_transcriber.dart';
 import '../platform/speech_transcriber.dart';
 import '../platform/whisper_transcriber.dart';
 import 'calculator_screen.dart';
@@ -132,7 +132,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   }
 
   static const _whatItDoes = {
-    'kokoro': 'Voz natural: la voz que suena como una persona al leer.',
+    'supertonic': 'Voz natural: Luna, la voz que suena como una persona al leer.',
+    'dictado-es': 'Transcripción: pasa a texto lo que grabas, sin Internet.',
     'whisper': 'Transcripción: pasa a texto lo que grabas, sin Internet.',
   };
 
@@ -231,16 +232,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   late final SpeechTranscriber _speech = CompositeTranscriber([
     NativeSpeechTranscriber(),
-    // Parakeet si se instaló; si no, o si no carga, la normal.
-    ParakeetTranscriber(modelDir: widget.modelStore.dirFor(parakeetModel).path, onProgress: _showTranscribeProgress),
-    WhisperTranscriber(modelDir: widget.modelStore.dirFor(whisperBaseModel).path, onProgress: _showTranscribeProgress),
+    // Android: el dictado en español. iPhone: Whisper para lo que el sistema no transcribe.
+    NemoTranscriber(modelDir: widget.modelStore.dirFor(dictationModel).path, onProgress: _showTranscribeProgress),
+    if (Platform.isIOS)
+      WhisperTranscriber(modelDir: widget.modelStore.dirFor(whisperBaseModel).path, onProgress: _showTranscribeProgress),
   ]);
+
+  /// El modelo de transcripción que se ofrece bajar en este equipo.
+  static ModelSpec get _transcriptionModel => Platform.isAndroid ? dictationModel : whisperBaseModel;
 
   /// Graba una clase o conversación, la transcribe en el dispositivo y la abre
   /// como un documento más (se puede escuchar, buscar y resumir).
   Future<void> _record() async {
     if (!await _speech.isAvailable()) {
-      ModelQueue.instance.prioritize(whisperBaseModel);
+      ModelQueue.instance.prioritize(_transcriptionModel);
       if (!mounted) return;
       // Sin transcripción la grabación queda solo como audio: se avisa antes.
       final choice = await showDialog<String>(
@@ -248,11 +253,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
         builder: (ctx) => AlertDialog(
           title: const Text('Falta la transcripción'),
           content: Text(
-            widget.modelStore.isInstalling(whisperBaseModel)
+            widget.modelStore.isInstalling(_transcriptionModel)
                 ? 'La transcripción sin conexión se está bajando en segundo plano. Si grabas antes de '
                       'que termine, la grabación se guarda solo como audio.'
                 : 'Para convertir la grabación en texto hay que descargar una vez el modelo de '
-                      'transcripción sin conexión (${whisperBaseModel.sizeLabel}) en Voces y modelos. '
+                      'transcripción sin conexión (${_transcriptionModel.sizeLabel}) en Voces y modelos. '
                       'Sin él, la grabación se guarda solo como audio.',
           ),
           actions: [
@@ -276,8 +281,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final rec = await Navigator.of(context).push<RecordingResult>(
       MaterialPageRoute(
         builder: (_) => RecorderScreen(
-          liveModelDir: widget.modelStore.isInstalled(parakeetModel)
-              ? widget.modelStore.dirFor(parakeetModel).path
+          liveModelDir: widget.modelStore.isInstalled(dictationModel)
+              ? widget.modelStore.dirFor(dictationModel).path
               : null,
         ),
       ),
@@ -1179,12 +1184,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Future<void> _scanWrinkled() async {
     final store = widget.modelStore;
     if (!store.isInstalled(unwarpModel)) {
-      final megabytes = (unwarpModel.sizeBytes / 1000000).round();
       final accepted = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Aplanador de hojas'),
-          content: Text('Endereza las hojas arrugadas, sin internet. Se baja una sola vez ($megabytes MB).'),
+          content: Text('Endereza las hojas arrugadas, sin internet. Se baja una sola vez (${unwarpModel.sizeLabel}).'),
           actions: [
             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Ahora no')),
             FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Bajar')),
@@ -1871,6 +1875,7 @@ Future<void> showComfortSheet(BuildContext context) => showFloatingSheet<void>(
         Comfort.lineHeight,
         Comfort.keepControls,
         Comfort.skipCitations,
+        Comfort.skipLinks,
       ]),
       builder: (ctx, _) => ConstrainedBox(
         constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(ctx).height * 0.85),
@@ -1969,6 +1974,13 @@ Future<void> showComfortSheet(BuildContext context) => showFloatingSheet<void>(
                 onChanged: Comfort.setSkipCitations,
                 title: const Text('Saltar citas y notas'),
                 subtitle: const Text('No lee en voz alta las referencias como [12] o (Pérez, 2019).'),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: Comfort.skipLinks.value,
+                onChanged: Comfort.setSkipLinks,
+                title: const Text('Saltar enlaces y correos'),
+                subtitle: const Text('No deletrea direcciones web como www.ejemplo.com ni correos.'),
               ),
             ],
           ),

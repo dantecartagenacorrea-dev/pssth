@@ -8,10 +8,14 @@ import 'package:googleapis/drive/v3.dart' as drive;
 
 import '../data/sync_service.dart';
 
-/// Id del cliente web de Google Cloud (no es secreto: identifica la app). Se
-/// pasa al compilar con --dart-define=GOOGLE_WEB_CLIENT_ID=...; sin él la
-/// sincronización avisa que falta configurarla.
-const kGoogleWebClientId = String.fromEnvironment('GOOGLE_WEB_CLIENT_ID');
+/// Id del cliente web de Google Cloud, proyecto pssth-514022 (no es secreto:
+/// identifica la app). Se puede cambiar al compilar con
+/// --dart-define=GOOGLE_WEB_CLIENT_ID=...
+const kGoogleWebClientId = String.fromEnvironment(
+  'GOOGLE_WEB_CLIENT_ID',
+  defaultValue:
+      '858392211519-8u0l3n0lfhgnc5spcrn9uk2ljetbtdqd.apps.googleusercontent.com',
+);
 
 /// La cuenta de Google de la persona y su carpeta oculta de Drive
 /// (appDataFolder): solo esta app la ve, no aparece entre sus archivos.

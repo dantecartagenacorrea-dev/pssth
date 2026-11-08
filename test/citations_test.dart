@@ -22,4 +22,23 @@ void main() {
     const long = 'Dijo [y esto lo repitió muchas veces delante de toda la corte del rey] que no.';
     expect(withoutCitations(long), long);
   });
+
+  group('enlaces y correos', () {
+    test('quita direcciones web y deja el punto de la frase', () {
+      expect(withoutLinks('Más información en https://www.ejemplo.com/ruta?x=1.'), 'Más información en.');
+      expect(withoutLinks('Visite www.uagrm.edu.bo para inscribirse.'), 'Visite para inscribirse.');
+      expect(withoutLinks('Ver ejemplo.com.bo/ayuda, luego sigue.'), 'Ver, luego sigue.');
+    });
+
+    test('quita correos y paréntesis que quedan vacíos', () {
+      expect(withoutLinks('Escriba a soporte@pssth.app o llame.'), 'Escriba a o llame.');
+      expect(withoutLinks('El sitio (www.ejemplo.org) tiene más.'), 'El sitio tiene más.');
+    });
+
+    test('no toca texto común, abreviaturas ni números', () {
+      const text = 'El Sr. Pérez pagó 3.500 Bs. el 12.05 y dijo: es así. Fin.';
+      expect(withoutLinks(text), text);
+      expect(withoutLinks('Lo leí, es bueno.'), 'Lo leí, es bueno.');
+    });
+  });
 }

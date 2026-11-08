@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lector_pdf/platform/parakeet_transcriber.dart';
+import 'package:lector_pdf/platform/nemo_transcriber.dart';
 import 'package:lector_pdf/platform/speech_transcriber.dart';
 import 'package:lector_pdf/platform/whisper_transcriber.dart';
 
@@ -33,8 +33,8 @@ void main() {
     expect(await base.isAvailable(), isTrue);
   });
 
-  test('Parakeet necesita todos sus archivos', () async {
-    final parakeet = ParakeetTranscriber(modelDir: dir.path);
+  test('El dictado necesita todos sus archivos', () async {
+    final parakeet = NemoTranscriber(modelDir: dir.path);
     expect(await parakeet.isAvailable(), isFalse);
     for (final name in ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx']) {
       File('${dir.path}/$name').writeAsStringSync('x');
@@ -44,7 +44,7 @@ void main() {
     expect(await parakeet.isAvailable(), isTrue);
   });
 
-  test('se usa el primer motor disponible: Parakeet antes que Base', () async {
+  test('se usa el primer motor disponible: el dictado antes que Base', () async {
     final both = CompositeTranscriber([_FakeEngine('parakeet', available: true), _FakeEngine('base', available: true)]);
     expect(await both.transcribe('a.wav'), 'parakeet');
 

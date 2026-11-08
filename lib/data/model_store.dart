@@ -57,22 +57,6 @@ class ModelFile {
   final String sha256;
 }
 
-const kokoroEsModel = ModelSpec(
-  id: 'kokoro',
-  title: 'Voz natural (español)',
-  url: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_0.tar.bz2',
-  // sherpa-onnx reemplazó el paquete el 26-10-2026 (mismo contenido de
-  // archivos): tamaño y huella del paquete nuevo, comprobados con GitHub.
-  sizeBytes: 132353410,
-  sha256: '72c347230107ef8a31098ec4d468a605244beef5f1ed00db97efa13518800653',
-  extractedDir: 'kokoro-int8-multi-lang-v1_0',
-  requiredFiles: ['model.int8.onnx', 'voices.bin', 'tokens.txt'],
-  // Datos de espeak-ng (GPL): el paquete los trae, pero la app ya no los usa.
-  // Tampoco el diccionario de chino (dict, fst) ni el léxico británico: la voz
-  // solo carga el léxico de inglés de EE. UU. y el de chino (≈20 MB menos).
-  prune: ['espeak-ng-data', 'dict', 'lexicon-gb-en.txt', 'phone-zh.fst', 'number-zh.fst', 'date-zh.fst'],
-);
-
 // Solo los tres archivos que usa la app (los mismos del paquete de sherpa-onnx,
 // que además trae una versión grande sin usar): 161 MB en vez de 208.
 const _whisperRepo =
@@ -107,45 +91,21 @@ const whisperBaseModel = ModelSpec(
   ],
 );
 
-const _parakeetRepo =
-    'https://huggingface.co/csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8/resolve/2bda32ec70b097a55adaa07d9a7173915b43cc78';
-
-/// Parakeet TDT v3 de NVIDIA (CC BY 4.0), versión reducida de sherpa-onnx.
-/// Solo se baja si se pide.
-const parakeetModel = ModelSpec(
-  id: 'parakeet',
-  title: 'Transcripción Parakeet',
-  url: _parakeetRepo,
-  sizeBytes: 652184281 + 11845275 + 6355277 + 93939,
-  sha256: '',
-  extractedDir: '',
+/// Dictado en español: FastConformer de NVIDIA entrenado con 1424 horas de
+/// español, con puntuación y mayúsculas (CC BY 4.0), reducido por sherpa-onnx.
+/// Medido en la PC el 08-11 con dos grabaciones reales: entiende más que
+/// Parakeet v3 (639 MB) y que Whisper Base, 2,6 veces más rápido que Parakeet
+/// y con la mitad de memoria. Solo se baja si se pide.
+const dictationModel = ModelSpec(
+  id: 'dictado-es',
+  title: 'Dictado en español',
+  url:
+      'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-fast-conformer-transducer-es-1424-int8.tar.bz2',
+  sizeBytes: 107246685,
+  sha256: 'd6d29ffd560c366da1b177b71e79d8733a9a9910dd1ace282d9bfae94e056210',
+  extractedDir: 'sherpa-onnx-nemo-fast-conformer-transducer-es-1424-int8',
   requiredFiles: ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt'],
-  files: [
-    ModelFile(
-      'encoder.int8.onnx',
-      '$_parakeetRepo/encoder.int8.onnx',
-      652184281,
-      'acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247',
-    ),
-    ModelFile(
-      'decoder.int8.onnx',
-      '$_parakeetRepo/decoder.int8.onnx',
-      11845275,
-      '179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e',
-    ),
-    ModelFile(
-      'joiner.int8.onnx',
-      '$_parakeetRepo/joiner.int8.onnx',
-      6355277,
-      '3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3',
-    ),
-    ModelFile(
-      'tokens.txt',
-      '$_parakeetRepo/tokens.txt',
-      93939,
-      'd58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d',
-    ),
-  ],
+  prune: ['test_wavs'],
 );
 
 /// Voces latinoamericanas (Piper, acento mexicano neutro), convertidas por
@@ -187,7 +147,79 @@ final piperClaudeModel = _piperVoice(
   940,
   'ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d',
 );
-final piperVoiceModels = [piperClaudeModel];
+const _supertonicRepo =
+    'https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-tts-int8-2026-03-06/resolve/5dec5897b86e2b293790eedb5e1f561a3295651f';
+
+/// Supertonic 3 (Supertone; modelo OpenRAIL-M, código MIT), versión reducida de
+/// sherpa-onnx: diez voces en un paquete; la app usa la más joven (la 2). En la
+/// PC el 08-11: unas 25 veces más rápida que el tiempo real y 42/43 palabras
+/// entendidas por el dictado. Lee el texto directo, sin fonemas.
+const supertonicModel = ModelSpec(
+  id: 'supertonic',
+  title: 'Voz joven: Luna',
+  url: _supertonicRepo,
+  sizeBytes: 1521526 + 27431318 + 40686657 + 25977132 + 8699 + 262144 + 517168,
+  sha256: '',
+  extractedDir: '',
+  requiredFiles: [
+    'duration_predictor.int8.onnx',
+    'text_encoder.int8.onnx',
+    'vector_estimator.int8.onnx',
+    'vocoder.int8.onnx',
+    'tts.json',
+    'unicode_indexer.bin',
+    'voice.bin',
+  ],
+  files: [
+    ModelFile(
+      'duration_predictor.int8.onnx',
+      '$_supertonicRepo/duration_predictor.int8.onnx',
+      1521526,
+      '6d556b3691165c364be91dc0bd894656b5949f5acd2750d8ec2f954010845011',
+    ),
+    ModelFile(
+      'text_encoder.int8.onnx',
+      '$_supertonicRepo/text_encoder.int8.onnx',
+      27431318,
+      'dd5f535ed629f7df86071043e15f541ce1b2ab7f1bdbce4c7892b307bca79fa3',
+    ),
+    ModelFile(
+      'vector_estimator.int8.onnx',
+      '$_supertonicRepo/vector_estimator.int8.onnx',
+      40686657,
+      '9cce89801068dc998719fbc91777f99f3f4d16ee36592281f8703f32e305daa2',
+    ),
+    ModelFile(
+      'vocoder.int8.onnx',
+      '$_supertonicRepo/vocoder.int8.onnx',
+      25977132,
+      'db99c36fb871fbfb128b903662995f2e22213e875f2434f319f8d10ee0f10e90',
+    ),
+    ModelFile(
+      'tts.json',
+      '$_supertonicRepo/tts.json',
+      8699,
+      'ee531d9af9b80438a2ed703e22155ee6c83b12595ab22fd3bb6de94c7502fe96',
+    ),
+    ModelFile(
+      'unicode_indexer.bin',
+      '$_supertonicRepo/unicode_indexer.bin',
+      262144,
+      '06557ec23778a2c67130a99e28f5f550b9598fc1f04049cbb35d864549913154',
+    ),
+    ModelFile(
+      'voice.bin',
+      '$_supertonicRepo/voice.bin',
+      517168,
+      '12e0919ffc641ff20858026a4c655fbd9e5c414800bb1b756c9d4011e2536325',
+    ),
+  ],
+);
+
+/// Hablante de [supertonicModel] que usa la app (la voz 2, la más aguda).
+const supertonicSpeaker = 1;
+
+final piperVoiceModels = [piperClaudeModel, supertonicModel];
 
 const _formulaRelease = 'https://github.com/dantecartagenacorrea-dev/pssth/releases/download/formula-model-v1';
 
@@ -251,13 +283,14 @@ const unwarpModel = ModelSpec(
 /// Los que traen voces: al instalarlos o quitarlos hay que releer las voces
 /// (releerlas corta la frase que se está preparando; con Whisper no hace falta).
 bool isVoiceModel(ModelSpec m) =>
-    m.id != whisperBaseModel.id && m.id != parakeetModel.id && m.id != formulaModel.id && m.id != unwarpModel.id;
+    m.id != whisperBaseModel.id && m.id != dictationModel.id && m.id != formulaModel.id && m.id != unwarpModel.id;
 
 List<ModelSpec> get optionalModels => [
-  kokoroEsModel,
   ...piperVoiceModels,
-  whisperBaseModel,
-  if (Platform.isAndroid) parakeetModel,
+  // En Android transcribe el dictado en español; Whisper queda para iPhone
+  // (idiomas que el iPhone no transcribe sin conexión).
+  if (Platform.isIOS) whisperBaseModel,
+  if (Platform.isAndroid) dictationModel,
   // En iPhone todavía no hay cómo correrlo: no se ofrece.
   if (Platform.isAndroid) formulaModel,
   if (Platform.isAndroid) unwarpModel,
@@ -337,8 +370,20 @@ class ModelStore extends ChangeNotifier {
   /// Modelos que la app ya no usa: la IA chica de estudio (Qwen3, 330 MB)
   /// se quitó porque no respetaba el formato de resúmenes y preguntas; la voz
   /// Piper Ald (62 MB), porque la app deja solo seis voces; el lector de fórmulas
-  /// sin reducir (120 MB), porque el de 32 MB acierta igual.
-  static const _retired = ['whisper-small', 'qwen3', 'piper-ald', 'formula'];
+  /// sin reducir (120 MB), porque el de 32 MB acierta igual; Parakeet (639 MB),
+  /// porque el dictado en español entiende más con 136 MB.
+  /// Kokoro (Dora y Alex, 164 MB), porque Luna la reemplaza y en equipos
+  /// modestos no alcanzaba a leer al ritmo; Whisper en Android, porque el
+  /// dictado en español entiende más con menos.
+  static List<String> get _retired => [
+    'whisper-small',
+    'qwen3',
+    'piper-ald',
+    'formula',
+    'parakeet',
+    'kokoro',
+    if (Platform.isAndroid) 'whisper',
+  ];
 
   /// Borra lo que quedó instalado de [_retired] y, en los modelos ya
   /// instalados, lo que [ModelSpec.prune] dice que no se usa (las instalaciones

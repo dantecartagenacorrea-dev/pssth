@@ -62,6 +62,11 @@ Future<void> main() async {
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(['Atkinson Hyperlegible'], await rootBundle.loadString('assets/fonts/OFL.txt'));
     yield LicenseEntryWithLineBreaks(['Inter'], await rootBundle.loadString('assets/fonts/Inter-OFL.txt'));
+    yield LicenseEntryWithLineBreaks(['Lista de palabras en español'], await rootBundle.loadString('assets/words/LICENSE.txt'));
+    yield const LicenseEntryWithLineBreaks([
+      'Supertonic (voz Luna)',
+    ], 'Supertonic, Supertone Inc. Modelo bajo licencia OpenRAIL-M (https://huggingface.co/Supertone/supertonic-2/blob/main/LICENSE): '
+        'la voz es sintética y no se puede usar para hacerse pasar por personas reales ni para los usos que esa licencia prohíbe.');
     yield const LicenseEntryWithLineBreaks(['Pix2Text MFR (lector de fórmulas)'], _pix2textLicense);
     yield const LicenseEntryWithLineBreaks([
       'UVDoc (aplanador de hojas)',
@@ -109,11 +114,10 @@ Future<void> main() async {
     ),
   );
 
-  // Voz natural (opcional): modelo en <documentos>/models/kokoro; sin él solo hay voces del sistema.
+  // Voces naturales (opcionales, se bajan aparte); sin ellas solo hay voces del sistema.
   final modelStore = ModelStore(Directory('${docs.path}/models'));
   final engine = FallbackTtsEngine(
     primary: KokoroEngine(
-      modelDir: modelStore.dirFor(kokoroEsModel).path,
       cache: AudioCache(Directory('${cacheDir.path}/tts_audio')),
       piper: [
         for (final (m, name, voice) in [(piperClaudeModel, 'es_MX-claude-high', 'Claude')])
@@ -121,7 +125,16 @@ Future<void> main() async {
             voice: VoiceOption(name: '$voice (natural)', locale: 'es-MX', quality: 'natural'),
             onnx: '${modelStore.dirFor(m).path}/$name.onnx',
             tokens: '${modelStore.dirFor(m).path}/tokens.txt',
+            sid: 0,
+            supertonic: false,
           ),
+        (
+          voice: const VoiceOption(name: 'Luna (natural)', locale: 'es-ES', quality: 'natural'),
+          onnx: '${modelStore.dirFor(supertonicModel).path}/vocoder.int8.onnx',
+          tokens: '${modelStore.dirFor(supertonicModel).path}/tts.json',
+          sid: supertonicSpeaker,
+          supertonic: true,
+        ),
       ],
     ),
     fallback: AppleTtsEngine(),

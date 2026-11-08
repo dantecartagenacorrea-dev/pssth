@@ -500,12 +500,12 @@ class PlayerScreen extends StatelessWidget {
                     trailing: current.isEmpty ? const Icon(CupertinoIcons.checkmark) : null,
                     onTap: () => Navigator.pop(ctx, ''),
                   ),
-                  // Dora y Alex solo aparecen con el modelo instalado: se avisa dónde.
+                  // Las voces naturales solo aparecen instaladas: se avisa dónde.
                   if (!hasNatural)
                     const ListTile(
                       leading: Icon(CupertinoIcons.sparkles),
-                      title: Text('Dora y Alex (voces naturales)'),
-                      subtitle: Text('Instálalas desde la pantalla principal: menú ⋮ → Voces y modelos.'),
+                      title: Text('Luna y Claude (voces naturales)'),
+                      subtitle: Text('Instálalas en Ajustes → Voces y modelos.'),
                     ),
                   for (final g in groups)
                     if (g.expanded) ...[

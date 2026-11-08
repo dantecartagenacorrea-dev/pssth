@@ -833,9 +833,13 @@ class TtsAudioHandler extends BaseAudioHandler {
     return sleepAtChapterEnd.value && end != null && _chunks[nextIndex].pageIndex >= end;
   }
 
-  /// Lo que se pronuncia de [speech]: sin las citas, si se pidió en Aspecto y
-  /// letra. Si cambia, esa frase no marca palabra por palabra (no coincidiría).
-  static String _spoken(String speech) => Comfort.skipCitations.value ? withoutCitations(speech) : speech;
+  /// Lo que se pronuncia de [speech]: sin las citas ni los enlaces, según
+  /// Aspecto y letra. Si cambia, esa frase no marca palabra por palabra (no
+  /// coincidiría).
+  static String _spoken(String speech) {
+    final s = Comfort.skipCitations.value ? withoutCitations(speech) : speech;
+    return Comfort.skipLinks.value ? withoutLinks(s) : s;
+  }
 
   List<Chapter> chapters = [];
   List<TextChunk> get chunks => _chunks;

@@ -5,10 +5,20 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <!-- Los trae flutter_secure_storage y la app no usa la huella. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" tools:node="remove"/>
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" tools:node="remove"/>
+    <!-- La cámara solo se usa en la calculadora: la app se instala también sin cámara. -->
+    <uses-feature android:name="android.hardware.camera.any" android:required="false"
+        tools:replace="android:required"/>
 
+    <!-- Sin copia de seguridad automática: la clave cifrada no se descifra en otro
+         aparato; la biblioteca viaja con la sincronización de Google Drive. -->
     <application
         android:label="PSSTH!"
         android:name="${applicationName}"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

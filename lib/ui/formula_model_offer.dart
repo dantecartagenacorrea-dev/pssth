@@ -32,7 +32,6 @@ class _FormulaModelOfferState extends State<FormulaModelOffer> {
         if (!Platform.isAndroid || widget.store.isInstalled(formulaModel)) return const SizedBox.shrink();
         final progress = widget.store.progressOf(formulaModel);
         final installing = widget.store.isInstalling(formulaModel);
-        final megabytes = (formulaModel.sizeBytes / 1000000).round();
         return Card(
           child: Padding(
             padding: const EdgeInsets.all(14),
@@ -43,7 +42,7 @@ class _FormulaModelOfferState extends State<FormulaModelOffer> {
                 const SizedBox(height: 4),
                 Text(
                   'Lee mejor las fracciones y las fotos difíciles, sin internet. '
-                  'Se baja una sola vez ($megabytes MB).',
+                  'Se baja una sola vez (${formulaModel.sizeLabel}).',
                   style: t.bodySmall,
                 ),
                 const SizedBox(height: 10),

@@ -9,7 +9,7 @@ import 'package:record/record.dart';
 
 import '../domain/level_booster.dart';
 import '../domain/live_audio.dart';
-import '../platform/parakeet_transcriber.dart';
+import '../platform/nemo_transcriber.dart';
 import 'premium.dart';
 
 const _sampleRate = 16000;
@@ -27,7 +27,7 @@ class RecordingResult {
 class RecorderScreen extends StatefulWidget {
   const RecorderScreen({super.key, this.liveModelDir});
 
-  /// Carpeta de Parakeet si se puede transcribir mientras se graba.
+  /// Carpeta del dictado en español si se puede transcribir mientras se graba.
   final String? liveModelDir;
 
   @override
@@ -49,7 +49,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
   /// Un rato en silencio total: avisar por si el micrófono no capta.
   int _quietTicks = 0;
 
-  ParakeetLiveSession? _live;
+  NemoLiveSession? _live;
   String _liveText = '';
   final _pcm = Pcm16Decoder();
   final _booster = LevelBooster();
@@ -133,7 +133,7 @@ class _RecorderScreenState extends State<RecorderScreen> {
     final modelDir = widget.liveModelDir;
     final live = modelDir == null
         ? null
-        : await ParakeetLiveSession.start(
+        : await NemoLiveSession.start(
             modelDir: modelDir,
             sampleRate: _sampleRate,
             onText: (text) {

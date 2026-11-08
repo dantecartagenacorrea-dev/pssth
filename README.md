@@ -6,7 +6,7 @@ Convierte PDF, EPUB, imágenes, TXT y grabaciones en audio. Lo básico es local,
 
 ## Arquitectura
 - Flutter. PDF: pdfrx. Segundo plano / pantalla de bloqueo: audio_service.
-- Voz: interfaz `TtsEngine` (`lib/playback/tts_engine.dart`) con dos motores. `AppleTtsEngine` (flutter_tts, voces del sistema) es el estable y el respaldo. `KokoroEngine` (Kokoro-82M int8 vía sherpa-onnx, voces Dora/Alex en español) es opcional: modelo descargado desde la app. `FallbackTtsEngine` une ambos: una sola lista de voces, la voz elegida decide el motor; si el neuronal falta, falla o va lento, vuelve solo al sistema sin cortar la lectura. Un bloque largo en otro idioma usa la voz del sistema para ese idioma y después vuelve.
+- Voz: interfaz `TtsEngine` (`lib/playback/tts_engine.dart`) con dos motores. `AppleTtsEngine` (flutter_tts, voces del sistema) es el estable y el respaldo. `KokoroEngine` (vía sherpa-onnx: Luna con Supertonic y Claude con Piper) es opcional: modelos descargados desde la app. `FallbackTtsEngine` une ambos: una sola lista de voces, la voz elegida decide el motor; si el neuronal falta, falla o va lento, vuelve solo al sistema sin cortar la lectura. Un bloque largo en otro idioma usa la voz del sistema para ese idioma y después vuelve.
 - Audio neuronal: `AudioCache` (clave texto+motor+voz+velocidad, 200 MB, LRU, borrable) y `AudioPrefetcher` (prepara N+1 y N+2).
 - Grabación de clases: `record` (WAV 16 kHz mono) → transcripción local: iOS `SFSpeechRecognizer` solo en el dispositivo (`SpeechBridge` en AppDelegate.swift); en cualquier plataforma Whisper base (sherpa-onnx, modelo opcional), por segmentos de ≤28 s cortados en silencio (`lib/domain/wav_audio.dart`). También acepta audios de otras apps (Abrir documento o Compartir).
 - Modelos: `ModelStore` (`lib/data/model_store.dart`) descarga del repositorio oficial de sherpa-onnx (Apache 2.0), verifica SHA-256, extrae y borra lo sobrante. Pantalla "Voces y modelos" (menú ⋮ de la biblioteca). iOS 17+: botón para autorizar la Voz personal de Apple.
@@ -25,13 +25,13 @@ Convierte PDF, EPUB, imágenes, TXT y grabaciones en audio. Lo básico es local,
 Importar → extraer texto (directo; OCR solo en páginas sin texto) → limpiar → normalizar para voz → detectar idioma (documento y por bloque) → fragmentar (párrafo → frase → cláusula) → reproducir (caché + pregeneración si es voz neuronal) → guardar progreso.
 
 ## Dependencias
-pdfrx, flutter_tts, audio_service, file_picker, path_provider, shared_preferences, archive, image_picker, record, sherpa_onnx, just_audio, crypto. Todas open source y gratuitas. Modelos opcionales: Kokoro (132 MB) y Whisper base (208 MB, 160 MB instalado), ambos Apache 2.0.
+pdfrx, flutter_tts, audio_service, file_picker, path_provider, shared_preferences, archive, image_picker, record, sherpa_onnx, just_audio, crypto. Todas open source y gratuitas. Modelos opcionales: voz Luna (Supertonic, 92 MB, OpenRAIL-M), voz Claude (Piper, 63 MB), dictado en español (NVIDIA FastConformer, 102 MB, CC BY 4.0, Android) y Whisper base (160 MB, MIT, iPhone).
 
 ## Pruebas
 `verificar.bat` (Windows): pub get, analyze, test → `verificar.log`. Estado (2026-11-06): 0 problemas de análisis, 650 pruebas OK. Probado en emulador Android: instalación de modelos desde la app, voz natural, transcripción Whisper de un audio en español, resumen, grabación.
 
 ## Pendiente
-- Probar en iPhone (TestFlight): OCR Vision, pantalla bloqueada, Voz personal, transcripción nativa, rendimiento real de Kokoro (en emulador es lento).
+- Probar en iPhone (TestFlight): OCR Vision, pantalla bloqueada, Voz personal, transcripción nativa, rendimiento real de Luna y Claude.
 - NLTokenizer nativo: descartado por ahora; el divisor en Dart ya trata abreviaturas y cláusulas y no se puede probar en iOS todavía.
 - Documentos reales del usuario (escaneados, largos, dos columnas).
 

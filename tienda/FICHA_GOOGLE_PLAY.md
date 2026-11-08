@@ -62,7 +62,7 @@ Sugerencia conservadora para el formulario:
 - ¿Recopila o comparte datos? **Sí**.
 - Tipos: **Fotos** y **Archivos y documentos**. Recopilados: sí. Compartidos: no (los envía la persona por su acción y con su cuenta).
 - Uso: **Funcionalidad de la app**. Opcional: **sí**. Tratamiento efímero: **no** (no controlamos qué guarda DeepSeek).
-- Cifrados en tránsito: **sí** (HTTPS).
+- Cifrados en tránsito: **sí** (HTTPS con DeepSeek, Google Drive y las descargas). Excepción: la IA de la computadora propia (Ollama) va por http dentro de la red local de la persona; no sale a internet ni llega al desarrollador.
 - ¿Se puede pedir que se borren?: los datos no llegan al desarrollador; en Drive y DeepSeek los borra la persona desde su cuenta.
 
 ## Prueba cerrada (cuenta personal)

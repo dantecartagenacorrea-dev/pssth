@@ -189,13 +189,9 @@ class _VoicesScreenState extends State<VoicesScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          _modelTile(
-            kokoroEsModel,
-            'Mayor naturalidad en español (voces Dora y Alex). Funciona sin conexión después de instalarse. '
-            'Necesita un teléfono reciente; si va lento, PSSTH! vuelve solo a la voz del sistema.',
-          ),
-          const SizedBox(height: 8),
           _modelTile(piperClaudeModel, 'Voz latinoamericana de acento mexicano neutro, clara y firme. Sin conexión.'),
+          const SizedBox(height: 8),
+          _modelTile(supertonicModel, 'Voz joven y natural, muy rápida. Sin conexión. Voz sintética (Supertonic, OpenRAIL-M).'),
           if (Platform.isIOS) ...[
             const SizedBox(height: 8),
             Card(
@@ -222,20 +218,17 @@ class _VoicesScreenState extends State<VoicesScreen> {
             ),
           ],
           const SizedBox(height: 8),
-          _modelTile(
-            whisperBaseModel,
-            Platform.isIOS
-                ? 'Para grabaciones en idiomas que el iPhone no transcribe sin conexión. Normalmente no hace falta.'
-                : 'Convierte en texto las clases o conversaciones grabadas, sin Internet y sin salir del dispositivo.',
-          ),
-          if (Platform.isAndroid) ...[
-            const SizedBox(height: 8),
+          if (Platform.isIOS)
             _modelTile(
-              parakeetModel,
-              'Modelo Parakeet de NVIDIA (CC BY 4.0), reducido por sherpa-onnx. En pruebas: rápido y claro, aunque a veces '
-              'se salta palabras. Ocupa mucho y usa bastante memoria. Si la instalas, se usa en lugar de la normal.',
+              whisperBaseModel,
+              'Para grabaciones en idiomas que el iPhone no transcribe sin conexión. Normalmente no hace falta.',
             ),
-          ],
+          if (Platform.isAndroid)
+            _modelTile(
+              dictationModel,
+              'Convierte en texto las clases o conversaciones grabadas, con puntos y mayúsculas, y escribe '
+              'mientras grabas. Sin Internet y sin salir del dispositivo. Modelo de NVIDIA (CC BY 4.0).',
+            ),
           const SizedBox(height: 16),
           Text(
             'Los modelos vienen de los proyectos sherpa-onnx, Piper y NVIDIA (licencias libres) y se verifican antes de instalarse. '

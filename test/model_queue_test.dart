@@ -34,13 +34,13 @@ void main() {
   test('la voz baja primero y lo instalado no cuenta como faltante', () async {
     final store = ModelStore(tmp);
     final queue = ModelQueue(store, () async {});
-    expect(ModelQueue.all.first, kokoroEsModel);
+    expect(ModelQueue.all.first, supertonicModel);
     final before = queue.missingBytes;
-    final d = store.dirFor(kokoroEsModel)..createSync(recursive: true);
-    for (final f in kokoroEsModel.requiredFiles) {
+    final d = store.dirFor(supertonicModel)..createSync(recursive: true);
+    for (final f in supertonicModel.requiredFiles) {
       File('${d.path}/$f').writeAsStringSync('x');
     }
-    expect(queue.missing, isNot(contains(kokoroEsModel)));
-    expect(queue.missingBytes, before - kokoroEsModel.sizeBytes);
+    expect(queue.missing, isNot(contains(supertonicModel)));
+    expect(queue.missingBytes, before - supertonicModel.sizeBytes);
   });
 }

@@ -1,6 +1,10 @@
 // Margen diario de DeepSeek en tres fases (pedido 2026-11-06): normal, aviso y
 // tope. Cuenta los resúmenes y las hojas leídas, por equipo y por día.
 
+import 'listening_stats.dart' show dayKey;
+
+export 'listening_stats.dart' show dayKey;
+
 /// Hasta aquí, sin avisos.
 const deepSeekFreeUses = 20;
 
@@ -21,9 +25,6 @@ int usesLeft(int used) => used >= deepSeekMaxUses ? 0 : deepSeekMaxUses - used;
 /// Los usos de hoy: los guardados si son del mismo día; si no, cero.
 int usesToday({required String? storedDay, required int storedUses, required DateTime now}) =>
     storedDay == dayKey(now) ? storedUses : 0;
-
-String dayKey(DateTime d) =>
-    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 /// Qué decirle a la persona después de un uso; null si no hace falta avisar.
 String? quotaNotice(int used) => switch (quotaPhase(used)) {
