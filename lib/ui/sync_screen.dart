@@ -22,15 +22,21 @@ class SyncScreen extends StatelessWidget {
         final authorize = !s.signedIn || sync.needsAuthorization.value;
         return PremiumPage(
           title: 'Sincronizar',
-          hero: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Google Drive', style: theme.textTheme.bodyMedium),
-              const SizedBox(height: 4),
-              Text(s.email ?? 'Sin conectar', style: theme.textTheme.titleLarge),
-              const SizedBox(height: 4),
-              Text(statusLine(s), style: theme.textTheme.bodyMedium),
-            ],
+          // Con el tema de la tarjeta (texto claro sobre fondo oscuro).
+          hero: Builder(
+            builder: (context) {
+              final t = Theme.of(context).textTheme;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Google Drive', style: t.bodyMedium),
+                  const SizedBox(height: 4),
+                  Text(s.email ?? 'Sin conectar', style: t.titleLarge),
+                  const SizedBox(height: 4),
+                  Text(statusLine(s), style: t.bodyMedium),
+                ],
+              );
+            },
           ),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),

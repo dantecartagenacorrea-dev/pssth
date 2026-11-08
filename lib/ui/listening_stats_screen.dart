@@ -26,13 +26,19 @@ class ListeningStatsScreen extends StatelessWidget {
             title: 'Estadísticas de escucha',
             hero: s == null
                 ? null
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Hoy', style: theme.textTheme.bodyMedium),
-                      Text(listeningTime(s.today.seconds), style: theme.textTheme.displaySmall),
-                      Text('${s.today.words} palabras', style: theme.textTheme.bodyMedium),
-                    ],
+                // Con el tema de la tarjeta (texto claro sobre fondo oscuro).
+                : Builder(
+                    builder: (context) {
+                      final t = Theme.of(context).textTheme;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Hoy', style: t.bodyMedium),
+                          Text(listeningTime(s.today.seconds), style: t.displaySmall),
+                          Text('${s.today.words} palabras', style: t.bodyMedium),
+                        ],
+                      );
+                    },
                   ),
             body: s == null
                 ? const Center(child: CupertinoActivityIndicator())
@@ -58,7 +64,7 @@ class ListeningStatsScreen extends StatelessWidget {
                         padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
                         child: Text(
                           'Cuenta el tiempo con la voz sonando. La racha suma los días con al menos un minuto. '
-                          'Todo queda en este aparato.',
+                          'Si sincronizas con Google Drive, suma lo de tus otros aparatos.',
                           style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                         ),
                       ),

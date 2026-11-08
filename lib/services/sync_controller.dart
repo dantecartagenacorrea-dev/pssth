@@ -55,25 +55,36 @@ class SyncController {
 
   Future<void>? _running;
 
+  /// La entrada sin preguntar del arranque: hasta que termine no se sabe si
+  /// ya había autorizado.
+  final _signedInChecked = Completer<void>();
+
   /// Al abrir la app: entra sin preguntar si ya había autorizado y sincroniza.
   Future<void> start() async {
     try {
       final account = await _drive.signInSilently();
+      final prefs = await SharedPreferences.getInstance();
       if (account == null) {
-        final prefs = await SharedPreferences.getInstance();
         if (prefs.getBool(_onKey) ?? false) needsAuthorization.value = true;
         return;
       }
+      await prefs.setBool(_onKey, true);
       status.value = SyncStatus(email: account.email);
+      if (!_signedInChecked.isCompleted) _signedInChecked.complete();
       await syncNow();
     } on Exception catch (e) {
       perfLog('sincronizar: no se pudo entrar: $e');
+    } finally {
+      if (!_signedInChecked.isCompleted) _signedInChecked.complete();
     }
   }
 
   /// Si conviene preguntar una sola vez si quiere tener su biblioteca en Drive.
+  /// Espera la entrada sin preguntar del arranque (como mucho unos segundos).
   Future<bool> shouldOffer() async {
-    if (!configured || status.value.signedIn) return false;
+    if (!configured) return false;
+    await _signedInChecked.future.timeout(const Duration(seconds: 10), onTimeout: () {});
+    if (status.value.signedIn) return false;
     final prefs = await SharedPreferences.getInstance();
     return !(prefs.getBool(_askedKey) ?? false);
   }

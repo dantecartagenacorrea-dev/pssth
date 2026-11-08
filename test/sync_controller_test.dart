@@ -86,6 +86,7 @@ void main() {
 
   test('pregunta una sola vez si quiere conectar su Drive', () async {
     final sync = SyncController(service: _Service([]), library: _Library(), drive: _Drive());
+    await sync.start(); // no había entrado antes
 
     expect(await sync.shouldOffer(), isTrue);
     await sync.markOffered();
