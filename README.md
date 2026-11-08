@@ -16,7 +16,6 @@ Convierte PDF, EPUB, imágenes, TXT y grabaciones en audio. Lo básico es local,
 - Datos separados en la carpeta local de la app: archivo original (copia), texto extraído, caché OCR, progreso, marcadores, pronunciación, modelos (`models/`), caché de audio (temporal).
 
 ## Salidas de datos (todas opcionales)
-- DeepSeek (`lib/services/deepseek_client.dart`): con la clave propia de la persona (Ajustes → DeepSeek, guardada con flutter_secure_storage), el Resumen y «Transcribir» en hojas escaneadas envían el texto o la foto a api.deepseek.com. Tope de 30 usos por día (`lib/domain/deepseek_quota.dart`).
 - Google Drive: sincronización en la carpeta oculta de la app en el Drive de la persona.
 - IA de la computadora (Ollama) en la red local, enlaces y videos que se pegan, y descarga de modelos.
 - La política pública está en `privacidad_web/index.html`.

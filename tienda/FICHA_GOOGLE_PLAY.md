@@ -30,7 +30,7 @@ PSSTH! convierte cualquier documento en un audiolibro: abre un PDF, una foto, un
 • Exporta capítulos o páginas en audio.
 • Diccionario de pronunciación para nombres, siglas y términos técnicos.
 
-Privacidad: lo básico se procesa en tu aparato y funciona sin internet. Sin cuentas obligatorias ni anuncios. Lo que se conecta es opcional y solo si lo activas: descargar voces y modelos, sincronizar con tu propio Google Drive, o resumir y transcribir hojas con DeepSeek usando tu propia clave.
+Privacidad: lo básico se procesa en tu aparato y funciona sin internet. Sin cuentas obligatorias ni anuncios. Lo que se conecta es opcional y solo si lo activas: descargar voces y modelos o sincronizar con tu propio Google Drive.
 
 El reconocimiento de texto y la voz pueden equivocarse; para cualquier uso formal consulta el documento original.
 
@@ -54,16 +54,15 @@ URL: https://cartagenacorrealimitada-cell.github.io/pssth-privacidad/
 
 ## Seguridad de los datos (borrador; es tu decisión final)
 Hechos: el desarrollador no tiene servidor y no recibe nada. Solo salen datos del aparato si la persona lo activa:
-- con su clave de DeepSeek: el texto que resume y las fotos de las hojas que transcribe van a DeepSeek;
 - con la sincronización: sus documentos y avance van a su propio Google Drive;
 - con la IA de la computadora: el texto va al Ollama de su propia red.
 
 Sugerencia conservadora para el formulario:
 - ¿Recopila o comparte datos? **Sí**.
-- Tipos: **Fotos** y **Archivos y documentos**. Recopilados: sí. Compartidos: no (los envía la persona por su acción y con su cuenta).
-- Uso: **Funcionalidad de la app**. Opcional: **sí**. Tratamiento efímero: **no** (no controlamos qué guarda DeepSeek).
-- Cifrados en tránsito: **sí** (HTTPS con DeepSeek, Google Drive y las descargas). Excepción: la IA de la computadora propia (Ollama) va por http dentro de la red local de la persona; no sale a internet ni llega al desarrollador.
-- ¿Se puede pedir que se borren?: los datos no llegan al desarrollador; en Drive y DeepSeek los borra la persona desde su cuenta.
+- Tipos: **Archivos y documentos**. Recopilados: sí. Compartidos: no (los envía la persona por su acción y con su cuenta).
+- Uso: **Funcionalidad de la app**. Opcional: **sí**. Tratamiento efímero: **no** (quedan en su Google Drive).
+- Cifrados en tránsito: **sí** (HTTPS con Google Drive y las descargas). Excepción: la IA de la computadora propia (Ollama) va por http dentro de la red local de la persona; no sale a internet ni llega al desarrollador.
+- ¿Se puede pedir que se borren?: los datos no llegan al desarrollador; en Drive los borra la persona desde su cuenta.
 
 ## Prueba cerrada (cuenta personal)
 Antes de publicar: al menos 12 personas en la prueba cerrada durante 14 días seguidos. Sus correos de Gmail se cargan en Play Console → Pruebas → Prueba cerrada → Testers.

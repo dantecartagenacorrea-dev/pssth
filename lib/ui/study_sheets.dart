@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../core/app_exception.dart';
 import '../domain/library_entry.dart';
 import '../domain/study.dart';
-import '../domain/external_ai_prompt.dart';
 import '../domain/summarizer.dart' show studySummaryExtractive;
 import '../platform/study_ai.dart';
 import '../playback/tts_audio_handler.dart';
@@ -60,7 +59,7 @@ class _StudySummary extends StatefulWidget {
 }
 
 class _StudySummaryState extends State<_StudySummary> {
-  final _ai = StudyAi(pcWithoutCorrection: true, useDeepSeek: true);
+  final _ai = StudyAi(pcWithoutCorrection: true);
   late final (List<String>, int) _source = studySource(widget.handler);
   StudyScope _scope = StudyScope.capitulo;
   bool _running = false;
@@ -109,8 +108,6 @@ class _StudySummaryState extends State<_StudySummary> {
     final parts = splitForStudy(
       pages.sublist(from, to).join('\n\n'),
       maxChars: switch (_engine) {
-        // De una vez: DeepSeek entiende mejor la clase entera.
-        StudyEngine.deepseek => externalAiMaxChars,
         StudyEngine.computer => StudyAi.pcSummaryChars,
         _ => 3500,
       },
@@ -182,8 +179,6 @@ class _StudySummaryState extends State<_StudySummary> {
       _result = partial.isEmpty ? null : withList(mergeSummaries(partial, overall: overall));
       if (partial.isEmpty) _error = lastError ?? 'No se pudo resumir este texto.';
     });
-    final notice = _ai.lastQuotaNotice;
-    if (notice != null && mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(notice)));
   }
 
   Future<void> _listen(List<String> lines) async {
@@ -248,9 +243,7 @@ class _StudySummaryState extends State<_StudySummary> {
               LinearProgressIndicator(value: _total == 0 ? null : _done / _total),
               const SizedBox(height: 6),
               Text(
-                _engine == StudyEngine.deepseek
-                    ? 'DeepSeek está leyendo y revisando el texto. Puede tardar uno o dos minutos.'
-                    : _engine == StudyEngine.computer
+                _engine == StudyEngine.computer
                     ? 'Tu computadora está leyendo la parte ${_done + 1 > _total ? _total : _done + 1} de $_total. '
                           'Puede tardar unos minutos.'
                     : 'Leyendo parte ${_done + 1 > _total ? _total : _done + 1} de $_total…',

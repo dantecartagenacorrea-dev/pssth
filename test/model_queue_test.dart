@@ -15,32 +15,20 @@ void main() {
     if (tmp.existsSync()) tmp.deleteSync(recursive: true);
   });
 
-  test('sin preguntar no baja nada, ni siquiera lo que se consulta', () async {
+  test('al arrancar no baja nada que no se haya pedido', () async {
     final queue = ModelQueue(ModelStore(tmp), () async {});
-    await queue.load();
-    expect(queue.consent, isNull);
-    queue.prioritize(whisperBaseModel);
+    await queue.start();
     expect(queue.busy, isFalse);
   });
 
-  test('la respuesta se recuerda', () async {
-    final queue = ModelQueue(ModelStore(tmp), () async {});
-    await queue.setConsent(false);
-    final again = ModelQueue(ModelStore(tmp), () async {});
-    await again.load();
-    expect(again.consent, isFalse);
-  });
-
-  test('la voz baja primero y lo instalado no cuenta como faltante', () async {
+  test('lo ya instalado no se vuelve a bajar al pedirlo', () {
     final store = ModelStore(tmp);
     final queue = ModelQueue(store, () async {});
-    expect(ModelQueue.all.first, supertonicModel);
-    final before = queue.missingBytes;
     final d = store.dirFor(supertonicModel)..createSync(recursive: true);
     for (final f in supertonicModel.requiredFiles) {
       File('${d.path}/$f').writeAsStringSync('x');
     }
-    expect(queue.missing, isNot(contains(supertonicModel)));
-    expect(queue.missingBytes, before - supertonicModel.sizeBytes);
+    queue.prioritize(supertonicModel);
+    expect(store.isInstalling(supertonicModel), isFalse);
   });
 }

@@ -25,7 +25,7 @@ PSSTH! convierte cualquier documento en una experiencia de audiolibro: abre un P
 - Lectura natural de textos jurídicos y contables: artículos, incisos, importes y porcentajes.
 - Diccionario de pronunciación para nombres, siglas y términos técnicos.
 
-Privacidad: lo básico se procesa en tu dispositivo y funciona sin Internet. Sin cuentas obligatorias ni anuncios. Lo que se conecta es opcional y solo si lo activas: descargar voces y modelos, sincronizar con tu Google Drive, o resumir y transcribir hojas con DeepSeek usando tu propia clave.
+Privacidad: lo básico se procesa en tu dispositivo y funciona sin Internet. Sin cuentas obligatorias ni anuncios. Lo que se conecta es opcional y solo si lo activas: descargar voces y modelos o sincronizar con tu Google Drive.
 
 Opcional para usuarios avanzados: corrección del texto con un modelo Ollama en tu propio ordenador, dentro de tu red (desactivada por defecto).
 
@@ -41,7 +41,7 @@ Productividad (secundaria: Educación)
 4+
 
 ## Privacidad de la app (cuestionario de App Store Connect)
-Revisado el 08-11 contra el código. La app no tiene analítica, publicidad, informes de fallos ni servidor propio: el desarrollador no recibe nada. Salen datos solo en dos funciones opcionales que la persona activa, y Apple pide declararlas porque un tercero (DeepSeek, Google) los guarda más allá del momento.
+Revisado el 08-11 contra el código. La app no tiene analítica, publicidad, informes de fallos ni servidor propio: el desarrollador no recibe nada. Salen datos solo en una función opcional que la persona activa, y Apple pide declararla porque Google los guarda más allá del momento.
 
 **¿Recopilan datos usted o sus socios externos?** Sí.
 
@@ -49,8 +49,7 @@ Revisado el 08-11 contra el código. La app no tiene analítica, publicidad, inf
 
 | Tipo | Por qué | Uso | ¿Vinculado a la persona? | ¿Seguimiento? |
 |---|---|---|---|---|
-| Fotos o videos | La IA DeepSeek, con la clave propia de la persona, recibe la foto de la hoja para leerla (`deepseek_client.dart`) | Funcionalidad de la app | Sí (va a la cuenta DeepSeek de la persona) | No |
-| Otro contenido del usuario | DeepSeek recibe el texto para resumir o corregir; la sincronización sube documentos, avance y marcas al Google Drive de la persona (carpeta privada de la app, `driveAppdataScope`) | Funcionalidad de la app | Sí (cuenta DeepSeek / cuenta Google de la persona) | No |
+| Otro contenido del usuario | La sincronización sube documentos, avance y marcas al Google Drive de la persona (carpeta privada de la app, `driveAppdataScope`) | Funcionalidad de la app | Sí (cuenta Google de la persona) | No |
 
 No marcar: datos de contacto, ubicación, identificadores, uso, diagnóstico, compras, salud, finanzas, contactos, búsquedas ni audio (la voz y el dictado se hacen en el iPhone). El correo de Google lo maneja el inicio de sesión de Google y el desarrollador no lo recibe.
 
@@ -76,8 +75,8 @@ Necesarias: iPhone 6,7" (1290×2796) y opcionalmente 6,5". Tomarlas en el iPhone
 La app no requiere cuenta. Para probar: abrir cualquier PDF desde Archivos con "Abrir en PSSTH!" y pulsar Play. El permiso de cámara/fotos solo se solicita al usar esas funciones (incluido «Escanear a PDF», que crea el PDF en el dispositivo y solo lo entrega por la hoja Compartir); el de micrófono y reconocimiento de voz, solo al pulsar «Grabar clase o conversación» (la transcripción se hace en el dispositivo). Los modelos opcionales de voz natural y transcripción se descargan desde GitHub en «Voces y modelos» y no son necesarios para probar la app. La "Corrección avanzada (IA local)" está desactivada por defecto, necesita un servidor Ollama propio del usuario en su red y no es necesaria para probar la app; el permiso de red local solo se solicita al activarla.
 
 ## Texto de los permisos (ya en Info.plist)
-- NSCameraUsageDescription: "PSSTH! usa la cámara para fotografiar páginas y leerlas en voz alta. Las fotos se procesan en tu dispositivo; solo si pones tu clave de DeepSeek, las hojas que transcribes se envían a DeepSeek."
-- NSPhotoLibraryUsageDescription: "PSSTH! necesita acceder a tus fotos para leer en voz alta el texto de una imagen. Se procesa en tu dispositivo; solo si pones tu clave de DeepSeek, las hojas que transcribes se envían a DeepSeek."
+- NSCameraUsageDescription: "PSSTH! usa la cámara para fotografiar páginas y leerlas en voz alta. Las fotos se procesan en tu dispositivo."
+- NSPhotoLibraryUsageDescription: "PSSTH! necesita acceder a tus fotos para leer en voz alta el texto de una imagen. Se procesa en tu dispositivo."
 - NSMicrophoneUsageDescription: "PSSTH! usa el micrófono para grabar clases o conversaciones. El audio se guarda y se transcribe solo en tu dispositivo."
 - NSSpeechRecognitionUsageDescription: "PSSTH! transcribe tus grabaciones con el reconocimiento de voz del iPhone, sin enviarlas a ningún servidor."
 - NSLocalNetworkUsageDescription: "PSSTH! se conecta a tu propio ordenador en la red local solo si conectas la IA de tu computadora."

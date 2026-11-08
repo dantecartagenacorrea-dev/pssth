@@ -158,7 +158,6 @@ Future<void> main() async {
     await engine.retryPrimary();
     await handler.reloadVoices();
   });
-  await ModelQueue.instance.load();
 
   // Si la voz natural deja de responder, se sigue con la del sistema y se avisa.
   engine.onFallback = (_) => handler.notice('La voz natural no respondió: sigo con la voz del sistema.');

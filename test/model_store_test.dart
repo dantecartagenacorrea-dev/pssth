@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:lector_pdf/data/model_queue.dart';
 import 'package:lector_pdf/data/model_store.dart';
 
 void main() {
@@ -89,16 +88,14 @@ void main() {
     expect(isVoiceModel(dictationModel), isFalse);
   });
 
-  test('la voz Luna (Supertonic) es la que se baja primero y todos sus archivos están verificados', () {
-    expect(ModelQueue.all.first, supertonicModel);
+  test('la voz Luna (Supertonic) tiene todos sus archivos verificados', () {
     expect(isVoiceModel(supertonicModel), isTrue);
     expect(supertonicModel.files.map((f) => f.name), supertonicModel.requiredFiles);
     expect(supertonicModel.files.every((f) => f.sha256.length == 64), isTrue);
     expect(supertonicModel.files.fold<int>(0, (n, f) => n + f.sizeBytes), supertonicModel.sizeBytes);
   });
 
-  test('El dictado en español se baja solo en Android y su paquete está verificado', () {
-    expect(ModelQueue.all, Platform.isAndroid ? contains(dictationModel) : isNot(contains(dictationModel)));
+  test('El paquete del dictado en español está verificado', () {
     expect(dictationModel.requiredFiles, ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt']);
     // Un solo paquete verificado por su huella; Parakeet se borra al iniciar.
     expect(dictationModel.sha256.length, 64);

@@ -54,8 +54,6 @@ import 'calculator_screen.dart';
 import 'scan_review_screen.dart';
 import 'floating_panel.dart';
 import '../playback/tts_audio_handler.dart';
-import '../services/deepseek_client.dart';
-import '../domain/deepseek_quota.dart' show deepSeekMaxUses;
 import '../services/llm_cleaner.dart';
 import 'first_run_guide.dart';
 import 'listening_stats_screen.dart';
@@ -128,7 +126,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final isNewUser = pending == null && widget.libraryStore.data.entries.isEmpty;
       if (mounted) await FirstRunGuide.showOnce(context, isNewUser: isNewUser);
       if (pending != null) await _importExternal(pending);
-      await _askModelsOnce();
       await _offerSyncOnce();
       _offerReauthorize();
     });
@@ -172,36 +169,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         action: SnackBarAction(label: 'Autorizar', onPressed: () => unawaited(sync.signIn())),
       ),
     );
-  }
-
-  static const _whatItDoes = {
-    'supertonic': 'Voz natural: Luna, la voz que suena como una persona al leer.',
-    'dictado-es': 'Transcripción: pasa a texto lo que grabas, sin Internet.',
-    'whisper': 'Transcripción: pasa a texto lo que grabas, sin Internet.',
-  };
-
-  /// Una sola vez: ¿bajar en segundo plano la voz natural y los demás modelos?
-  Future<void> _askModelsOnce() async {
-    final queue = ModelQueue.instance;
-    if (queue.consent != null || queue.missing.isEmpty || !mounted) return;
-    final mb = (queue.missingBytes / (1024 * 1024)).round();
-    final yes = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Completar la app'),
-        content: Text(
-          'Hay complementos que no vienen dentro de la app:\n\n'
-          '${queue.missing.map((m) => '• ${_whatItDoes[m.id] ?? m.title}\n').join()}'
-          '\n¿Los descargo ahora ($mb MB)? Puedes seguir usando la app mientras tanto.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Ahora no')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Descargar')),
-        ],
-      ),
-    );
-    await queue.setConsent(yes ?? false);
   }
 
   void _openVoices() => Navigator.of(context).push(
@@ -289,7 +256,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
   /// como un documento más (se puede escuchar, buscar y resumir).
   Future<void> _record() async {
     if (!await _speech.isAvailable()) {
-      ModelQueue.instance.prioritize(_transcriptionModel);
       if (!mounted) return;
       // Sin transcripción la grabación queda solo como audio: se avisa antes.
       final choice = await showDialog<String>(
@@ -300,9 +266,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
             widget.modelStore.isInstalling(_transcriptionModel)
                 ? 'La transcripción sin conexión se está bajando en segundo plano. Si grabas antes de '
                       'que termine, la grabación se guarda solo como audio.'
-                : 'Para convertir la grabación en texto hay que descargar una vez el modelo de '
-                      'transcripción sin conexión (${_transcriptionModel.sizeLabel}) en Voces y modelos. '
-                      'Sin él, la grabación se guarda solo como audio.',
+                : 'Para convertir la grabación en texto se baja una sola vez la transcripción sin conexión '
+                      '(${_transcriptionModel.sizeLabel}). Sin ella, la grabación se guarda solo como audio.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, 'grabar'), child: const Text('Grabar igual')),
@@ -312,11 +277,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
       if (!mounted || choice == null) return;
       if (choice == 'descargar') {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) =>
-                VoicesScreen(modelStore: widget.modelStore, onModelsChanged: widget.onModelsChanged, native: _native),
-          ),
+        ModelQueue.instance.prioritize(_transcriptionModel);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Bajando la transcripción (${_transcriptionModel.sizeLabel}). Puedes seguir usando la app.')),
         );
         return;
       }
@@ -993,7 +956,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
               for (final (value, icon, label) in const [
                 ('voces', CupertinoIcons.waveform, 'Voces y modelos'),
                 ('pronunciacion', CupertinoIcons.ear, 'Pronunciación'),
-                ('deepseek', CupertinoIcons.sparkles, 'DeepSeek (resúmenes y hojas)'),
                 ('ia', CupertinoIcons.desktopcomputer, 'Corrección avanzada (IA local)'),
                 ('comodidad', CupertinoIcons.paintbrush, 'Aspecto y letra'),
                 ('estadisticas', CupertinoIcons.chart_bar, 'Estadísticas de escucha'),
@@ -1015,8 +977,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         await Navigator.of(
           context,
         ).push(MaterialPageRoute(builder: (_) => PronunciationScreen(store: widget.pronunciationStore)));
-      case 'deepseek':
-        await _showDeepSeekSettings(context);
       case 'ia':
         _showLlmSettings(context);
       case 'comodidad':
@@ -1042,8 +1002,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           applicationLegalese:
               'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo, salvo lo que '
               'actives: se usa Internet si descargas los modelos opcionales (desde GitHub y Hugging Face), si '
-              'sincronizas con Google Drive o si pones tu clave de DeepSeek (entonces el texto que resumes y las '
-              'fotos de las hojas que transcribes se envían a DeepSeek). La red local solo se usa si conectas la IA '
+              'sincronizas con Google Drive. La red local solo se usa si conectas la IA '
               'de tu computadora.\n\n'
               'El reconocimiento de texto (OCR) y la voz pueden contener errores; '
               'consulta siempre el documento original para cualquier uso formal.\n\n'
@@ -1307,9 +1266,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Future<void> _reviewAndSave(List<String> paths) async {
     await LlmCleaner.instance.load();
-    // Con clave, DeepSeek mira la foto al «Transcribir»: lee mejor que el lector
-    // común en hojas arrugadas (prueba 2026-11-06). Si no, la IA de la computadora.
-    final withDeepSeek = await DeepSeekClient.instance.available();
     if (!mounted) return;
     final now = DateTime.now();
     try {
@@ -1324,12 +1280,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
               final data = await rootBundle.load('assets/words/spanish_words.bin');
               return SpanishWords(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes));
             },
-            readWithAi: !withDeepSeek && !LlmCleaner.instance.ready
+            readWithAi: !LlmCleaner.instance.ready
                 ? null
                 : (path) async {
                     try {
                       final photo = await photoForAi(path);
-                      if (withDeepSeek) return await DeepSeekClient.instance.readPage(photo);
                       return await LlmCleaner.instance.readPage(photo);
                     } on FileSystemException {
                       return null;
@@ -1571,8 +1526,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
       // IA local: lo ya corregido en otra apertura se usa al momento; el resto
       // se corrige en segundo plano mientras se escucha (ver _runLlm).
       final llm = LlmCleaner.instance;
-      // DeepSeek no corrige escaneos: probado el 2026-11-06, sin ver la foto
-      // dejaba los errores y cambiaba palabras que estaban bien.
       final corrected = llm.ready ? await _corrected.load(updated.id, model: llm.model) : const <int, String>{};
       for (final e in corrected.entries) {
         if (e.key < doc.pages.length) doc.pages[e.key] = e.value;
@@ -1801,72 +1754,6 @@ Future<void> _showLlmSettings(BuildContext context) async {
       ),
     ),
   );
-}
-
-/// Clave de DeepSeek: con ella, Resumen usa DeepSeek por internet.
-Future<void> _showDeepSeekSettings(BuildContext context) async {
-  final ds = DeepSeekClient.instance;
-  await ds.load();
-  final keyCtl = TextEditingController();
-  var status = ds.hasKey ? 'Hay una clave guardada.' : 'Sin clave: el Resumen y las hojas no usan DeepSeek.';
-  if (!context.mounted) return;
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) => StatefulBuilder(
-      builder: (ctx, setS) => AlertDialog(
-        title: const Text('DeepSeek'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Con tu clave de DeepSeek, el Resumen y «Transcribir» en las hojas escaneadas los hace DeepSeek. '
-              'El texto que resumes y las fotos de esas hojas se envían por internet a DeepSeek, y cada uso gasta '
-              'saldo de tu cuenta (hasta $deepSeekMaxUses usos por día).',
-              style: TextStyle(fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: keyCtl,
-              obscureText: true,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: InputDecoration(labelText: ds.hasKey ? 'Clave nueva (opcional)' : 'Clave (sk-…)'),
-            ),
-            const SizedBox(height: 8),
-            Text(status, style: const TextStyle(fontSize: 12)),
-          ],
-        ),
-        actions: [
-          if (ds.hasKey)
-            TextButton(
-              onPressed: () async {
-                await ds.saveKey('');
-                setS(() => status = 'Clave borrada.');
-              },
-              child: const Text('Borrar'),
-            ),
-          TextButton(
-            onPressed: () async {
-              if (keyCtl.text.trim().isNotEmpty) await ds.saveKey(keyCtl.text);
-              setS(() => status = 'Probando…');
-              final e = await ds.ping();
-              setS(() => status = e ?? 'Conectado ✓');
-            },
-            child: const Text('Probar'),
-          ),
-          TextButton(
-            onPressed: () async {
-              if (keyCtl.text.trim().isNotEmpty) await ds.saveKey(keyCtl.text);
-              if (ctx.mounted) Navigator.pop(ctx);
-            },
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
-    ),
-  );
-  keyCtl.dispose();
 }
 
 /// Biblioteca sin documentos: qué se puede abrir y un botón para empezar.

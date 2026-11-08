@@ -1,15 +1,13 @@
-import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/activity.dart';
 import '../core/perf_log.dart';
 import 'model_store.dart';
 
-/// Baja los modelos opcionales en segundo plano, uno detrás de otro, después
-/// de preguntar una sola vez. Lo que se consulta pasa adelante.
+/// Baja en segundo plano los modelos que la persona pide y retoma los que
+/// quedaron a medias. Nada se baja sin que se pida: la app arranca liviana.
 class ModelQueue extends ChangeNotifier {
   ModelQueue(this.store, this.onInstalled) {
     store.addListener(notifyListeners);
@@ -18,75 +16,26 @@ class ModelQueue extends ChangeNotifier {
   /// La cola de la app (se crea al arrancar).
   static late ModelQueue instance;
 
-  static const _consentKey = 'models_auto';
-
   final ModelStore store;
 
   /// Avisa a la voz que hay un modelo de voz nuevo.
   final Future<void> Function() onInstalled;
 
-  /// null: todavía no se preguntó. true: bajar solos. false: solo a mano.
-  bool? consent;
-  bool _running = false;
-
-  /// En el orden en que se bajan: primero la voz natural, que se usa siempre;
-  /// luego la transcripción (en Android, el dictado en español).
-  static List<ModelSpec> get all => [supertonicModel, Platform.isAndroid ? dictationModel : whisperBaseModel];
-
-  List<ModelSpec> get missing => [
-    for (final m in all)
-      if (!store.isInstalled(m)) m,
-  ];
-
-  int get missingBytes => missing.fold(0, (a, m) => a + m.sizeBytes);
-
   /// ¿Se está bajando o instalando algo ahora?
-  bool get busy => all.any(store.isInstalling);
+  bool get busy => optionalModels.any(store.isInstalling);
 
-  Future<void> load() async {
-    final p = await SharedPreferences.getInstance();
-    consent = p.getBool(_consentKey);
-  }
-
-  Future<void> setConsent(bool value) async {
-    consent = value;
-    notifyListeners();
-    final p = await SharedPreferences.getInstance();
-    await p.setBool(_consentKey, value);
-    if (value) unawaited(run());
-  }
-
-  /// Retoma lo que quedó bajando con la app cerrada y, con permiso, sigue
-  /// con lo que falta.
+  /// Retoma lo que quedó bajando con la app cerrada.
   Future<void> start() async {
     await store.removeRetired();
     for (final m in optionalModels) {
       if (store.isInstalled(m) || store.isInstalling(m)) continue;
       if (await store.hasPendingDownload(m)) unawaited(_install(m));
     }
-    if (consent == true) await run();
   }
 
-  /// Baja lo que falta de a uno. Si algo falla (sin red), se detiene: se
-  /// vuelve a intentar al abrir la app otra vez.
-  Future<void> run() async {
-    if (_running) return;
-    _running = true;
-    try {
-      for (final m in all) {
-        if (store.isInstalled(m)) continue;
-        if (!await _install(m)) break;
-      }
-    } finally {
-      _running = false;
-    }
-  }
-
-  /// Lo que el usuario acaba de pedir baja ya, sin esperar su turno.
+  /// Baja ya lo que la persona acaba de pedir.
   void prioritize(ModelSpec m) {
-    if (consent != true || store.isInstalled(m) || store.isInstalling(m)) {
-      return;
-    }
+    if (store.isInstalled(m) || store.isInstalling(m)) return;
     unawaited(_install(m));
   }
 
