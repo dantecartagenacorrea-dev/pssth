@@ -39,7 +39,7 @@ Textos, ícono 512 px, imagen destacada 1024×500 y capturas de `tienda/play/`.
 ## 5. Después de subir el AAB
 - Configuración > Integridad de la app > **Firma de apps**: copiar la **SHA-1 de la clave de firma de apps** (la de Google, no la de subida).
 - Google Cloud (proyecto pssth-514022) > Credenciales > crear cliente OAuth **Android** con `com.lectorpdf.lectorPdf` y esa SHA-1. Sin esto, «Sincronizar con Google Drive» falla en la app bajada de Play.
-- Google Cloud > Pantalla de consentimiento > Marca: página principal y política de privacidad (la URL de arriba) y **Publicar app** (pasar de Prueba a Producción; drive.appdata no es sensible, no pide revisión larga).
+- Google Cloud > Google Auth Platform > Público > **Publicar app** (pasar de Prueba a Producción; drive.appdata no es sensible y no pide revisión). Mientras siga en Prueba, solo entran a Drive los correos cargados como usuarios de prueba (hasta 100). Ya hecho el 08-11: página principal, política y dominio autorizado en Marca; cliente iOS creado y puesto en `ios/Runner/Info.plist`.
 
 ## 6. Producción
 A los 14 días con 12 verificadores activos aparece **Solicitar acceso a producción**: responder el cuestionario sobre la prueba (cuántos la usaron, qué se corrigió). Con la aprobación, promover la versión a Producción.

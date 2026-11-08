@@ -11,8 +11,11 @@ import '../tts_engine.dart';
 /// Motor del sistema (AVSpeechSynthesizer en iOS, TextToSpeech en Android).
 /// Estable, ligero, offline. Es el fallback universal.
 class AppleTtsEngine extends TtsEngine {
-  AppleTtsEngine([FlutterTts? tts]) : _tts = tts ?? FlutterTts();
+  AppleTtsEngine([FlutterTts? tts, this._baseLimit = const Duration(seconds: 10)]) : _tts = tts ?? FlutterTts();
   final FlutterTts _tts;
+
+  /// Espera mínima antes de dar por muda una voz que no avisa palabras.
+  final Duration _baseLimit;
 
   @override
   String get id => 'apple';
@@ -105,8 +108,9 @@ class AppleTtsEngine extends TtsEngine {
   /// Lee [text] y vigila que la voz siga sonando: si el servicio de voz del
   /// sistema muere a media frase (pasa en Android cuando se actualiza o el
   /// sistema lo cierra), la frase nunca termina y la lectura quedaba muda.
-  /// Entonces se detiene y se vuelve a leer una vez; si sigue muda, se pasa a
-  /// la siguiente en vez de quedarse en silencio.
+  /// Entonces se detiene y se vuelve a leer una vez; si sigue muda, avisa con
+  /// un error para que el lector pase a otra voz y repita la frase, en vez de
+  /// saltarla sin que se oiga.
   @override
   Future<void> speak(String text) async {
     final my = ++_gen;
@@ -119,6 +123,7 @@ class AppleTtsEngine extends TtsEngine {
       } catch (_) {}
       if (my != _gen) return;
     }
+    throw StateError('La voz del sistema no suena.');
   }
 
   /// true si terminó (o se pausó/detuvo); false si la voz quedó muda.
@@ -127,7 +132,7 @@ class AppleTtsEngine extends TtsEngine {
     final started = DateTime.now();
     _lastActivity = started;
     // Límite total para voces que no avisan palabra por palabra.
-    final limit = Duration(seconds: 10 + (text.length * 0.4).round());
+    final limit = _baseLimit + Duration(seconds: (text.length * 0.4).round());
     final done = _tts.speak(text).then((_) => true, onError: (_) => true);
     while (true) {
       final finished = await Future.any([done, _abort.future, Future.delayed(const Duration(seconds: 1), () => false)]);
