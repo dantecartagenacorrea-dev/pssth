@@ -7,7 +7,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// Descargas grandes con el gestor de descargas de Android: siguen aunque la
 /// app pase a segundo plano o se cierre, y se ven en la barra de
 /// notificaciones. La descarga en curso se recuerda para retomarla al volver.
+/// La persona canceló la descarga.
+class DownloadCancelled implements Exception {
+  const DownloadCancelled();
+}
+
+/// Mensaje cuando una descarga deja de avanzar (sin red, esperando Wi-Fi).
+const kDownloadStalled =
+    'La descarga está detenida (sin conexión o esperando Wi-Fi). Sigue sola cuando haya conexión; '
+    'vuelve a tocar Instalar para seguirla.';
+
 class SystemDownload {
+  /// Si no avanza en este tiempo, se deja de esperar (la descarga sigue en el
+  /// gestor de Android y se retoma al volver a pedirla).
+  static const stallLimit = Duration(minutes: 3);
+
   static const _channel = MethodChannel('lector/download');
   static String _key(String name) => 'descarga_$name';
   static String _pathKey(String name) => 'descarga_ruta_$name';
@@ -42,6 +56,7 @@ class SystemDownload {
     required String title,
     required int expectedBytes,
     void Function(double fraction)? onFraction,
+    bool Function()? shouldStop,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     var id = prefs.getInt(_key(name));
@@ -65,9 +80,21 @@ class SystemDownload {
       await prefs.setInt(_key(name), id);
       await prefs.setString(_pathKey(name), path);
     }
+    var lastDone = -1;
+    var lastMove = DateTime.now();
     while (true) {
+      if (shouldStop?.call() ?? false) {
+        await forget(name);
+        throw const DownloadCancelled();
+      }
       final q = await _query(id);
       final done = (q['done'] as num?)?.toInt() ?? 0;
+      if (done != lastDone) {
+        lastDone = done;
+        lastMove = DateTime.now();
+      } else if (DateTime.now().difference(lastMove) > stallLimit) {
+        throw const SocketException(kDownloadStalled);
+      }
       final total = (q['total'] as num?)?.toInt() ?? -1;
       final size = total > 0 ? total : expectedBytes;
       if (size > 0) onFraction?.call((done / size).clamp(0, 1).toDouble());

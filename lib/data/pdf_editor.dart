@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
-import 'dart:io' show Directory, File;
+import 'dart:io' show Directory, File, FileSystemException;
 import 'dart:ui' show Offset, Rect;
 
 import 'package:ffi/ffi.dart';
@@ -33,10 +33,11 @@ class PageClip {
 /// Lo que se puede deshacer, de lo último a lo primero.
 sealed class _Undo {}
 
-/// El documento entero antes de un cambio de páginas.
+/// El documento entero antes de un cambio de páginas, guardado en un archivo
+/// temporal: en memoria, un libro grande ocupaba cientos de MB tras unos giros.
 final class _Snapshot extends _Undo {
-  _Snapshot(this.bytes);
-  final Uint8List bytes;
+  _Snapshot(this.file);
+  final File file;
 }
 
 /// Anotación agregada al final de la lista de la página.
@@ -76,7 +77,39 @@ class PdfEditor {
   final ValueNotifier<int> changes = ValueNotifier(0);
   final List<_Undo> _undo = [];
 
+  /// Cuántos pasos se pueden deshacer (los más viejos se olvidan).
+  static const maxUndo = 30;
+
+  /// Carpeta de las copias para deshacer; se borra al cerrar.
+  Directory? _undoDir;
+  var _snapshots = 0;
+
   bool get canUndo => _undo.isNotEmpty;
+
+  /// Pasos guardados para deshacer (para pruebas).
+  @visibleForTesting
+  int get undoDepth => _undo.length;
+
+  void _push(_Undo step) {
+    _undo.add(step);
+    while (_undo.length > maxUndo) {
+      final old = _undo.removeAt(0);
+      if (old is _Snapshot) _deleteQuietly(old.file);
+    }
+  }
+
+  static void _deleteQuietly(File f) {
+    try {
+      if (f.existsSync()) f.deleteSync();
+    } on FileSystemException {
+      // se borra con la carpeta al cerrar
+    }
+  }
+
+  Future<File> _keep(Uint8List bytes) async {
+    final dir = _undoDir ??= await Directory.systemTemp.createTemp('deshacer_pdf');
+    return File('${dir.path}/${_snapshots++}.pdf').writeAsBytes(bytes, flush: true);
+  }
   int get pageCount => doc.pages.length;
 
   static Future<PdfEditor> openFile(String path) async {
@@ -95,7 +128,14 @@ class PdfEditor {
     return PdfEditor._(doc, signed, locked);
   }
 
-  Future<void> dispose() => _doc.dispose();
+  Future<void> dispose() async {
+    await _doc.dispose();
+    try {
+      await _undoDir?.delete(recursive: true);
+    } on FileSystemException {
+      // temporales: el sistema los limpia
+    }
+  }
 
   void _changed() => changes.value++;
 
@@ -209,11 +249,11 @@ class PdfEditor {
   }
 
   Future<void> _pagesOp(void Function(pf.FPDF_DOCUMENT d) op) async {
-    final before = await _doc.encodePdf();
+    final before = await _keep(await _doc.encodePdf());
     final handle = await _doc.useNativeDocumentHandle((h) => h);
     await PdfrxEntryFunctions.instance.compute(_runOnDoc, (doc: handle, work: op));
     await _reopen(await _doc.encodePdf());
-    _undo.add(_Snapshot(before));
+    _push(_Snapshot(before));
     _changed();
   }
 
@@ -259,8 +299,9 @@ class PdfEditor {
     if (_undo.isEmpty) return;
     final last = _undo.removeLast();
     switch (last) {
-      case _Snapshot(:final bytes):
-        await _reopen(bytes);
+      case _Snapshot(:final file):
+        await _reopen(await file.readAsBytes());
+        _deleteQuietly(file);
       case _AnnotAdded(:final page, :final index):
         await _withPage(page, _removeAnnotWork(index));
       case _ObjectsAdded(:final page, :final from):
@@ -281,13 +322,13 @@ class PdfEditor {
 
   Future<void> _addAnnot(int pageIndex, int subtype, _AnnotFill fill) async {
     final index = await _withPage(pageIndex, _annotWork(subtype, fill));
-    _undo.add(_AnnotAdded(pageIndex, index));
+    _push(_AnnotAdded(pageIndex, index));
     _changed();
   }
 
   Future<void> _addObjects(int pageIndex, _PageWork<void> add) async {
     final from = await _withPage(pageIndex, _objectsWork(add));
-    _undo.add(_ObjectsAdded(pageIndex, from));
+    _push(_ObjectsAdded(pageIndex, from));
     _changed();
   }
 

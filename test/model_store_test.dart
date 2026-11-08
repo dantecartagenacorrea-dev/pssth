@@ -97,11 +97,46 @@ void main() {
     expect(supertonicModel.files.fold<int>(0, (n, f) => n + f.sizeBytes), supertonicModel.sizeBytes);
   });
 
-  test('El dictado en español es opcional: no entra en las descargas automáticas y sus archivos están verificados', () {
-    expect(ModelQueue.all, isNot(contains(dictationModel)));
+  test('El dictado en español se baja solo en Android y su paquete está verificado', () {
+    expect(ModelQueue.all, Platform.isAndroid ? contains(dictationModel) : isNot(contains(dictationModel)));
     expect(dictationModel.requiredFiles, ['encoder.int8.onnx', 'decoder.int8.onnx', 'joiner.int8.onnx', 'tokens.txt']);
     // Un solo paquete verificado por su huella; Parakeet se borra al iniciar.
     expect(dictationModel.sha256.length, 64);
     expect(dictationModel.prune, ['test_wavs']);
+  });
+
+  test('cancelar a mitad de la descarga no deja nada instalado ni archivos sueltos', () async {
+    // Servidor local que manda el archivo de a poco, sin terminar nunca.
+    final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+    addTearDown(() => server.close(force: true));
+    server.listen((req) async {
+      req.response.contentLength = 1000000;
+      for (var i = 0; i < 1000; i++) {
+        req.response.add(List.filled(100, 1));
+        await req.response.flush();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+      }
+      await req.response.close();
+    });
+    final store = ModelStore(tmp);
+    final spec = ModelSpec(
+      id: 'lento',
+      title: 'Lento',
+      url: 'http://127.0.0.1:${server.port}',
+      sizeBytes: 1000000,
+      sha256: '',
+      extractedDir: '',
+      requiredFiles: const ['a.bin'],
+      files: [ModelFile('a.bin', 'http://127.0.0.1:${server.port}/a.bin', 1000000, 'x' * 64)],
+    );
+    final install = store.install(spec);
+    while (store.progressOf(spec)?.fraction == null || store.progressOf(spec)!.fraction! <= 0) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
+    store.cancel(spec);
+    await expectLater(install, throwsA(isA<ModelInstallCancelled>()));
+    expect(store.isInstalled(spec), isFalse);
+    expect(store.isInstalling(spec), isFalse);
+    expect(tmp.listSync().where((e) => e.path.contains('.tmp_')), isEmpty);
   });
 }

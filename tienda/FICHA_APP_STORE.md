@@ -41,7 +41,22 @@ Productividad (secundaria: Educación)
 4+
 
 ## Privacidad de la app (cuestionario de App Store Connect)
-PENDIENTE DE REVISAR antes de enviar: el desarrollador no recibe datos ni hace seguimiento, pero con la clave de DeepSeek de la persona salen textos y fotos de hojas hacia DeepSeek, y con la sincronización los datos van a su propio Google Drive. Confirmar en el cuestionario de App Store Connect si eso cuenta como datos recopilados por terceros. La IA de la computadora (Ollama) envía texto solo al servidor que el usuario configura.
+Revisado el 08-11 contra el código. La app no tiene analítica, publicidad, informes de fallos ni servidor propio: el desarrollador no recibe nada. Salen datos solo en dos funciones opcionales que la persona activa, y Apple pide declararlas porque un tercero (DeepSeek, Google) los guarda más allá del momento.
+
+**¿Recopilan datos usted o sus socios externos?** Sí.
+
+**Tipos de datos a marcar** (Contenido del usuario):
+
+| Tipo | Por qué | Uso | ¿Vinculado a la persona? | ¿Seguimiento? |
+|---|---|---|---|---|
+| Fotos o videos | La IA DeepSeek, con la clave propia de la persona, recibe la foto de la hoja para leerla (`deepseek_client.dart`) | Funcionalidad de la app | Sí (va a la cuenta DeepSeek de la persona) | No |
+| Otro contenido del usuario | DeepSeek recibe el texto para resumir o corregir; la sincronización sube documentos, avance y marcas al Google Drive de la persona (carpeta privada de la app, `driveAppdataScope`) | Funcionalidad de la app | Sí (cuenta DeepSeek / cuenta Google de la persona) | No |
+
+No marcar: datos de contacto, ubicación, identificadores, uso, diagnóstico, compras, salud, finanzas, contactos, búsquedas ni audio (la voz y el dictado se hacen en el iPhone). El correo de Google lo maneja el inicio de sesión de Google y el desarrollador no lo recibe.
+
+No cuentan como recopilación: la IA de la computadora (Ollama), porque va a un servidor de la propia persona en su red; abrir enlaces o videos de YouTube, porque solo se pide la página que la persona eligió; y bajar las voces, porque no se envía ningún dato de la persona.
+
+**Seguimiento (ATT):** no. No se cruza nada con datos de otras empresas ni se usa para publicidad.
 
 ## URL de política de privacidad
 https://cartagenacorrealimitada-cell.github.io/pssth-privacidad/

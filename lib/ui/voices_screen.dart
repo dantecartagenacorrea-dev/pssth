@@ -75,6 +75,8 @@ class _VoicesScreenState extends State<VoicesScreen> {
         },
       );
       if (isVoiceModel(m)) await widget.onModelsChanged();
+    } on ModelInstallCancelled {
+      // la persona lo pidió: no es un error
     } on ModelInstallException catch (e) {
       _errors[m.id] = e.message;
     } catch (e) {
@@ -131,7 +133,13 @@ class _VoicesScreenState extends State<VoicesScreen> {
             if (p != null) ...[
               LinearProgressIndicator(value: p.fraction),
               const SizedBox(height: 6),
-              Text(p.label, style: Theme.of(context).textTheme.bodySmall),
+              Row(
+                children: [
+                  Expanded(child: Text(p.label, style: Theme.of(context).textTheme.bodySmall)),
+                  if (p.phase == ModelPhase.downloading)
+                    TextButton(onPressed: () => widget.modelStore.cancel(m), child: const Text('Cancelar')),
+                ],
+              ),
             ] else if (installed)
               Row(
                 children: [

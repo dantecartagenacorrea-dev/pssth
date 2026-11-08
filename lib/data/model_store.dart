@@ -320,12 +320,33 @@ class ModelInstallException implements Exception {
   String toString() => message;
 }
 
+/// La persona canceló la instalación: no es un error que haya que mostrar.
+class ModelInstallCancelled extends ModelInstallException {
+  ModelInstallCancelled() : super('Descarga cancelada.');
+}
+
 class ModelStore extends ChangeNotifier {
   ModelStore(this.root);
 
   /// Carpeta raíz (p. ej. la carpeta de documentos de la app + `/models`).
   final Directory root;
   final Map<String, Future<void>> _installing = {};
+
+  /// Instalaciones que la persona pidió cancelar.
+  final Set<String> _cancelled = {};
+
+  /// Cancela la instalación en curso de [spec]: se borra lo descargado.
+  void cancel(ModelSpec spec) {
+    if (!isInstalling(spec)) return;
+    _cancelled.add(spec.id);
+    notifyListeners();
+  }
+
+  bool _stopped(ModelSpec spec) => _cancelled.contains(spec.id);
+
+  void _checkStop(ModelSpec spec) {
+    if (_stopped(spec)) throw ModelInstallCancelled();
+  }
   final Map<String, ModelProgress> _progress = {};
 
   /// Avance de la instalación en curso (null si no se está instalando): la
@@ -424,6 +445,7 @@ class ModelStore extends ChangeNotifier {
   }
 
   Future<void> _install(ModelSpec spec, void Function(ModelProgress p)? onProgress) async {
+    _cancelled.remove(spec.id);
     await root.create(recursive: true);
     final tmp = Directory('${root.path}/.tmp_${spec.id}');
     if (await tmp.exists()) await tmp.delete(recursive: true);
@@ -449,12 +471,14 @@ class ModelStore extends ChangeNotifier {
           title: 'PSSTH! · ${spec.title}',
           expectedBytes: spec.sizeBytes,
           onFraction: (f) => report(ModelProgress(ModelPhase.downloading, f)),
+          shouldStop: () => _stopped(spec),
         );
       } else {
         await _download(spec.url, archive, spec.sizeBytes, (f) {
           report(ModelProgress(ModelPhase.downloading, f));
-        });
+        }, shouldStop: () => _stopped(spec));
       }
+      _checkStop(spec);
       report(const ModelProgress(ModelPhase.verifying));
       final digest = await sha256.bind(archive.openRead()).first;
       if (digest.toString() != spec.sha256) {
@@ -484,6 +508,10 @@ class ModelStore extends ChangeNotifier {
       report(const ModelProgress(ModelPhase.done));
     } on ModelInstallException {
       rethrow;
+    } on DownloadCancelled {
+      throw ModelInstallCancelled();
+    } on TimeoutException {
+      throw ModelInstallException(kDownloadStalled);
     } on SocketException catch (e) {
       throw ModelInstallException(
         e.osError == null && e.message.isNotEmpty
@@ -495,11 +523,23 @@ class ModelStore extends ChangeNotifier {
     } catch (e) {
       throw ModelInstallException('No se pudo instalar: $e');
     } finally {
+      if (_stopped(spec)) await _forgetDownloads(spec);
+      _cancelled.remove(spec.id);
       _progress.remove(spec.id);
       notifyListeners();
       try {
         if (await tmp.exists()) await tmp.delete(recursive: true);
       } catch (_) {}
+    }
+  }
+
+  /// Borra lo que haya quedado de las descargas de [spec] (al cancelar).
+  Future<void> _forgetDownloads(ModelSpec spec) async {
+    if (spec.files.isEmpty) {
+      await SystemDownload.forget('${spec.id}.tar.bz2');
+    }
+    for (final f in spec.files) {
+      await SystemDownload.forget(_fileKey(spec, f));
     }
   }
 
@@ -519,10 +559,12 @@ class ModelStore extends ChangeNotifier {
           title: 'PSSTH! · ${spec.title}',
           expectedBytes: f.sizeBytes,
           onFraction: progress,
+          shouldStop: () => _stopped(spec),
         );
       } else {
-        await _download(f.url, file, f.sizeBytes, progress);
+        await _download(f.url, file, f.sizeBytes, progress, shouldStop: () => _stopped(spec));
       }
+      _checkStop(spec);
       before += f.sizeBytes;
       ready[f] = file;
     }
@@ -548,7 +590,16 @@ class ModelStore extends ChangeNotifier {
     report(const ModelProgress(ModelPhase.done));
   }
 
-  static Future<void> _download(String url, File out, int expected, void Function(double) onFraction) async {
+  /// Sin datos en este tiempo, la descarga se da por detenida.
+  static const _idleLimit = Duration(seconds: 60);
+
+  static Future<void> _download(
+    String url,
+    File out,
+    int expected,
+    void Function(double) onFraction, {
+    bool Function()? shouldStop,
+  }) async {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
     try {
       final req = await client.getUrl(Uri.parse(url));
@@ -562,7 +613,8 @@ class ModelStore extends ChangeNotifier {
       var received = 0;
       final sink = out.openWrite();
       try {
-        await for (final chunk in res) {
+        await for (final chunk in res.timeout(_idleLimit)) {
+          if (shouldStop?.call() ?? false) throw const DownloadCancelled();
           sink.add(chunk);
           received += chunk.length;
           if (total > 0) onFraction((received / total).clamp(0, 1).toDouble());

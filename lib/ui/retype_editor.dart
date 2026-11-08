@@ -76,7 +76,31 @@ class RetypeEditor extends StatelessWidget {
     );
   }
 
-  bool _isDoubtful(int index) => doubts.contains(index) || looksMisread(controllers[index].text);
+  /// Dudoso si los lectores no coincidieron y nadie lo corrigió todavía, o si
+  /// lo escrito parece mal leído. Al corregirlo deja de contar.
+  bool _isDoubtful(int index) {
+    final text = controllers[index].text;
+    final untouched = index < lines.length && text == lines[index].text;
+    return (doubts.contains(index) && untouched) || looksMisread(text);
+  }
+
+  int _doubtfulCount() => [
+    for (var i = 0; i < controllers.length; i++)
+      if (_isDoubtful(i)) i,
+  ].length;
+
+  Widget _intro(ThemeData theme, int doubtful) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Text(
+      'La calidad depende de la foto: mientras más nítida, legible y entendible, mejor saldrá. '
+      '${doubtful == 0 ? '' : 'Hay $doubtful ${doubtful == 1 ? 'renglón dudoso' : 'renglones dudosos'}, en naranja. '}'
+      '${readByAi ? 'Leído con IA, que también puede equivocarse. ' : 'Leído sin IA: puede haber errores que no salen en naranja. '}'
+      'Compara cada renglón con la foto, sobre todo nombres y números. '
+      'Saldrá como texto nuevo, con estas palabras. Es una transcripción: '
+      'la copia con la foto queda al lado.',
+      style: theme.textTheme.bodySmall,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -89,25 +113,14 @@ class RetypeEditor extends StatelessWidget {
       );
     }
     final theme = Theme.of(context);
-    final doubtful = [
-      for (var i = 0; i < controllers.length; i++)
-        if (_isDoubtful(i)) i,
-    ].length;
     return ListView.builder(
       itemCount: lines.length + 2,
       itemBuilder: (context, i) {
         if (i == 0) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              'La calidad depende de la foto: mientras más nítida, legible y entendible, mejor saldrá. '
-              '${doubtful == 0 ? '' : 'Hay $doubtful ${doubtful == 1 ? 'renglón dudoso' : 'renglones dudosos'}, en naranja. '}'
-              '${readByAi ? 'Leído con IA, que también puede equivocarse. ' : 'Leído sin IA: puede haber errores que no salen en naranja. '}'
-              'Compara cada renglón con la foto, sobre todo nombres y números. '
-              'Saldrá como texto nuevo, con estas palabras. Es una transcripción: '
-              'la copia con la foto queda al lado.',
-              style: theme.textTheme.bodySmall,
-            ),
+          // Se vuelve a contar con cada corrección.
+          return ListenableBuilder(
+            listenable: Listenable.merge(controllers),
+            builder: (context, _) => _intro(theme, _doubtfulCount()),
           );
         }
         if (i == 1) return _marksStrip(theme);

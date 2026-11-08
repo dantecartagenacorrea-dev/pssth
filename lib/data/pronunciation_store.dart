@@ -25,6 +25,12 @@ class PronunciationStore {
       }
     } catch (_) {
       _entries.clear();
+      // Se aparta el archivo dañado: el próximo guardado no lo pisa.
+      try {
+        await _file.rename('${_file.path}.dañado.${DateTime.now().millisecondsSinceEpoch}');
+      } on FileSystemException {
+        // no había archivo
+      }
     }
     return entries;
   }
@@ -52,5 +58,17 @@ class PronunciationStore {
     await _save();
   }
 
-  Future<void> _save() => _file.writeAsString(jsonEncode(_entries), flush: true);
+  /// De a uno y en un archivo aparte que se cambia de una vez: si la app se
+  /// cierra a mitad de guardar, queda la lista anterior entera.
+  Future<void> _save() {
+    final next = _saving.then((_) async {
+      final tmp = File('${_file.path}.tmp');
+      await tmp.writeAsString(jsonEncode(_entries), flush: true);
+      await tmp.rename(_file.path);
+    });
+    _saving = next.then((_) {}, onError: (_) {});
+    return next;
+  }
+
+  Future<void> _saving = Future.value();
 }

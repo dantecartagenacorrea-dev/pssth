@@ -20,4 +20,18 @@ void main() {
     expect(await PronunciationStore(f).load(), isEmpty);
     await dir.delete(recursive: true);
   });
+
+  test('cambios seguidos no mezclan el archivo y uno dañado se aparta sin perderse', () async {
+    final dir = await Directory.systemTemp.createTemp('pron');
+    addTearDown(() => dir.delete(recursive: true));
+    final f = File('${dir.path}/p.json');
+    final s = PronunciationStore(f);
+    await Future.wait([for (var i = 0; i < 20; i++) s.set('P$i', 'palabra $i')]);
+    expect((await PronunciationStore(f).load()).length, 20);
+    expect(File('${f.path}.tmp').existsSync(), isFalse);
+
+    f.writeAsStringSync('{roto');
+    expect(await PronunciationStore(f).load(), isEmpty);
+    expect(dir.listSync().where((e) => e.path.contains('.dañado.')), hasLength(1));
+  });
 }

@@ -124,6 +124,21 @@ void main() {
     expect(pages.map((p) => p.text), ['Uno', 'Dos']);
   });
 
+  test('el deshacer guarda a lo sumo los últimos pasos y borra sus copias al cerrar', () async {
+    final src = await samplePdf(dir, ['Uno', 'Dos']);
+    final ed = await PdfEditor.openFile(src.path);
+    final before = Directory.systemTemp.listSync().where((e) => e.path.contains('deshacer_pdf')).length;
+    for (var i = 0; i < PdfEditor.maxUndo + 5; i++) {
+      await ed.movePage(0, 1);
+    }
+    expect(ed.undoDepth, PdfEditor.maxUndo);
+    await ed.undo();
+    expect(ed.undoDepth, PdfEditor.maxUndo - 1);
+    await ed.dispose();
+    final after = Directory.systemTemp.listSync().where((e) => e.path.contains('deshacer_pdf')).length;
+    expect(after, before, reason: 'la carpeta de copias se borra al cerrar');
+  });
+
   test('escribe y corrige texto que después se puede leer', () async {
     final src = await samplePdf(dir, ['Uno', 'Dos']);
     final ed = await PdfEditor.openFile(src.path);
