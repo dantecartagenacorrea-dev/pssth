@@ -32,4 +32,14 @@ void main() {
     final r = topSystemVoices<(String, String)>(voces, name: (v) => v.$1, locale: (v) => v.$2);
     expect(r.map((v) => v.$1).toList(), ['es-us-x-sfb-local', 'es-us-x-esd-local', 'es-es-x-eed-local']);
   });
+
+  test('una voz natural latina va primero, antes que Luna y las del sistema', () {
+    final voces = [
+      ('es-us-x-sfb-local', 'es-US', ''),
+      ('Luna (natural)', 'es-ES', 'natural'),
+      ('Claude (natural)', 'es-MX', 'natural'),
+    ];
+    final r = rankVoices<(String, String, String)>(voces, name: (v) => v.$1, locale: (v) => v.$2, quality: (v) => v.$3);
+    expect(r.first.$1, 'Claude (natural)');
+  });
 }

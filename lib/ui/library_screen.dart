@@ -1006,7 +1006,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
               'de tu computadora.\n\n'
               'El reconocimiento de texto (OCR) y la voz pueden contener errores; '
               'consulta siempre el documento original para cualquier uso formal.\n\n'
-              'Modelos opcionales: voces naturales Luna (Supertonic, OpenRAIL-M) y Claude (Piper); dictado en '
+              'Voz incluida: Claude (Piper). Modelos opcionales: voz natural Luna (Supertonic, OpenRAIL-M); dictado en '
               'español NVIDIA Fast Conformer (CC BY 4.0); transcripción Whisper (MIT, en iPhone). Se ejecutan con '
               'sherpa-onnx (Apache 2.0). Letras Inter y Atkinson Hyperlegible (OFL). '
               'El resto de licencias está en «Ver licencias».',

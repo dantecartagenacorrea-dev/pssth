@@ -314,6 +314,12 @@ class TtsAudioHandler extends BaseAudioHandler {
     _appliedLang = null;
     _segmentLanguages();
     await _applyLanguage(lang);
+    // La voz natural tarda en generar: se empieza al abrir, antes de reproducir.
+    if (!_speaking) {
+      _tts.prefetch([
+        for (var k = _index; k <= _index + 1 && k < _chunks.length; k++) _spoken(_chunks[k].speech),
+      ]);
+    }
   }
 
   /// El usuario elige el idioma del documento (null = volver a automático).

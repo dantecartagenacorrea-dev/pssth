@@ -7,6 +7,8 @@
 int voiceQualityScore({required String name, required String locale, String? quality}) {
   var score = 0;
   final q = (quality ?? '').toLowerCase();
+  // Las voces naturales de la app van primero; entre ellas decide el acento.
+  if (q.contains('natural')) score += 500;
   if (q.contains('premium')) score += 300;
   if (q.contains('enhanced')) score += 200;
   final n = name.toLowerCase();

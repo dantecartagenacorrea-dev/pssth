@@ -24,7 +24,7 @@ Convierte PDF, EPUB, imágenes, TXT y grabaciones en audio. Lo básico es local,
 Importar → extraer texto (directo; OCR solo en páginas sin texto) → limpiar → normalizar para voz → detectar idioma (documento y por bloque) → fragmentar (párrafo → frase → cláusula) → reproducir (caché + pregeneración si es voz neuronal) → guardar progreso.
 
 ## Dependencias
-pdfrx, flutter_tts, audio_service, file_picker, path_provider, shared_preferences, archive, image_picker, record, sherpa_onnx, just_audio, crypto. Todas open source y gratuitas. Modelos opcionales: voz Luna (Supertonic, 92 MB, OpenRAIL-M), voz Claude (Piper, 19 MB), dictado en español (NVIDIA FastConformer, 102 MB, CC BY 4.0, Android) y Whisper base (160 MB, MIT, iPhone).
+pdfrx, flutter_tts, audio_service, file_picker, path_provider, shared_preferences, archive, image_picker, record, sherpa_onnx, just_audio, crypto. Todas open source y gratuitas. Modelos opcionales: voz Luna (Supertonic, 92 MB, OpenRAIL-M), voz Claude incluida (Piper, 30 MB), dictado en español (NVIDIA FastConformer, 102 MB, CC BY 4.0, Android) y Whisper base (160 MB, MIT, iPhone).
 
 ## Pruebas
 `verificar.bat` (Windows): pub get, analyze, test → `verificar.log`. Estado (2026-11-06): 0 problemas de análisis, 650 pruebas OK. Probado en emulador Android: instalación de modelos desde la app, voz natural, transcripción Whisper de un audio en español, resumen, grabación.

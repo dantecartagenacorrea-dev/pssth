@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lector_pdf/data/model_store.dart';
@@ -8,6 +9,24 @@ void main() {
   setUp(() => tmp = Directory.systemTemp.createTempSync('models'));
   tearDown(() {
     if (tmp.existsSync()) tmp.deleteSync(recursive: true);
+  });
+
+  test('la voz incluida se copia una vez y reemplaza a la versión grande', () async {
+    final store = ModelStore(tmp);
+    final d = store.dirFor(piperClaudeModel)..createSync(recursive: true);
+    final old = File('${d.path}/es_MX-claude-high.onnx')..writeAsStringSync('vieja');
+    final copied = <String>[];
+    Future<ByteData> load(String asset) async {
+      copied.add(asset);
+      return ByteData(asset.endsWith('tokens.txt') ? 940 : 31868630);
+    }
+
+    await store.installBundledVoice(load);
+    expect(store.isInstalled(piperClaudeModel), isTrue);
+    expect(old.existsSync(), isFalse);
+    expect(copied, hasLength(2));
+    await store.installBundledVoice(load);
+    expect(copied, hasLength(2));
   });
 
   test('instalado solo cuando están todos los archivos requeridos', () async {

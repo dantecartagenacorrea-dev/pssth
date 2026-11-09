@@ -78,7 +78,7 @@ void main() {
     expect(engine.spoken, [es1, en, es2]);
     // Voz es → inglés antes del 2.º fragmento → vuelve a español antes del 3.º.
     expect(engine.calls, ['speak', 'voice:Samantha', 'speak', 'voice:Mónica', 'speak']);
-    expect(engine.prefetched.first, [en, es2]);
+    expect(engine.prefetched, contains(equals([en, es2])));
     expect(engine.prefetched.last, isEmpty);
     tmp.deleteSync(recursive: true);
   });

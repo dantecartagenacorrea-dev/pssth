@@ -197,7 +197,13 @@ class _VoicesScreenState extends State<VoicesScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          _modelTile(piperClaudeModel, 'Voz latinoamericana de acento mexicano neutro, clara y firme. Sin conexión.'),
+          const Card(
+            child: ListTile(
+              leading: Icon(CupertinoIcons.waveform),
+              title: Text('Voz latina: Claude'),
+              subtitle: Text('Incluida en la app. Voz latinoamericana de acento mexicano neutro, clara y firme. Sin conexión.'),
+            ),
+          ),
           const SizedBox(height: 8),
           _modelTile(supertonicModel, 'Voz joven y natural, muy rápida. Sin conexión. Voz sintética (Supertonic, OpenRAIL-M).'),
           if (Platform.isIOS) ...[

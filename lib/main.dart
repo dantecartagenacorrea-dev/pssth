@@ -119,11 +119,12 @@ Future<void> main() async {
 
   // Voces naturales (opcionales, se bajan aparte); sin ellas solo hay voces del sistema.
   final modelStore = ModelStore(Directory('${docs.path}/models'));
+  await modelStore.installBundledVoice(rootBundle.load);
   final engine = FallbackTtsEngine(
     primary: KokoroEngine(
       cache: AudioCache(Directory('${cacheDir.path}/tts_audio')),
       piper: [
-        for (final (m, name, voice) in [(piperClaudeModel, 'es_MX-claude-high.int8', 'Claude')])
+        for (final (m, name, voice) in [(piperClaudeModel, 'es_MX-claude-high.fp16', 'Claude')])
           (
             voice: VoiceOption(name: '$voice (natural)', locale: 'es-MX', quality: 'natural'),
             onnx: '${modelStore.dirFor(m).path}/$name.onnx',

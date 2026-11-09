@@ -37,6 +37,14 @@ const _extranjeras = {
   'ò': 'o', 'ô': 'o', 'ö': 'o', 'õ': 'o', 'ø': 'o', 'ù': 'u', 'û': 'u', 'ç': 's', 'ß': 's',
 };
 
+// Palabras de otros idiomas de uso común, escritas como se dicen.
+const _comoSeDice = {
+  'google': 'gúgol', 'whatsapp': 'guátsap', 'facebook': 'féisbuk', 'youtube': 'yutúb', 'instagram': 'ínstagram',
+  'tiktok': 'tíktok', 'software': 'sóftuer', 'hardware': 'járduer', 'online': 'onláin', 'email': 'ímeil',
+  'marketing': 'márketin', 'web': 'güeb', 'wifi': 'uáifai', 'iphone': 'áifon', 'windows': 'uíndous',
+  'microsoft': 'máicrosof',
+};
+
 /// Deja solo letras, espacios y la puntuación que el modelo entiende.
 String _limpiar(String t) {
   var s = t
@@ -72,7 +80,7 @@ String _frase(String frase, bool seseo) {
       if (simbolos.isNotEmpty) simbolos.add(' ');
       continue;
     }
-    for (final p in _deletrearSiHaceFalta(t)) {
+    for (final p in _deletrearSiHaceFalta(_comoSeDice[t.toLowerCase()] ?? t)) {
       simbolos
         ..addAll(_palabra(p, seseo))
         ..add(' ');
@@ -168,6 +176,8 @@ List<_Seg> _segmentos(String w, bool seseo) {
       case 'g' when nx == 'u' && 'eiéí'.contains(nx2) && nx2.isNotEmpty:
         out.add(_Seg('ɡ', false));
         i++;
+      case 'c' when suave && i > 0 && w[i - 1] == 'x':
+        break; // excelente: la x ya suena ks
       case 'c':
         out.add(_Seg(suave ? s : 'k', false));
       case 'g':

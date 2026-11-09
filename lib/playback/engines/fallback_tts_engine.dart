@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/perf_log.dart';
 import '../tts_engine.dart';
 
 /// Combina un motor opcional ([primary], p. ej. voz natural) con el motor
@@ -94,7 +95,7 @@ class FallbackTtsEngine extends TtsEngine {
     if (!_primaryOk) return;
     _primaryOk = false;
     errors.add('${primary.id}: $reason');
-    if (kDebugMode) debugPrint('[lector] motor ${primary.id} desactivado: $reason → ${fallback.id}');
+    perfLog('motor ${primary.id} desactivado: $reason → ${fallback.id}');
     try {
       await primary.stop();
     } catch (_) {}
@@ -262,14 +263,12 @@ class FallbackTtsEngine extends TtsEngine {
   /// encima de la nueva, y nunca hablan las dos voces a la vez.
   int _speakGen = 0;
 
-  /// Regla de la app: nunca en silencio. Si la voz natural todavía no tiene
-  /// listo el audio de [text], ese fragmento lo lee la voz del sistema
-  /// mientras la natural prepara los siguientes; vuelve en cuanto tenga uno.
+  /// Si la pantalla dice una voz, suena esa: se espera su audio aunque tarde, sin
+  /// cubrir con la del sistema. Solo si esa voz falla o este equipo no alcanza a
+  /// leer con ella, sigue la del sistema (con aviso).
   @override
-  Future<void> speak(String text) => _speak(text, wait: false);
+  Future<void> speak(String text) => _speak(text, wait: primary.worthWaiting);
 
-  /// Espera el audio de la voz natural en vez de cubrir con la del sistema. Si esa voz
-  /// falla o este equipo no alcanza a leer con ella, sigue la del sistema.
   @override
   Future<void> speakSameVoice(String text) => _speak(text, wait: primary.worthWaiting);
 

@@ -61,7 +61,8 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
     speed: _speed,
   );
 
-  static String _cacheVoice(PiperVoice? p) => 'piper-${p?.voice.name}';
+  /// Incluye el archivo del modelo: al cambiarlo no debe sonar audio del anterior.
+  static String _cacheVoice(PiperVoice? p) => 'piper-${p?.voice.name}-${p?.onnx.split('/').last}';
 
   /// Sintetiza con [voice] y lo guarda en la caché con la misma clave que
   /// usará [speak] después de [setVoice]: mientras tanto sigue sonando la voz

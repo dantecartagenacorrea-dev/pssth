@@ -6,6 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show PlatformException;
 
+import '../core/perf_log.dart';
 import '../platform/system_download.dart';
 
 /// Modelo descargable (voz natural, transcripción). Siempre opcional: la app
@@ -108,37 +109,21 @@ const dictationModel = ModelSpec(
   prune: ['test_wavs'],
 );
 
-const _claudeModelUrl =
-    'https://github.com/dantecartagenacorrea-dev/pssth/releases/download/voice-claude-int8-v1/es_MX-claude-high.int8.onnx';
-const _claudeTokensUrl =
-    'https://huggingface.co/csukuangfj/vits-piper-es_MX-claude-high/resolve/802b53b82c60d3de4f8b965314ac99bbec2499b0/tokens.txt';
+/// Archivos de la voz incluida en la app, con su tamaño exacto.
+const _claudeFiles = {'es_MX-claude-high.fp16.onnx': 31868630, 'tokens.txt': 940};
 
-/// Voz latinoamericana (Piper, acento mexicano neutro), comprimida a int8 para
-/// bajar de 63 a 19 MB. Solo el modelo y sus fonemas: el español se le pasa ya
-/// convertido a fonemas.
-const piperClaudeModel = ModelSpec(
+/// Voz latinoamericana (Piper, acento mexicano neutro), con los pesos en 16 bits:
+/// la mitad de tamaño y la velocidad de la original (int8 era 4 veces más lenta). Viene
+/// con la app y es la voz inicial: no se descarga ni se puede quitar. Solo el
+/// modelo y sus fonemas: el español se le pasa ya convertido a fonemas.
+final piperClaudeModel = ModelSpec(
   id: 'piper-claude',
   title: 'Voz latina: Claude',
-  url: _claudeModelUrl,
-  sizeBytes: 18708636 + 940,
+  url: '',
+  sizeBytes: _claudeFiles.values.reduce((a, b) => a + b),
   sha256: '',
   extractedDir: '',
-  requiredFiles: ['es_MX-claude-high.int8.onnx', 'tokens.txt'],
-  prune: ['es_MX-claude-high.onnx'], // la versión sin comprimir
-  files: [
-    ModelFile(
-      'es_MX-claude-high.int8.onnx',
-      _claudeModelUrl,
-      18708636,
-      '536a65f4681b7a028060944d7961fa44ba685326cfb7b6f752f65344fe49c1e2',
-    ),
-    ModelFile(
-      'tokens.txt',
-      _claudeTokensUrl,
-      940,
-      'ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d',
-    ),
-  ],
+  requiredFiles: _claudeFiles.keys.toList(),
 );
 const _supertonicRepo =
     'https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-tts-int8-2026-03-06/resolve/5dec5897b86e2b293790eedb5e1f561a3295651f';
@@ -212,7 +197,7 @@ const supertonicModel = ModelSpec(
 /// Hablante de [supertonicModel] que usa la app (la voz 2, la más aguda).
 const supertonicSpeaker = 1;
 
-final piperVoiceModels = [piperClaudeModel, supertonicModel];
+final piperVoiceModels = [supertonicModel];
 
 const _formulaRelease = 'https://github.com/dantecartagenacorrea-dev/pssth/releases/download/formula-model-v1';
 
@@ -426,6 +411,30 @@ class ModelStore extends ChangeNotifier {
           // se reintenta la próxima vez
         }
       }
+    }
+  }
+
+  /// Deja lista la voz que viene con la app: el motor necesita archivos, no
+  /// recursos empaquetados. Solo copia lo que falta y borra la versión grande
+  /// que se bajaba antes. Si falla, la app sigue con la voz del sistema.
+  Future<void> installBundledVoice(Future<ByteData> Function(String asset) load) async {
+    final dir = dirFor(piperClaudeModel);
+    try {
+      await dir.create(recursive: true);
+      for (final name in ['es_MX-claude-high.onnx', 'es_MX-claude-high.int8.onnx']) {
+        final old = File('${dir.path}/$name');
+        if (await old.exists()) await old.delete();
+      }
+      for (final MapEntry(key: name, value: size) in _claudeFiles.entries) {
+        final target = File('${dir.path}/$name');
+        if (await target.exists() && await target.length() == size) continue;
+        final data = await load('assets/voz/$name');
+        final part = File('${target.path}.part');
+        await part.writeAsBytes(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes), flush: true);
+        await part.rename(target.path);
+      }
+    } on Exception catch (e) {
+      perfLog('voz incluida: no se pudo preparar: $e');
     }
   }
 

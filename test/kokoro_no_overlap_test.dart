@@ -54,7 +54,7 @@ void main() {
     addTearDown(() => tmp.deleteSync(recursive: true));
     final cache = AudioCache(tmp);
     for (final text in ['uno', 'dos']) {
-      final key = AudioCache.keyFor(text: text, engine: 'kokoro', voice: 'piper-${_luna.voice.name}', speed: 1);
+      final key = AudioCache.keyFor(text: text, engine: 'kokoro', voice: 'piper-${_luna.voice.name}-vocoder.int8.onnx', speed: 1);
       await cache.put(key, Uint8List(10));
     }
     final player = _FakePlayer();

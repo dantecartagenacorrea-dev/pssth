@@ -82,6 +82,7 @@ flutter:
     - assets/fonts/OFL.txt
     - assets/fonts/Inter-OFL.txt
     - assets/words/
+    - assets/voz/
 
   # Letra muy legible opcional (Braille Institute, licencia OFL).
   fonts:

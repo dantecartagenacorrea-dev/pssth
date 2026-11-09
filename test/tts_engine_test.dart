@@ -243,7 +243,7 @@ void main() {
     ]);
   });
 
-  test('mientras la voz natural prepara un fragmento, lo lee la del sistema (nunca en silencio)', () async {
+  test('si la voz natural todavía prepara un fragmento, se la espera: no lo lee la del sistema', () async {
     final p = FakeEngine('neural')..notReady.add('uno');
     final f = FakeEngine('apple');
     final e = FallbackTtsEngine(primary: p, fallback: f);
@@ -251,8 +251,8 @@ void main() {
     await e.speak('uno');
     e.prefetch(['dos']);
     await e.speak('dos');
-    expect(f.spoken, ['uno']);
-    expect(p.spoken, ['dos']);
+    expect(f.spoken, isEmpty);
+    expect(p.spoken, ['uno', 'dos']);
     expect(p.prefetched, [
       ['dos'],
     ]); // la natural sigue preparando lo que viene
@@ -302,13 +302,14 @@ void main() {
       expect(p.spoken, isEmpty);
     });
 
-    test('la lectura normal sigue sin esperar: la cubre la del sistema', () async {
+    test('la lectura normal también espera a la voz elegida', () async {
       final p = FakeEngine('neural'), f = FakeEngine('apple');
       final e = FallbackTtsEngine(primary: p, fallback: f);
       await e.init();
       p.notReady.add('frase');
       await e.speak('frase');
-      expect(f.spoken, ['frase']);
+      expect(p.spoken, ['frase']);
+      expect(f.spoken, isEmpty);
     });
   });
 
@@ -340,17 +341,12 @@ void main() {
       expect(p.spoken, ['nueva']);
     });
 
-    test('la voz del sistema calla a la natural antes de hablar, y al revés', () async {
+    test('la voz natural calla a la del sistema antes de hablar', () async {
       final log = <String>[];
       final p = _LogEngine('neural', log), f = _LogEngine('apple', log);
       final e = FallbackTtsEngine(primary: p, fallback: f);
       await e.init();
 
-      p.notReady.add('sin audio');
-      await e.speak('sin audio');
-      expect(log, ['neural:stop', 'apple:speak']);
-
-      log.clear();
       await e.speak('con audio');
       expect(log, ['apple:stop', 'neural:speak']);
     });

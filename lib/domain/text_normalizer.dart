@@ -29,8 +29,8 @@ class TextNormalizer {
   };
 
   static final List<(RegExp, String)> _legalRules = [
-    (RegExp('${_l}Arts\\.', unicode: true), 'Artículos'),
-    (RegExp('${_l}Art\\.', unicode: true), 'Artículo'),
+    (RegExp('$_l[Aa]rts\\.', unicode: true), 'Artículos'),
+    (RegExp('$_l[Aa]rt\\.', unicode: true), 'Artículo'),
     (RegExp('${_l}Incs\\.', unicode: true), 'Incisos'),
     (RegExp('${_l}Inc\\.', unicode: true), 'Inciso'),
     (RegExp('${_l}Núm\\.|${_l}Nro\\.|${_l}Nº|${_l}N°', unicode: true), 'número'),
@@ -104,6 +104,12 @@ class TextNormalizer {
     unicode: true,
   );
   static final _percent = RegExp(r'(\d)\s*%');
+  static final _unit = RegExp(r'(\d)\s*(km|kg|cm|mm|ml)\b');
+  static const _unitWords = {
+    'km': 'kilómetros', 'kg': 'kilos', 'cm': 'centímetros', 'mm': 'milímetros', 'ml': 'mililitros',
+  };
+  // 10:30 a.m. / 4 p. m.: sin los puntos, que la voz toma como fin de frase.
+  static final _meridian = RegExp(r'(?<![\p{L}\p{N}])([ap])\.\s?m\.', unicode: true);
   static final _multiSpace = RegExp(r'\s{2,}');
   // "abate ;" -> "abate;"   "¡ Qué noche !" -> "¡Qué noche!"  (PDFs antiguos/OCR)
   static final _spaceBeforePunct = RegExp(r'\s+([;:,.!?…])');
@@ -138,6 +144,8 @@ class TextNormalizer {
       }
     }
     t = t.replaceAllMapped(_percent, (m) => '${m[1]} por ciento');
+    t = t.replaceAllMapped(_unit, (m) => '${m[1]} ${_unitWords[m[2]]}');
+    t = t.replaceAllMapped(_meridian, (m) => m[1] == 'a' ? 'a eme' : 'pe eme');
     t = t.replaceAllMapped(_romanAfterWord, (m) {
       final n = romanToInt(m[2]!);
       return n == null ? m[0]! : '${m[1]} $n';
