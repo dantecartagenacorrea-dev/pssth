@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 
+import '../../core/perf_log.dart';
 import '../../data/audio_cache.dart';
 import '../../domain/wav_audio.dart';
 import '../../domain/word_timing.dart';
@@ -186,11 +187,7 @@ class KokoroEngine extends TtsEngine implements SynthesizingEngine {
       _slow = sw.elapsedMilliseconds > audioMs * 2 ? _slow + 1 : 0;
       if (_slow >= 2) _tooSlow = true;
     }
-    if (kDebugMode) {
-      debugPrint(
-        '[lector] voz natural sintetizó ${text.length} car. en ${sw.elapsedMilliseconds} ms (${wav.length ~/ 1024} KB)',
-      );
-    }
+    perfLog('voz natural: ${audioMs.round()} ms de audio en ${sw.elapsedMilliseconds} ms (${text.length} car.)');
     return wav;
   }
 

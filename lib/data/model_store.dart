@@ -108,44 +108,37 @@ const dictationModel = ModelSpec(
   prune: ['test_wavs'],
 );
 
-/// Voces latinoamericanas (Piper, acento mexicano neutro), convertidas por
-/// sherpa-onnx. Solo el modelo y sus fonemas: el español se le pasa ya
-/// convertido a fonemas, como a la voz natural.
-ModelSpec _piperVoice(
-  String id,
-  String title,
-  String name,
-  String commit,
-  int onnxBytes,
-  String onnxSha,
-  int tokensBytes,
-  String tokensSha,
-) {
-  final repo = 'https://huggingface.co/csukuangfj/vits-piper-$name/resolve/$commit';
-  return ModelSpec(
-    id: id,
-    title: title,
-    url: repo,
-    sizeBytes: onnxBytes + tokensBytes,
-    sha256: '',
-    extractedDir: '',
-    requiredFiles: ['$name.onnx', 'tokens.txt'],
-    files: [
-      ModelFile('$name.onnx', '$repo/$name.onnx', onnxBytes, onnxSha),
-      ModelFile('tokens.txt', '$repo/tokens.txt', tokensBytes, tokensSha),
-    ],
-  );
-}
+const _claudeModelUrl =
+    'https://github.com/dantecartagenacorrea-dev/pssth/releases/download/voice-claude-int8-v1/es_MX-claude-high.int8.onnx';
+const _claudeTokensUrl =
+    'https://huggingface.co/csukuangfj/vits-piper-es_MX-claude-high/resolve/802b53b82c60d3de4f8b965314ac99bbec2499b0/tokens.txt';
 
-final piperClaudeModel = _piperVoice(
-  'piper-claude',
-  'Voz latina: Claude',
-  'es_MX-claude-high',
-  '802b53b82c60d3de4f8b965314ac99bbec2499b0',
-  63122441,
-  'f5eceb904655a60141037d957f21e6257efa93b8c8b7b818c0c57396217bcb1c',
-  940,
-  'ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d',
+/// Voz latinoamericana (Piper, acento mexicano neutro), comprimida a int8 para
+/// bajar de 63 a 19 MB. Solo el modelo y sus fonemas: el español se le pasa ya
+/// convertido a fonemas.
+const piperClaudeModel = ModelSpec(
+  id: 'piper-claude',
+  title: 'Voz latina: Claude',
+  url: _claudeModelUrl,
+  sizeBytes: 18708636 + 940,
+  sha256: '',
+  extractedDir: '',
+  requiredFiles: ['es_MX-claude-high.int8.onnx', 'tokens.txt'],
+  prune: ['es_MX-claude-high.onnx'], // la versión sin comprimir
+  files: [
+    ModelFile(
+      'es_MX-claude-high.int8.onnx',
+      _claudeModelUrl,
+      18708636,
+      '536a65f4681b7a028060944d7961fa44ba685326cfb7b6f752f65344fe49c1e2',
+    ),
+    ModelFile(
+      'tokens.txt',
+      _claudeTokensUrl,
+      940,
+      'ef3a7e4a8d1af0c9d4dc45aaae1a6242ebe24a7ed6f3d025a49eb29682784c6d',
+    ),
+  ],
 );
 const _supertonicRepo =
     'https://huggingface.co/csukuangfj2/sherpa-onnx-supertonic-tts-int8-2026-03-06/resolve/5dec5897b86e2b293790eedb5e1f561a3295651f';

@@ -123,7 +123,7 @@ Future<void> main() async {
     primary: KokoroEngine(
       cache: AudioCache(Directory('${cacheDir.path}/tts_audio')),
       piper: [
-        for (final (m, name, voice) in [(piperClaudeModel, 'es_MX-claude-high', 'Claude')])
+        for (final (m, name, voice) in [(piperClaudeModel, 'es_MX-claude-high.int8', 'Claude')])
           (
             voice: VoiceOption(name: '$voice (natural)', locale: 'es-MX', quality: 'natural'),
             onnx: '${modelStore.dirFor(m).path}/$name.onnx',
