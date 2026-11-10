@@ -11,26 +11,44 @@ typedef ScannedLine = ({String text, double left, double top, double width, doub
 /// Una página escaneada: la foto (JPEG) y las líneas que se leyeron en ella.
 typedef ScannedPage = ({Uint8List jpeg, int width, int height, List<ScannedLine> lines});
 
-/// Ancho de cada página del PDF, en puntos (el de una hoja A4).
-/// Hoja carta (21,6 × 27,9 cm), en puntos: cada página escaneada va entera y
-/// centrada en una, sin deformarse, lista para imprimir en carta.
-const _letter = PdfPageFormat.letter;
+/// Hoja en la que va cada página escaneada, entera y centrada, sin deformarse.
+enum ScanPaper {
+  carta('Carta', PdfPageFormat.letter),
+  a4('A4', PdfPageFormat.a4),
 
-/// Arma un PDF con cada foto en una hoja carta y, encima, el texto reconocido
+  /// 21,6 × 33 cm.
+  oficio('Oficio', PdfPageFormat(612, 936)),
+
+  /// Sin márgenes: la hoja toma la proporción de la foto.
+  foto('Igual a la foto', null);
+
+  const ScanPaper(this.label, this.format);
+  final String label;
+  final PdfPageFormat? format;
+}
+
+/// Arma un PDF con cada foto en una hoja [paper] y, encima, el texto reconocido
 /// invisible en el mismo lugar: se ve la foto, pero el texto se puede buscar,
 /// seleccionar y copiar en cualquier visor. [compress] en false solo para
 /// pruebas (deja el texto legible en el archivo).
-Future<Uint8List> buildScannedPdf(List<ScannedPage> pages, {String? title, bool compress = true}) {
+Future<Uint8List> buildScannedPdf(
+  List<ScannedPage> pages, {
+  String? title,
+  bool compress = true,
+  ScanPaper paper = ScanPaper.carta,
+}) {
   final doc = pw.Document(title: title, creator: 'PSSTH!', compress: compress);
+  final sheet = paper.format ?? PdfPageFormat.letter;
   for (final page in pages) {
     // Lo más grande que entra en la hoja sin cambiar la proporción.
-    final fit = math.min(_letter.width / page.width, _letter.height / page.height);
+    final fit = math.min(sheet.width / page.width, sheet.height / page.height);
     final w = page.width * fit, h = page.height * fit;
-    final left = (_letter.width - w) / 2, top = (_letter.height - h) / 2;
+    final format = paper.format ?? PdfPageFormat(w, h);
+    final left = (format.width - w) / 2, top = (format.height - h) / 2;
     final image = pw.MemoryImage(page.jpeg);
     doc.addPage(
       pw.Page(
-        pageFormat: _letter,
+        pageFormat: format,
         margin: pw.EdgeInsets.zero,
         build: (_) => pw.Stack(
           children: [

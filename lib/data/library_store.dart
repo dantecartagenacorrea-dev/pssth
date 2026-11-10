@@ -140,6 +140,27 @@ class LibraryStore {
     return entry;
   }
 
+  /// Guarda junto a un escaneo sus otras versiones. Llevan el id del documento
+  /// en el nombre, así [remove] las borra con él.
+  Future<void> attachScanVersions(
+    LibraryEntry entry, {
+    List<int>? original,
+    List<int>? clean,
+    List<int>? scanCopy,
+  }) async {
+    Future<String?> write(String suffix, List<int>? bytes) async {
+      if (bytes == null) return null;
+      final file = File('${_root.path}/${entry.id}.$suffix.pdf');
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    }
+
+    entry.originalPath = await write('original', original) ?? entry.originalPath;
+    entry.cleanPath = await write('limpio', clean) ?? entry.cleanPath;
+    entry.scanCopyPath = await write('escaneado', scanCopy) ?? entry.scanCopyPath;
+    await _save();
+  }
+
   /// Dónde dejar un archivo que está llegando, para luego pasarlo con [adoptFile].
   File incomingFile(String hash) => File('${_root.path}/.llegando-$hash');
 

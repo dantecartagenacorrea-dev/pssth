@@ -49,4 +49,22 @@ void main() {
     final same = await applyScanFilter(jpeg, ScanFilter.original);
     expect(same.jpeg, jpeg);
   });
+
+  test('la calidad liviana achica y pesa menos; la alta no toca la página', () async {
+    final big = img.Image(width: 3000, height: 2000);
+    for (final p in big) {
+      p
+        ..r = (p.x * p.y) % 251
+        ..g = (p.x + p.y) % 241
+        ..b = p.x % 239;
+    }
+    final jpeg = Uint8List.fromList(img.encodeJpg(big, quality: 95));
+    final page = (jpeg: jpeg, width: 3000, height: 2000);
+
+    expect(identical(await compressScanPage(page, ScanQuality.alta), page), isTrue);
+
+    final light = await compressScanPage(page, ScanQuality.liviana);
+    expect((light.width, light.height), (1600, 1067));
+    expect(light.jpeg.length, lessThan(jpeg.length));
+  });
 }

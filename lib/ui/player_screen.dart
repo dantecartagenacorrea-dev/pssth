@@ -8,10 +8,14 @@ import '../core/app_exception.dart';
 import '../core/motion.dart';
 import '../data/bookmark_store.dart';
 import '../data/highlight_store.dart';
+import '../data/library_store.dart';
+import '../data/pdf_page_renderer.dart';
+import '../data/scan_version_builder.dart';
 import '../domain/library_entry.dart';
 import '../domain/text_chunk.dart';
 import '../domain/reading_window.dart';
 import '../domain/voice_groups.dart';
+import '../platform/native_text.dart';
 import '../playback/tts_audio_handler.dart';
 import 'audio_export_sheet.dart';
 import 'immersive_reader.dart';
@@ -21,6 +25,7 @@ import 'premium.dart';
 import 'quiz_screen.dart';
 import 'read_scroll.dart';
 import 'reading_text.dart';
+import 'scan_versions_screen.dart';
 import 'library_screen.dart' show showComfortSheet;
 import 'floating_panel.dart';
 
@@ -28,8 +33,15 @@ import 'floating_panel.dart';
 String speedLabel(double speed) => '${speed.toStringAsFixed(1).replaceAll('.', ',')}×';
 
 class PlayerScreen extends StatelessWidget {
-  const PlayerScreen({super.key, required this.handler, required this.entry, required this.bookmarkStore});
+  const PlayerScreen({
+    super.key,
+    required this.handler,
+    required this.entry,
+    required this.bookmarkStore,
+    required this.libraryStore,
+  });
 
+  final LibraryStore libraryStore;
   final TtsAudioHandler handler;
   final LibraryEntry entry;
   final BookmarkStore bookmarkStore;
@@ -201,6 +213,29 @@ class PlayerScreen extends StatelessWidget {
                 const SizedBox(height: 12),
                 // Lo más usado para estudiar, a la vista (antes solo en ⋮).
                 _StudyActions(
+                  versions: entry.scanVersions,
+                  onVersion: (version) {
+                    final builder = ScanVersionBuilder(
+                      store: libraryStore,
+                      recognize: (path) async => (await NativeText().recognizeLines(path)).lines,
+                      chunks: () => handler.chunks,
+                      pageCount: () => handler.snapshot.value.pageCount,
+                      openPages: (path) async {
+                        final pdf = await PdfPageRenderer.open(path);
+                        return (count: pdf.pageCount, render: pdf.renderToPng, close: pdf.close);
+                      },
+                    );
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ScanVersionsScreen(
+                          entry: entry,
+                          initial: version,
+                          initialPage: handler.snapshot.value.pageIndex,
+                          prepare: (v) => builder.prepare(entry, v),
+                        ),
+                      ),
+                    );
+                  },
                   onSearch: () => showSearchSheet(context, handler),
                   onSummary: () => showSummarySheet(context, handler, entry),
                   onQuiz: () => Navigator.of(context).push(
@@ -728,8 +763,16 @@ class _PlayButton extends StatelessWidget {
 
 /// Buscar, Resumen y Preguntas: botones chicos sobre el título.
 class _StudyActions extends StatelessWidget {
-  const _StudyActions({required this.onSearch, required this.onSummary, required this.onQuiz});
+  const _StudyActions({
+    required this.onSearch,
+    required this.onSummary,
+    required this.onQuiz,
+    required this.versions,
+    required this.onVersion,
+  });
   final VoidCallback onSearch, onSummary, onQuiz;
+  final List<ScanVersion> versions;
+  final ValueChanged<ScanVersion> onVersion;
 
   @override
   Widget build(BuildContext context) {
@@ -760,6 +803,13 @@ class _StudyActions extends StatelessWidget {
           icon: const Icon(CupertinoIcons.question_circle, size: 18),
           label: const Text('Preguntas'),
         ),
+        for (final version in versions)
+          OutlinedButton.icon(
+            style: style,
+            onPressed: () => onVersion(version),
+            icon: Icon(scanVersionIcon(version), size: 18),
+            label: Text(version.label),
+          ),
       ],
     );
   }

@@ -31,6 +31,18 @@ void main() {
     expect(raw, matches(RegExp(r'/Subtype\s*/Image')));
   });
 
+  test('la página sale del tamaño de hoja elegido', () async {
+    final page = <ScannedPage>[(jpeg: Uint8List.fromList(_jpeg), width: 1000, height: 1400, lines: const [])];
+    String box(List<int> bytes) => RegExp(r'/MediaBox\s*\[[^\]]*\]').firstMatch(latin1.decode(bytes))!.group(0)!;
+
+    final oficio = await buildScannedPdf(page, compress: false, paper: ScanPaper.oficio);
+    expect(box(oficio), matches(RegExp(r'\[\s*0 0 612(\.0+)? 936(\.0+)?\s*\]')));
+
+    final foto = await buildScannedPdf(page, compress: false, paper: ScanPaper.foto);
+    final numbers = RegExp(r'[\d.]+').allMatches(box(foto)).map((m) => double.parse(m.group(0)!)).toList();
+    expect(numbers[numbers.length - 2] / numbers.last, closeTo(1000 / 1400, 0.01));
+  });
+
   test('cambia los caracteres que la letra del PDF no tiene', () {
     expect(latin1Safe('«Año» — “ñandú” …'), '«Año» - "ñandú" ...');
     expect(latin1Safe('Ω'), '?');

@@ -58,6 +58,13 @@ Uint8List cleanDocumentColor(Uint8List rgb, Uint8List lum, Uint8List paper, int 
   return out;
 }
 
+/// Solo la tinta, en grises y sin mover nada de lugar: lo que se escribe encima
+/// tiene que coincidir con lo medido en la foto.
+Uint8List cleanInkOnly(Uint8List lum, Uint8List paper, int w, int h) {
+  final ratio = _ratios(lum, paper);
+  return _grayOf(ratio, _inkToKeep(ratio, Uint8List(w * h), w, h));
+}
+
 const _keptInk = 1, _keptColor = 2;
 
 /// Desde aquí el trazo ya es negro del todo.
@@ -99,6 +106,7 @@ Uint8List _inkToKeep(Float32List ratio, Uint8List colored, int w, int h) {
   final smallMark = h * 0.03;
   // Lo chico del margen o del borde: se decide cuando ya se sabe dónde está el texto.
   final doubtful = <({int start, int count, int mark, int left, int top, int right, int bottom})>[];
+  final rescue = Uint8List(n);
 
   for (var seed = 0; seed < n; seed++) {
     if (seen[seed] != 0 || ratio[seed] >= _weakInk) continue;
@@ -150,6 +158,13 @@ Uint8List _inkToKeep(Float32List ratio, Uint8List colored, int w, int h) {
     final thinStroke = !strong && !isColor && thin && biggest < smallMark;
     final dropped = (!strong && !thinStroke && !isColor) || count < minArea || thinAndLong;
     if (dropped || (touchesEdge && biggest >= smallMark)) {
+      // Una trama (muaré de pantalla, papel rayado) puede unir letras con el
+      // fondo en una sola mancha: lo bien negro se vuelve a mirar por separado.
+      if (strong && count >= minArea && (thinAndLong || touchesEdge)) {
+        for (var k = start; k < used; k++) {
+          if (ratio[pixels[k]] < _strongInk) rescue[pixels[k]] = 1;
+        }
+      }
       used = start; // no se guarda
       continue;
     }
@@ -165,6 +180,8 @@ Uint8List _inkToKeep(Float32List ratio, Uint8List colored, int w, int h) {
     }
   }
 
+  _rescueStrokes(rescue, colored, keep, w, h, minArea: minArea, longMark: longMark, smallMark: smallMark);
+
   // Una letra pegada al margen tiene texto al lado y se queda; una mancha, no.
   final near = (h * 0.015).round();
   final sum = _inkSums(keep, w, h);
@@ -179,6 +196,61 @@ Uint8List _inkToKeep(Float32List ratio, Uint8List colored, int w, int h) {
     }
   }
   return keep;
+}
+
+/// Los trazos negros rescatados de una mancha descartada: cada uno se queda si,
+/// solo, parece tinta (no es diminuto, ni una raya larga y rala, ni el borde).
+void _rescueStrokes(
+  Uint8List rescue,
+  Uint8List colored,
+  Uint8List keep,
+  int w,
+  int h, {
+  required int minArea,
+  required double longMark,
+  required double smallMark,
+}) {
+  final stack = <int>[];
+  final part = <int>[];
+  for (var seed = 0; seed < w * h; seed++) {
+    if (rescue[seed] != 1) continue;
+    rescue[seed] = 2;
+    stack.add(seed);
+    part.clear();
+    var left = w, right = 0, up = h, down = 0, colorful = 0;
+    while (stack.isNotEmpty) {
+      final i = stack.removeLast();
+      part.add(i);
+      colorful += colored[i];
+      final x = i % w, y = i ~/ w;
+      left = math.min(left, x);
+      right = math.max(right, x);
+      up = math.min(up, y);
+      down = math.max(down, y);
+      for (var dy = -1; dy <= 1; dy++) {
+        final yy = y + dy;
+        if (yy < 0 || yy >= h) continue;
+        for (var dx = -1; dx <= 1; dx++) {
+          final xx = x + dx;
+          if (xx < 0 || xx >= w) continue;
+          final j = yy * w + xx;
+          if (rescue[j] == 1) {
+            rescue[j] = 2;
+            stack.add(j);
+          }
+        }
+      }
+    }
+    final width = right - left + 1, height = down - up + 1;
+    final biggest = math.max(width, height);
+    final touchesEdge = left == 0 || up == 0 || right == w - 1 || down == h - 1;
+    final sparse = biggest > longMark && part.length / (width * height) < 0.12;
+    if (part.length < minArea || sparse || (touchesEdge && biggest >= smallMark)) continue;
+    final mark = colorful * 2 >= part.length ? _keptColor : _keptInk;
+    for (final i in part) {
+      keep[i] = mark;
+    }
+  }
 }
 
 /// Tabla de sumas para contar la tinta de un rectángulo de una sola vez.

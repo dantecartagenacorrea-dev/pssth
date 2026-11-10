@@ -239,12 +239,17 @@ List<MarkRow> markRowsFrom(
 /// Arma el documento recién impreso: el texto corre de una hoja a la otra. Una
 /// página en la que no se leyó nada va con su foto, en su lugar: nunca se pierde.
 /// [ink]: las negritas y las firmas y sellos de cada página.
-Future<Uint8List> buildRetypedPdf(List<ScannedPage> pages, {String? title, bool compress = true, List<PageInk>? ink}) {
+Future<Uint8List> buildRetypedPdf(
+  List<ScannedPage> pages, {
+  String? title,
+  bool compress = true,
+  List<PageInk>? ink,
+  PdfPageFormat format = PdfPageFormat.letter,
+}) {
   final doc = pw.Document(title: title, creator: 'PSSTH!', compress: compress);
   final regular = PdfFont.helvetica(doc.document);
   final bold = PdfFont.helveticaBold(doc.document);
   double measure(String text, bool isBold) => (isBold ? bold : regular).stringMetrics(text).advanceWidth;
-  const format = PdfPageFormat.letter;
 
   void addText(List<Paragraph> paragraphs, List<MarkRow> marks) {
     for (final lines in layoutParagraphs(paragraphs, measure: measure, format: format, marks: marks)) {

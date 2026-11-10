@@ -15,6 +15,8 @@ class PdfPageRenderer {
     return PdfPageRenderer._(doc);
   }
 
+  int get pageCount => _doc.pages.length;
+
   Future<String> renderToPng(
     int pageIndex,
     String outPath, {

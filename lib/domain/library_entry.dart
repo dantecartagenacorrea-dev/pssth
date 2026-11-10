@@ -1,3 +1,13 @@
+/// Las formas de ver una misma hoja escaneada.
+enum ScanVersion {
+  original('Original'),
+  scanned('Escaneado'),
+  clean('En limpio');
+
+  const ScanVersion(this.label);
+  final String label;
+}
+
 class LibraryEntry {
   LibraryEntry({
     required this.id,
@@ -14,6 +24,9 @@ class LibraryEntry {
     this.language,
     this.scanned = false,
     this.contentHash,
+    this.originalPath,
+    this.cleanPath,
+    this.scanCopyPath,
   });
 
   final String id;
@@ -41,6 +54,33 @@ class LibraryEntry {
   /// cambia si después se edita. null hasta que se calcula.
   String? contentHash;
 
+  /// PDF con las fotos tal como entraron al escáner. Solo escaneos nuevos.
+  String? originalPath;
+
+  /// PDF transcrito en limpio; null hasta que se arma.
+  String? cleanPath;
+
+  /// Foto importada ya pasada por el filtro de limpieza; null hasta que se arma.
+  String? scanCopyPath;
+
+  /// Las vistas que se ofrecen. Un PDF común ya es su propio «escaneado», y a
+  /// un escaneo anterior a esta función no le quedó la foto original.
+  List<ScanVersion> get scanVersions {
+    if (kind != 'pdf' && kind != 'image') return const [];
+    return [
+      if (!scanned || originalPath != null) ScanVersion.original,
+      if (scanned || kind == 'image') ScanVersion.scanned,
+      ScanVersion.clean,
+    ];
+  }
+
+  /// Dónde está esa vista; null si todavía hay que armarla.
+  String? versionPath(ScanVersion version) => switch (version) {
+    ScanVersion.original => scanned ? originalPath : storedPath,
+    ScanVersion.scanned => kind == 'image' ? scanCopyPath : storedPath,
+    ScanVersion.clean => cleanPath,
+  };
+
   double get progress {
     if (pageCount <= 0) {
       return 0;
@@ -67,6 +107,9 @@ class LibraryEntry {
     'language': language,
     if (scanned) 'scanned': true,
     if (contentHash != null) 'hash': contentHash,
+    if (originalPath != null) 'original': originalPath,
+    if (cleanPath != null) 'cleanImage': cleanPath,
+    if (scanCopyPath != null) 'scanSheet': scanCopyPath,
   };
 
   factory LibraryEntry.fromJson(Map<String, dynamic> json) {
@@ -85,6 +128,9 @@ class LibraryEntry {
       language: json['language'] as String?,
       scanned: json['scanned'] as bool? ?? false,
       contentHash: json['hash'] as String?,
+      originalPath: json['original'] as String?,
+      cleanPath: json['cleanImage'] as String?,
+      scanCopyPath: json['scanSheet'] as String?,
     );
   }
 }

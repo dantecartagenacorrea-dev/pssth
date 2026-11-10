@@ -60,7 +60,15 @@ jobs:
         run: flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
       - name: Preparar el proyecto sin compilar (la firma compila una sola vez)
         if: ${{ inputs.subir }}
-        run: flutter build ios --release --config-only --no-codesign --build-number=${{ github.run_number }}
+        # SwiftPM a veces falla con "already exists in file system" al bajar PDFium:
+        # se limpia su caché de artefactos y se reintenta.
+        run: |
+          for intento in 1 2 3; do
+            rm -rf ~/Library/Caches/org.swift.swiftpm/artifacts
+            flutter build ios --release --config-only --no-codesign --build-number=${{ github.run_number }} && exit 0
+            sleep 20
+          done
+          exit 1
       - name: Firmar y subir a TestFlight
         if: ${{ inputs.subir }}
         env:

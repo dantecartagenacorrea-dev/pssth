@@ -205,6 +205,7 @@ Future<void> highlightCurrent(BuildContext context, TtsAudioHandler handler) asy
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: const Text('Frase subrayada'),
+      persist: false,
       action: SnackBarAction(label: 'Agregar nota', onPressed: () => editHighlightNote(context, h)),
     ),
   );
