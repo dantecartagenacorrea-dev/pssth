@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../domain/form_page.dart';
 import '../domain/library_entry.dart';
+import '../domain/ocr_fixes.dart';
 import '../domain/retyped_pdf.dart';
 import '../domain/scan_filters.dart';
 import '../domain/scanned_pdf.dart';
@@ -97,6 +98,14 @@ class ScanVersionBuilder {
     required this.openPages,
   });
 
+  /// Lo leído, con las letras que el lector metió dentro de números cambiadas por
+  /// dígitos. Las palabras no se corrigen aquí: sin la revisión a la vista, un
+  /// diccionario puede poner una palabra que la hoja no dice («pido» → «pirulo»).
+  Future<List<ScannedLine>> polish(List<ScannedLine> lines) async => [
+    for (final l in lines)
+      (text: fixDigitLookalikes(l.text), left: l.left, top: l.top, width: l.width, height: l.height),
+  ];
+
   /// Para volver a leer un PDF escaneado página por página.
   final Future<ScanPdfPages> Function(String path) openPages;
   final LibraryStore store;
@@ -166,7 +175,7 @@ class ScanVersionBuilder {
         } finally {
           if (await png.exists()) await png.delete();
         }
-        final lines = await _withTemp(entry, photo.jpeg, recognize);
+        final lines = await polish(await _withTemp(entry, photo.jpeg, recognize));
         final page = (jpeg: photo.jpeg, width: photo.width, height: photo.height, lines: lines);
         forms.add(await _formPage(entry, page));
       }
@@ -235,7 +244,8 @@ class ScanVersionBuilder {
   /// Una foto se vuelve a leer, porque hacen falta las posiciones para
   /// mantener el formato; si no se puede medir, sale en texto corrido.
   Future<String> _cleanPhoto(LibraryEntry entry) async {
-    final page = await _sheet(entry);
+    final read = await _sheet(entry);
+    final page = (jpeg: read.jpeg, width: read.width, height: read.height, lines: await polish(read.lines));
     if (page.lines.isEmpty) throw const FormatException('No se leyó texto en la foto.');
     Uint8List bytes;
     try {

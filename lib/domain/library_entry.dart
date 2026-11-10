@@ -108,7 +108,7 @@ class LibraryEntry {
     if (scanned) 'scanned': true,
     if (contentHash != null) 'hash': contentHash,
     if (originalPath != null) 'original': originalPath,
-    if (cleanPath != null) 'cleanImage': cleanPath,
+    if (cleanPath != null) 'cleanPdf': cleanPath,
     if (scanCopyPath != null) 'scanSheet': scanCopyPath,
   };
 
@@ -129,7 +129,7 @@ class LibraryEntry {
       scanned: json['scanned'] as bool? ?? false,
       contentHash: json['hash'] as String?,
       originalPath: json['original'] as String?,
-      cleanPath: json['cleanImage'] as String?,
+      cleanPath: json['cleanPdf'] as String?,
       scanCopyPath: json['scanSheet'] as String?,
     );
   }

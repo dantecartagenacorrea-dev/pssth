@@ -253,6 +253,24 @@ void main() {
       expect(entry.cleanPath, isNotNull);
     });
 
+    test('las palabras no se cambian: sin revisión a la vista no se adivina', () async {
+      final store = LibraryStore();
+      await store.initAt(dir);
+      final fixed = await builder(store).polish(const [
+        (text: 'expongo y pirlo', left: 0, top: 0, width: 1, height: 0.1),
+        (text: 'teléfono 7oooO00', left: 0, top: 0.2, width: 1, height: 0.1),
+      ]);
+      expect(fixed.map((l) => l.text), ['expongo y pirlo', 'teléfono 7000000']);
+    });
+
+    test('los dígitos se corrigen en las fechas', () async {
+      final store = LibraryStore();
+      await store.initAt(dir);
+      final b = builder(store);
+      final fixed = await b.polish(const [(text: 'Date of Issue 1s/o3/2024', left: 0, top: 0, width: 1, height: 0.1)]);
+      expect(fixed.single.text, 'Date of Issue 15/03/2024');
+    });
+
     test('el texto leído sale completo y en orden en el PDF', () async {
       final pages = pagesFromChunks([_chunk(1, 0, 'Segunda'), _chunk(0, 0, 'Primera'), _chunk(0, 1, '  ')]);
       expect(pages, hasLength(2));

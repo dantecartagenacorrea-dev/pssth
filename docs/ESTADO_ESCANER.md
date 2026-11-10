@@ -31,20 +31,32 @@ dispositivo real y qué falta. Todo lo de abajo está en este commit.
 - Formulario lleno a mano (foto de pantalla): Escaneado completo, con tabla,
   casillas y letra a mano.
 - El filtro «Limpio» se apaga en formularios porque borra tablas grises.
+- Formulario lleno, imagen chica (497×722): En limpio con la tabla completa
+  (bordes y divisiones), sin rayas falsas sobre el texto. Las líneas grises de
+  1 píxel se encuentran sumando dos filas vecinas (`_lineInkOf`), salvo dentro
+  de los renglones leídos.
+- Dígitos: letras parecidas dentro de números (o→0, l→1, s→5) se corrigen
+  (`lib/domain/ocr_fixes.dart`): «+591 7oooO00» sale «+591 70000000».
+
+## Probado y descartado
+
+- Agrandar fotos chicas antes de leerlas: el título salió como imagen y la
+  letra a mano quedó partida. Revertido.
+- Corregir palabras con el diccionario en En limpio: cambió «pido» por
+  «pirulo» sin aviso. Revertido; el diccionario queda solo en la revisión,
+  donde la corrección se ve en naranja.
+- Suavizar la imagen contra el muaré: borra también las líneas finas.
 
 ## Lo que falta (no es 100/100)
 
-- **En limpio en formularios con tabla**: faltan bordes y divisiones internas
-  de algunas tablas. La detección de líneas está en `formLayerFrom` y
-  `_dropTexture` (`lib/domain/form_page.dart`); con muaré de pantalla se
-  descartan también líneas reales.
 - **Errores de lectura de la cámara** (ML Kit Text Recognition): letras
-  confundidas y mayúsculas mezcladas. La revisión los marca en naranja para
-  corregirlos antes de guardar; no hay corrección automática.
+  confundidas («PRESCNTA», «1485» por 1985). Se corrigen en la revisión antes
+  de guardar (renglones en naranja).
+- **Casillas**: las de fecha no se cierran (sus lados son más cortos que
+  `_minVertical`), y la casilla ☐ pegada a una palabra hace leer «Daster» por
+  «Master».
 - **Foto de una pantalla** (muaré): Escaneado bien; En limpio mejorable.
 - Las vistas Original y En limpio no se sincronizan con Drive.
-- `test/playback_loop_test.dart` falló 2 veces en ~10 corridas completas
-  (temporizador); pasa siempre sola. No investigado.
 - No probado en iPhone. `.github/workflows/ios.yml` tiene reintentos de
   SwiftPM sin probar.
 
@@ -56,4 +68,6 @@ flutter test
 flutter build apk --release --split-per-abi --target-platform android-arm64
 ```
 
-720 pruebas pasan. El AAB anterior para Play (commit 79f4c8f) no incluye nada de esto.
+728 pruebas pasan. `test/playback_loop_test.dart` fallaba a veces en la corrida
+completa por falta de tiempo de espera; ahora espera hasta 15 s y pasó en todas
+las corridas.

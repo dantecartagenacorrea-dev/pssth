@@ -223,8 +223,7 @@ class PlayerScreen extends StatelessWidget {
                       openPages: (path) async {
                         final pdf = await PdfPageRenderer.open(path);
                         return (count: pdf.pageCount, render: pdf.renderToPng, close: pdf.close);
-                      },
-                    );
+                      },                    );
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ScanVersionsScreen(

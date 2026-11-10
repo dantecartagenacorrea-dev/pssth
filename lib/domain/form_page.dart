@@ -32,7 +32,6 @@ const _tileFill = 0.85;
 /// Largo mínimo de una línea, en fracción del lado: las horizontales más, porque
 /// los trazos de las letras también lo son.
 const _minHorizontal = 0.06, _minVertical = 0.03;
-
 class _Dash {
   _Dash(this.tile, this.center, this.thick);
   final int tile;
@@ -134,6 +133,47 @@ Uint8List _inkOf(Uint8List lum, Uint8List paper) {
   final ink = Uint8List(lum.length);
   for (var i = 0; i < lum.length; i++) {
     if (lum[i] < _ruleInk * math.max(paper[i], 40)) ink[i] = 1;
+  }
+  return ink;
+}
+
+/// Dónde hay renglones leídos (1) en la foto.
+Uint8List _textMask(List<ScannedLine> lines, int w, int h) {
+  final mask = Uint8List(w * h);
+  for (final l in lines) {
+    if (l.text.trim().isEmpty || l.width <= 0 || l.height <= 0) continue;
+    final x0 = math.max(0, (l.left * w).floor()), x1 = math.min(w - 1, ((l.left + l.width) * w).ceil());
+    final y0 = math.max(0, (l.top * h).floor()), y1 = math.min(h - 1, ((l.top + l.height) * h).ceil());
+    for (var y = y0; y <= y1; y++) {
+      mask.fillRange(y * w + x0, y * w + x1 + 1, 1);
+    }
+  }
+  return mask;
+}
+
+/// Grosor de una línea hallada con [_lineInkOf]: la suma de vecinas le agrega una
+/// fila, que no es suya.
+double _ruleWeight(double thick, int side) => math.max(1.0, thick - 1) / side;
+
+/// Como [_inkOf], pero una línea fina que cayó entre dos filas (o columnas) de
+/// píxeles también cuenta: en una foto chica queda repartida y ninguna de las dos
+/// llega a oscura. [step] es la distancia a la vecina: [w] para las horizontales,
+/// 1 para las verticales.
+/// [text]: los renglones leídos, donde no se suma: el borde de las letras, entre
+/// dos filas, parecería una línea.
+Uint8List _lineInkOf(Uint8List lum, Uint8List paper, int w, int h, int step, Uint8List text) {
+  final ink = _inkOf(lum, paper);
+  const darker = 1 - _ruleInk;
+  for (var i = 0; i + step < lum.length; i++) {
+    if (step == 1 && (i + 1) % w == 0) continue;
+    if (text[i] != 0 || text[i + step] != 0) continue;
+    final p = math.max(paper[i], 40);
+    final a = p - lum[i], b = p - lum[i + step];
+    // Cada una aporta algo, y juntas oscurecen como una línea nítida.
+    if (a > 0 && b > 0 && a + b > darker * p) {
+      ink[i] = 1;
+      ink[i + step] = 1;
+    }
   }
   return ink;
 }
@@ -315,14 +355,15 @@ FormLayer formLayerFrom(
   List<PageMark> marks,
 ) {
   final gray = cleanInkOnly(lum, paper, w, h);
-  final ink = _inkOf(lum, paper);
+  final text = _textMask(lines, w, h);
+  final ink = _lineInkOf(lum, paper, w, h, w, text);
   final rules = <FormRule>[];
   final across = _chains(ink, w, h, _minHorizontal);
   final slope = _slopeOf(across, math.max(8, (w * 0.012).round()), w);
   final tilt = slope * w / h;
   for (final c in across) {
     final y = (c.center + 0.5) / h;
-    final rule = (x0: c.start / w, y0: y, x1: (c.end + 1) / w, y1: y, weight: c.thick / h);
+    final rule = (x0: c.start / w, y0: y, x1: (c.end + 1) / w, y1: y, weight: _ruleWeight(c.thick, h));
     if (_isTextStroke(rule, lines)) continue;
     rules.add(rule);
     final tile = math.max(8, (w * 0.012).round());
@@ -336,11 +377,11 @@ FormLayer formLayerFrom(
     _whiten(gray, w, h, c.start, ends.$1.center.round() - pad, ends.$1.tile * tile, ends.$1.center.round() + pad);
     _whiten(gray, w, h, ends.$2.tile * tile, ends.$2.center.round() - pad, c.end, ends.$2.center.round() + pad);
   }
-  final flipped = _transposed(ink, w, h);
+  final flipped = _transposed(_lineInkOf(lum, paper, w, h, 1, text), w, h);
   final tile = math.max(8, (h * 0.012).round());
   for (final c in _chains(flipped, h, w, _minVertical)) {
     final x = (c.center + 0.5) / w;
-    final rule = (x0: x, y0: c.start / h, x1: x, y1: (c.end + 1) / h, weight: c.thick / w);
+    final rule = (x0: x, y0: c.start / h, x1: x, y1: (c.end + 1) / h, weight: _ruleWeight(c.thick, w));
     if (_isTextStroke(rule, lines)) continue;
     rules.add(rule);
     for (final d in c.dashes) {

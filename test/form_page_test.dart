@@ -224,6 +224,24 @@ void main() {
     expect(formLayerFrom(lum, _paper(), _w, _h, const [], const []).blank, isFalse);
   });
 
+  test('una línea gris fina repartida entre dos filas también se encuentra', () {
+    final lum = _blank();
+    // Cada fila apenas gris: ninguna sola es tinta, juntas son una línea.
+    _fill(lum, 100, 500, 900, 501, value: 200);
+    _fill(lum, 100, 501, 900, 502, value: 200);
+    final rules = formLayerFrom(lum, _paper(), _w, _h, const [], const []).rules;
+    expect(rules, hasLength(1));
+    expect(rules.single.weight * _h, lessThanOrEqualTo(1.5), reason: 'fina, como en el original');
+  });
+
+  test('el borde de letras grises dentro de un renglón no se vuelve línea', () {
+    final lum = _blank();
+    _fill(lum, 200, 410, 700, 411, value: 200);
+    _fill(lum, 200, 411, 700, 412, value: 200);
+    const line = (text: 'PERSONAL INFORMATION', left: 0.2, top: 405 / _h, width: 0.5, height: 25 / _h);
+    expect(formLayerFrom(lum, _paper(), _w, _h, const [line], const []).rules, isEmpty);
+  });
+
   test('una raya vertical suelta es el borde del papel, no una línea', () {
     final lum = _blank();
     _fill(lum, 60, 300, 63, 700);

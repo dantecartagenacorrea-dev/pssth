@@ -81,11 +81,12 @@ Future<(TtsAudioHandler, Directory)> handlerWith(
 // Con margen: en la corrida completa (varios archivos a la vez) 20 ms no alcanzaban.
 Future<void> settle() => Future.delayed(const Duration(milliseconds: 100));
 
-/// Espera (hasta 4 s) a que se cumpla [done]: guardar la posición toca el
-/// disco y, con todas las pruebas corriendo a la vez, un tiempo fijo a veces
-/// no alcanzaba (la prueba del temporizador fallaba de vez en cuando).
+/// Espera (hasta 15 s) a que se cumpla [done]: guardar la posición toca el
+/// disco y, con todas las pruebas corriendo a la vez (las del escáner procesan
+/// imágenes grandes), 4 s a veces no alcanzaban. Si se cumple antes, sigue al
+/// instante.
 Future<void> until(bool Function() done) async {
-  for (var i = 0; i < 40 && !done(); i++) {
+  for (var i = 0; i < 150 && !done(); i++) {
     await settle();
   }
 }
