@@ -1,6 +1,6 @@
-// En la máquina macOS de GitHub las pruebas no encuentran la biblioteca
+// En las máquinas de GitHub (macOS y Linux) las pruebas no encuentran la biblioteca
 // PDFium (en el iPhone sí viene dentro de la app).
-@TestOn('!mac-os')
+@TestOn('!mac-os && !linux')
 library;
 
 import 'dart:io';
