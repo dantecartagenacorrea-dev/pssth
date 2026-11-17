@@ -1011,6 +1011,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           applicationName: 'PSSTH!',
           applicationVersion: kAppVersion,
           applicationLegalese:
+              'Desarrollado por Dante Cartagena Correa.\n\n'
               'Convierte documentos en lectura en voz alta. Todo se procesa en tu dispositivo, salvo lo que '
               'actives: se usa Internet si descargas los modelos opcionales (desde GitHub y Hugging Face), si '
               'sincronizas con Google Drive. La red local solo se usa si conectas la IA '
