@@ -113,4 +113,24 @@ void main() {
     await tester.pump();
     expect(marked(tester), isNull);
   });
+
+  testWidgets('la palabra anterior queda con una estela suave', (tester) async {
+    await setUpHandler(tester);
+    await show(tester);
+    handler.wordRange.value = (0, 2);
+    await tester.pump();
+    handler.wordRange.value = (3, 7);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(marked(tester), 'casa');
+
+    Color? trail;
+    tester.widget<RichText>(find.byType(RichText)).text.visitChildren((span) {
+      if (span is TextSpan && span.text == 'La') trail = span.style?.color;
+      return true;
+    });
+    expect(trail, isNotNull);
+    expect(trail, isNot(const Color(0xFFBA7517)));
+    expect(find.byType(CustomPaint), findsWidgets);
+  });
 }
